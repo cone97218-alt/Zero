@@ -19,17 +19,18 @@ export async function renderManageTab() {
             return;
         }
 
+        const rowParts = [];
         list.names.forEach(name => {
             const isActive = name === activeName;
-            const row = `
+            rowParts.push(`
                 <div class="manage-preset-row interactable" data-name="${escapeHtml(name)}" style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: rgba(255,255,255,0.03); border-radius: 8px; font-size: 13px;">
                     <input type="checkbox" class="interactable" style="flex-shrink: 0;" ${isActive ? 'disabled' : ''}>
                     <div style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${name}</div>
                     ${isActive ? '<span style="font-size: 11px; color: var(--SmartThemeQuoteColor); opacity: 0.8;">使用中</span>' : ''}
                 </div>
-            `;
-            $list.append(row);
+            `);
         });
+        $list.html(rowParts.join(''));
 
         $('.manage-preset-row').off('click').on('click', function(e) {
             if ($(e.target).is('input')) return;
@@ -74,6 +75,7 @@ export async function handleBatchDelete() {
 
     if (successCount > 0) {
         toastr.success(`成功删除 ${successCount} 个预设`);
+        window.dispatchEvent(new Event('zero-presets-list-changed')); // 通知缓存失效
         if (pm && pm.select) {
             for (const name of selected) {
                 $(pm.select).find('option').filter(function() {
@@ -112,6 +114,7 @@ export async function handleBatchImport(files) {
 
     if (successCount > 0) {
         toastr.success(`成功导入 ${successCount} 个预设`);
+        window.dispatchEvent(new Event('zero-presets-list-changed')); // 通知缓存失效
         
         if (pm) {
             const { presets, preset_names } = pm.getPresetList();

@@ -3,7 +3,7 @@
     "loading_order": 15,
     "js": "index.js",
     "css": "qr-style.css",
-    "author": "食蛙则瘦",
+    "author": "Zero",
     "version": "1.0.0",
     "description": "Preset management with snapshots and grouping"
 }

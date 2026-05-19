@@ -1,23 +1,59 @@
 /**
  * Preset Manager Extension for Zero
  * Handles button injection into the Extensions menu and full-screen tabbed panel.
+ *
+ * 子模块采用懒加载策略：仅在用户首次打开面板时并行加载，之后缓存复用。
  */
 
 import { PresetManager } from '../qr-state.js';
-import { Checker } from './ui-checker.js';
 import { syncTheme } from './ui-utils.js';
-import { performAutoMatch, startComparison, showManualLinksManager, pruneManualLinks } from './ui-contrast.js';
-import { renderStitchList, performBatchDelete, performSingleClone, toggleStitchBatchMode, showMoveModal, renderTargetBPeek } from './ui-stitch.js';
-import { renderManageTab, handleBatchDelete, handleBatchImport } from './ui-manage.js';
-import { openQuickEditor } from './ui-editor.js';
+
+// ── 懒加载缓存 ──────────────────────────────────────────────────────────────
+let _contrast = null;
+let _stitch   = null;
+let _manage   = null;
+let _checker  = null;
+let _editor   = null;
+let _modulesLoaded = false;
+
+// ── 预设列表缓存（避免切 Tab 重复拉取）──────────────────────────────────────
+let _presetsListCache = null;
+let _presetsLastFetch  = 0;
+const PRESETS_CACHE_TTL = 8000; // 8 秒内跳过重复拉取
+
+// ui-manage.js 写操作完成后，通过事件通知缓存失效
+window.addEventListener('zero-presets-list-changed', () => { _presetsLastFetch = 0; });
+
+/** 供外部模块主动失效缓存（如批量导入/删除后） */
+export function invalidatePresetsCache() { _presetsLastFetch = 0; }
+
+async function loadModules() {
+    if (_modulesLoaded) return;
+    [_contrast, _stitch, _manage, _checker, _editor] = await Promise.all([
+        import('./ui-contrast.js'),
+        import('./ui-stitch.js'),
+        import('./ui-manage.js'),
+        import('./ui-checker.js'),
+        import('./ui-editor.js'),
+    ]);
+    _modulesLoaded = true;
+}
 
 const PANEL_ID = 'zero-preset-manager-panel';
 const BTN_ID = 'zero-preset-manager-btn';
 
 export async function populatePresetSelects() {
     try {
-        PresetManager.invalidate();
-        const list = await PresetManager.listNames();
+        const now = Date.now();
+        let list;
+        if (_presetsListCache && (now - _presetsLastFetch) < PRESETS_CACHE_TTL) {
+            list = _presetsListCache; // 命中缓存，跳过网络请求
+        } else {
+            PresetManager.invalidate();
+            list = await PresetManager.listNames();
+            _presetsListCache = list;
+            _presetsLastFetch = now;
+        }
         const $selectA = $('#contrast-preset-a');
         const $selectB = $('#contrast-preset-b');
         const $stitchA = $('#stitch-preset-source');
@@ -39,7 +75,7 @@ export async function populatePresetSelects() {
             $checkS.append(`<option value="${name}">${name}</option>`);
         });
 
-        pruneManualLinks(list.names);
+        if (_contrast) _contrast.pruneManualLinks(list.names);
         
         const lastA = localStorage.getItem('zero_last_a');
         const lastB = localStorage.getItem('zero_last_b');
@@ -185,7 +221,7 @@ function ensurePanel() {
                         right: 12px;
                         bottom: 12px;
                         z-index: 100;
-                        transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+                        transition: none;
                         box-shadow: 0 -4px 16px rgba(0,0,0,0.25);
                         background: var(--SmartThemeBlurTintColor);
                         border: 1px solid var(--SmartThemeBorderColor);
@@ -326,49 +362,49 @@ function ensurePanel() {
         $(`#${PANEL_ID} .zero-tab-content`).css('display', 'none');
         $(`#zero-tab-${tab}`).css('display', 'flex');
         
-        if (tab === 'manage') renderManageTab();
+        if (tab === 'manage') _manage.renderManageTab();
         else if (tab === 'contrast') populatePresetSelects();
-        else if (tab === 'stitch') populatePresetSelects().then(() => renderStitchList());
+        else if (tab === 'stitch') populatePresetSelects().then(() => _stitch.renderStitchList());
         else if (tab === 'check') populatePresetSelects().then(() => {
-            Checker.render('check-results-container', $('#check-preset-select').val());
+            _checker.Checker.render('check-results-container', $('#check-preset-select').val());
         });
     });
 
     $(`#zero-panel-close`).on('click', () => closePanel());
 
-    $('#contrast-auto-match').on('click', performAutoMatch);
-    $('#contrast-start').on('click', startComparison);
-    $('#manage-manual-matches').on('click', showManualLinksManager);
+    $('#contrast-auto-match').on('click', () => _contrast.performAutoMatch());
+    $('#contrast-start').on('click', () => _contrast.startComparison());
+    $('#manage-manual-matches').on('click', () => _contrast.showManualLinksManager());
 
     $('#contrast-preset-a').on('change', function() {
         localStorage.setItem('zero_last_a', $(this).val());
-        performAutoMatch();
+        _contrast.performAutoMatch();
     });
     $('#contrast-preset-b').on('change', function() {
         localStorage.setItem('zero_last_b', $(this).val());
-        performAutoMatch();
+        _contrast.performAutoMatch();
     });
 
     $('#stitch-preset-source').on('change', function() {
         localStorage.setItem('zero_last_stitch_a', $(this).val());
-        renderStitchList();
+        _stitch.renderStitchList();
     });
     $('#stitch-preset-target').on('change', function() {
         localStorage.setItem('zero_last_stitch_b', $(this).val());
-        renderStitchList();
+        _stitch.renderStitchList();
     });
 
     $('#check-preset-select').on('change', function() {
         localStorage.setItem('zero_last_check_preset', $(this).val());
-        Checker.render('check-results-container', $(this).val());
+        _checker.Checker.render('check-results-container', $(this).val());
     });
     $('#check-refresh-btn').on('click', function() {
-        Checker.render('check-results-container', $('#check-preset-select').val());
+        _checker.Checker.render('check-results-container', $('#check-preset-select').val());
     });
 
     window.addEventListener('zero-open-editor', (e) => {
         const { presetName, itemName } = e.detail;
-        openQuickEditor(presetName, itemName);
+        _editor.openQuickEditor(presetName, itemName);
     });
 
     $('body').off('click', '#stitch-swap-btn').on('click', '#stitch-swap-btn', function() {
@@ -383,12 +419,12 @@ function ensurePanel() {
         localStorage.setItem('zero_last_stitch_a', valB);
         localStorage.setItem('zero_last_stitch_b', valA);
         
-        renderStitchList();
+        _stitch.renderStitchList();
     });
 
     $('body').off('click', '#stitch-mode-toggle').on('click', '#stitch-mode-toggle', function() {
-        toggleStitchBatchMode();
-        renderStitchList();
+        _stitch.toggleStitchBatchMode();
+        _stitch.renderStitchList();
     });
 
     $('body').off('click', '#stitch-batch-execute').on('click', '#stitch-batch-execute', async function() {
@@ -433,7 +469,7 @@ function ensurePanel() {
 
         const items = selectedIndexes.map(idx => window.zero_stitch_promptsA[idx]);
         const nameA = $('#stitch-preset-source').val();
-        await performBatchDelete(items, nameA);
+        await _stitch.performBatchDelete(items, nameA);
     });
 
     $('body').off('click', '#stitch-batch-move').on('click', '#stitch-batch-move', async function() {
@@ -448,7 +484,7 @@ function ensurePanel() {
 
         const items = selectedIndexes.map(idx => window.zero_stitch_promptsA[idx]);
         const nameA = $('#stitch-preset-source').val();
-        await showMoveModal(items, nameA);
+        await _stitch.showMoveModal(items, nameA);
     });
 
     $('body').off('click', '.stitch-action-btn').on('click', '.stitch-action-btn', async function(e) {
@@ -485,7 +521,7 @@ function ensurePanel() {
         const pA = window.zero_stitch_promptsA ? window.zero_stitch_promptsA[index] : null;
         if (!pA) return;
         const nameA = $('#stitch-preset-source').val();
-        await performBatchDelete([pA], nameA);
+        await _stitch.performBatchDelete([pA], nameA);
     });
 
     $('body').off('click', '.stitch-clone-btn').on('click', '.stitch-clone-btn', async function(e) {
@@ -494,7 +530,7 @@ function ensurePanel() {
         const pA = window.zero_stitch_promptsA ? window.zero_stitch_promptsA[index] : null;
         if (!pA) return;
         const nameA = $('#stitch-preset-source').val();
-        await performSingleClone(pA, nameA);
+        await _stitch.performSingleClone(pA, nameA);
     });
 
     $('body').off('click', '.stitch-move-btn').on('click', '.stitch-move-btn', async function(e) {
@@ -503,7 +539,7 @@ function ensurePanel() {
         const pA = window.zero_stitch_promptsA ? window.zero_stitch_promptsA[index] : null;
         if (!pA) return;
         const nameA = $('#stitch-preset-source').val();
-        await showMoveModal([pA], nameA);
+        await _stitch.showMoveModal([pA], nameA);
     });
 
     $('body').off('click', '.stitch-edit-btn').on('click', '.stitch-edit-btn', async function(e) {
@@ -514,7 +550,7 @@ function ensurePanel() {
         const presetName = $('#stitch-preset-source').val();
         const itemName = pA.name || pA.identifier;
         if (presetName && itemName) {
-            openQuickEditor(presetName, itemName);
+            _editor.openQuickEditor(presetName, itemName);
         }
     });
 
@@ -587,10 +623,10 @@ function ensurePanel() {
     $('#manage-import-input').on('change', async function() {
         const files = Array.from(this.files);
         if (files.length === 0) return;
-        await handleBatchImport(files);
+        await _manage.handleBatchImport(files);
         this.value = '';
     });
-    $('#manage-delete').on('click', () => handleBatchDelete());
+    $('#manage-delete').on('click', () => _manage.handleBatchDelete());
     $('#manage-select-all').on('change', function() {
         const checked = $(this).is(':checked');
         $('#manage-preset-list input[type="checkbox"]:not(:disabled)').prop('checked', checked);
@@ -599,9 +635,11 @@ function ensurePanel() {
     syncTheme();
 }
 
-export function showPanel() {
+export async function showPanel() {
+    await loadModules();
     ensurePanel();
     syncTheme();
+    _presetsLastFetch = 0; // 每次打开面板强制刷新预设列表
     populatePresetSelects();
     
     const lastTab = localStorage.getItem('zero_last_main_tab') || 'contrast';

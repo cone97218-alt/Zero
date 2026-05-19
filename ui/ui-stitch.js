@@ -47,10 +47,11 @@ export async function renderStitchList(forceRefresh = true) {
             return;
         }
 
+        const rowParts = [];
         promptsA.forEach((pA, index) => {
             const nameStr = escapeHtml(pA.name || pA.identifier || '未命名');
             
-            const row = `
+            rowParts.push(`
                 <div class="stitch-row interactable" style="
                     display: flex;
                     align-items: center;
@@ -117,9 +118,9 @@ export async function renderStitchList(forceRefresh = true) {
                     word-break: break-all;
                     color: var(--SmartThemeBodyColor);
                 ">${escapeHtml(pA.content || '')}</div>
-            `;
-            $list.append(row);
+            `);
         });
+        $list.html(rowParts.join(''));
 
         // Toggle item contents (Accordion style - one open at a time)
         $('.stitch-row-expand-trigger').off('click').on('click', function(e) {
@@ -133,16 +134,16 @@ export async function renderStitchList(forceRefresh = true) {
             
             if (isOpening) {
                 // Collapse all other contents in A
-                $('.stitch-content').not($content).slideUp(150);
+                $('.stitch-content').not($content).hide();
                 // Reset all other chevrons in A
                 $('.stitch-row').not($row).find('.fa-chevron-up').removeClass('fa-chevron-up').addClass('fa-chevron-down');
                 
                 // Expand current content
-                $content.slideDown(150);
+                $content.show();
                 $icon.removeClass('fa-chevron-down').addClass('fa-chevron-up');
             } else {
                 // Collapse current content
-                $content.slideUp(150);
+                $content.hide();
                 $icon.removeClass('fa-chevron-up').addClass('fa-chevron-down');
             }
         });
@@ -560,11 +561,11 @@ export async function renderTargetBPeek() {
                     <i class="fa-solid fa-plus"></i> 插入到最前面
                 </div>
             `;
-            $list.append(firstInsertRow);
 
+            const peekParts = [firstInsertRow];
             promptsB.forEach((pB, index) => {
                 const nameStr = escapeHtml(pB.name || pB.identifier || '未命名');
-                const row = `
+                peekParts.push(`
                     <div class="stitch-peek-row interactable" data-index="${index}" style="
                         padding: 6px 10px;
                         background: rgba(255,255,255,0.03);
@@ -595,9 +596,9 @@ export async function renderTargetBPeek() {
                         word-break: break-all;
                         color: var(--SmartThemeBodyColor);
                     ">${escapeHtml(pB.content || '')}</div>
-                `;
-                $list.append(row);
+                `);
             });
+            $list.html(peekParts.join(''));
         }
 
         // Toggle item contents (Accordion style - one open at a time)
@@ -612,16 +613,16 @@ export async function renderTargetBPeek() {
             
             if (isOpening) {
                 // Collapse all other contents
-                $('.stitch-peek-content').not($content).slideUp(150);
+                $('.stitch-peek-content').not($content).hide();
                 // Reset all other chevron icons to down
                 $('.stitch-peek-row').not($row).find('.fa-chevron-up').removeClass('fa-chevron-up').addClass('fa-chevron-down');
                 
                 // Expand current content
-                $content.slideDown(150);
+                $content.show();
                 $icon.removeClass('fa-chevron-down').addClass('fa-chevron-up');
             } else {
                 // Collapse current content
-                $content.slideUp(150);
+                $content.hide();
                 $icon.removeClass('fa-chevron-up').addClass('fa-chevron-down');
             }
         });
