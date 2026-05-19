@@ -453,8 +453,6 @@ function ensurePanel() {
         $drawer.addClass('expanded');
         $('#stitch-peek-body').css('display', 'flex');
         $('#stitch-peek-toggle-icon i').removeClass('fa-chevron-up').addClass('fa-chevron-down');
-
-        toastr.info('已选定条目！请在右下角“目标预设 (B)”面板中点击“+”加号插入到对应位置');
     });
 
     $('body').off('click', '#stitch-batch-delete').on('click', '#stitch-batch-delete', async function() {
@@ -511,8 +509,6 @@ function ensurePanel() {
         $drawer.addClass('expanded');
         $('#stitch-peek-body').css('display', 'flex');
         $('#stitch-peek-toggle-icon i').removeClass('fa-chevron-up').addClass('fa-chevron-down');
-
-        toastr.info('已选定该条目！请在右侧“目标预设 (B)”面板中点击“+”加号插入到对应位置');
     });
 
     $('body').off('click', '.stitch-delete-btn').on('click', '.stitch-delete-btn', async function(e) {
@@ -604,7 +600,6 @@ function ensurePanel() {
         for (let i = start; i <= end; i++) {
             $(`.stitch-item-cb[data-index="${i}"]`).prop('checked', true).attr('checked', 'checked').trigger('change');
         }
-        toastr.success(`已连选范围`);
     });
 
     $('body').off('click', '#stitch-peek-header').on('click', '#stitch-peek-header', function(e) {
