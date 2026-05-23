@@ -1,6 +1,24 @@
 /* ===== Zero Preset Manager Styles ===== */
 /* Performance-optimized: no backdrop-filter, minimal transitions, contain hints */
 
+/* Override --SmartThemeBlurTintColor to be 100% opaque for the Zero extension elements */
+:root {
+    --SmartThemeBlurTintColor-Original: var(--SmartThemeBlurTintColor);
+}
+.zero-overlay,
+.zero-modal,
+.zero-confirm,
+.zero-preview-box,
+.zero-multiselect-bar,
+#zero-preset-manager-panel,
+#zero-quick-editor,
+#move-modal,
+#links-manager-modal,
+[id*="zero-"],
+[class*="zero-"] {
+    --SmartThemeBlurTintColor: rgb(from var(--SmartThemeBlurTintColor-Original, rgba(20,20,30,0.95)) r g b / 1);
+}
+
 /* QR Bar Button */
 #zero-preset-btn {
     display: flex;
