@@ -213,6 +213,30 @@ export const PresetManager = {
 
     invalidate() { _preset = null; _presetNames = null; },
 
+    renameSettings(oldName, newName) {
+        const s = getSettings();
+        if (s.groups && s.groups[oldName]) {
+            s.groups[newName] = s.groups[oldName];
+            delete s.groups[oldName];
+        }
+        if (s.hidden && s.hidden[oldName]) {
+            s.hidden[newName] = s.hidden[oldName];
+            delete s.hidden[oldName];
+        }
+        if (s.linkages && s.linkages[oldName]) {
+            s.linkages[newName] = s.linkages[oldName];
+            delete s.linkages[oldName];
+        }
+        if (s.snapshots && Array.isArray(s.snapshots)) {
+            s.snapshots.forEach(snap => {
+                if (snap.presetName === oldName) {
+                    snap.presetName = newName;
+                }
+            });
+        }
+        saveSettings();
+    },
+
     async save() {
         // Find SillyTavern's native "Update Preset" button
         // Chat Completion (OpenAI/Claude/etc) is usually #update_oai_preset

@@ -165,8 +165,9 @@
     cursor: wait;
 }
 
-/* Save Button */
-.zero-save-btn {
+/* Save & Manage Buttons */
+.zero-save-btn,
+.zero-manage-btn {
     padding: 6px 10px;
     font-size: 18px;
     color: var(--SmartThemeBodyColor, #ccc);
@@ -181,11 +182,14 @@
     border: none;
 }
 .zero-save-btn:hover,
-.zero-save-btn:active {
+.zero-save-btn:active,
+.zero-manage-btn:hover,
+.zero-manage-btn:active {
     opacity: 1;
     background: rgba(255,255,255,0.05);
 }
-.zero-save-btn:active {
+.zero-save-btn:active,
+.zero-manage-btn:active {
     transform: scale(0.9);
 }
 .zero-save-btn.zero-save-success {

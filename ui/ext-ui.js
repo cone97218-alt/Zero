@@ -346,6 +346,13 @@ function ensurePanel() {
                     color: var(--SmartThemeQuoteColor, #7b8cde) !important;
                     transform: scale(1.2);
                 }
+                .manage-preset-rename {
+                    transition: opacity 0.15s ease;
+                }
+                .manage-preset-rename:hover {
+                    opacity: 1 !important;
+                    color: var(--SmartThemeQuoteColor, #7b8cde);
+                }
             </style>
         `);
     }

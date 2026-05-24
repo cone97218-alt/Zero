@@ -26,22 +26,101 @@ export async function renderManageTab() {
                 <div class="manage-preset-row interactable" data-name="${escapeHtml(name)}" style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: rgba(255,255,255,0.03); border-radius: 8px; font-size: 13px;">
                     <input type="checkbox" class="interactable" style="flex-shrink: 0;" ${isActive ? 'disabled' : ''}>
                     <div style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${name}</div>
-                    ${isActive ? '<span style="font-size: 11px; color: var(--SmartThemeQuoteColor); opacity: 0.8;">使用中</span>' : ''}
+                    ${isActive ? '<span style="font-size: 11px; color: var(--SmartThemeQuoteColor); opacity: 0.8; margin-right: 4px;">使用中</span>' : ''}
+                    <button class="manage-preset-rename interactable zero-icon-btn" data-name="${escapeHtml(name)}" title="重命名" style="flex-shrink: 0; opacity: 0.6; padding: 2px 6px; cursor: pointer; transition: opacity 0.15s;">
+                        <i class="fa-solid fa-pen-to-square"></i>
+                    </button>
                 </div>
             `);
         });
         $list.html(rowParts.join(''));
 
         $('.manage-preset-row').off('click').on('click', function(e) {
-            if ($(e.target).is('input')) return;
+            if ($(e.target).is('input') || $(e.target).closest('.manage-preset-rename').length) return;
             const $cb = $(this).find('input[type="checkbox"]');
             if ($cb.is(':disabled')) return;
             $cb.prop('checked', !$cb.is(':checked'));
         });
 
+        $('.manage-preset-rename').off('click').on('click', async function(e) {
+            e.stopPropagation();
+            const name = $(this).data('name');
+            await handleRename(name);
+        });
+
     } catch (e) {
         console.error('[Zero] Failed to render manage tab:', e);
         $list.html('<p style="text-align: center; color: var(--SmartThemeShadowColor);">加载失败</p>');
+    }
+}
+
+export async function handleRename(oldName) {
+    if (!oldName) return;
+
+    try {
+        const { Popup } = await import('/scripts/popup.js');
+        const { getSanitizedFilename } = await import('/scripts/utils.js');
+        const { eventSource, event_types } = await import('/script.js');
+
+        const newNameRaw = await Popup.show.input('重命名预设', '请输入新的预设名称：', oldName);
+        if (newNameRaw === null) return; // User cancelled
+
+        const newName = await getSanitizedFilename(newNameRaw.trim());
+        if (!newName || newName === oldName) return;
+
+        const pm = SillyTavern.getContext().getPresetManager('openai');
+        if (!pm) {
+            toastr.error('未找到预设管理器');
+            return;
+        }
+
+        const { preset_names } = pm.getPresetList();
+        const isKeyed = pm.isKeyedApi();
+        const exists = isKeyed ? preset_names.includes(newName) : Object.keys(preset_names).includes(newName);
+        if (exists) {
+            toastr.error('该预设名称已存在');
+            return;
+        }
+
+        const activeName = pm.getSelectedPresetName();
+        const isEditingActive = (oldName === activeName);
+
+        // 1. If not editing active, temporarily select it so renamePreset works on it
+        if (!isEditingActive) {
+            const oldVal = pm.findPreset(oldName);
+            if (oldVal) {
+                pm.selectPreset(oldVal);
+            }
+        }
+
+        // 2. Perform native rename operations (emits events & preserves ST extensions)
+        await eventSource.emit(event_types.PRESET_RENAMED_BEFORE, { apiId: 'openai', oldName, newName });
+        const extensions = pm.readPresetExtensionField({ name: oldName, path: '' });
+        await pm.renamePreset(newName);
+        await pm.writePresetExtensionField({ name: newName, path: '', value: extensions });
+        await eventSource.emit(event_types.PRESET_RENAMED, { apiId: 'openai', oldName, newName });
+
+        // 3. Rename Zero's internal settings (groups, hidden items, linkages, snapshots)
+        PresetManager.renameSettings(oldName, newName);
+
+        // 4. Restore active preset selection if it wasn't the one renamed
+        if (!isEditingActive) {
+            const activeVal = pm.findPreset(activeName);
+            if (activeVal) {
+                pm.selectPreset(activeVal);
+            }
+        }
+
+        toastr.success('预设重命名成功');
+        window.dispatchEvent(new Event('zero-presets-list-changed')); // 通知缓存失效
+        refreshNativePresetManager(pm);
+        
+        await renderManageTab();
+        await populatePresetSelects();
+
+    } catch (e) {
+        console.error('[Zero] Failed to rename preset:', oldName, e);
+        toastr.error('重命名失败，请检查控制台');
     }
 }
 

@@ -203,6 +203,16 @@ function buildModal(modal, preset, listInfo) {
         h('label', { class: 'zero-header-label', text: '当前预设' }),
         select,
         h('button', {
+            class: 'zero-manage-btn',
+            title: '打开预设管理',
+            html: '<i class="fa-solid fa-list-ul"></i>',
+            onclick: async () => {
+                closeUI();
+                const { showPanel } = await import('./ui/ext-ui.js');
+                await showPanel();
+            }
+        }),
+        h('button', {
             class: 'zero-save-btn',
             title: '保存到酒馆预设',
             html: '<i class="fa-solid fa-floppy-disk"></i>',

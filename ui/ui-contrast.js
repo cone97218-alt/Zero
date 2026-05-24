@@ -1,5 +1,52 @@
 import { getPresetPrompts, escapeHtml } from './ui-utils.js';
 import { openQuickEditor } from './ui-editor.js';
+import { GroupManager } from '../qr-state.js';
+
+function getPromptGroupName(presetName, identifier) {
+    if (!presetName || !identifier) return '未分组';
+    const groups = GroupManager.get(presetName);
+    const group = groups.find(g => g.ids.includes(identifier));
+    return group ? group.name : '未分组';
+}
+
+function hasPromptDifference(pA, pB, nameA, nameB) {
+    if (!pA || !pB) return false;
+    const contentDiff = (pA.content || '') !== (pB.content || '');
+    const nameDiff = (pA.name || '') !== (pB.name || '');
+    const roleDiff = (pA.role || 'system') !== (pB.role || 'system');
+    const posDiff = (pA.injection_position ?? 0) !== (pB.injection_position ?? 0);
+    const depthDiff = (pA.injection_depth ?? 4) !== (pB.injection_depth ?? 4);
+    const orderDiff = (pA.injection_order ?? 100) !== (pB.injection_order ?? 100);
+    const forbidDiff = (pA.forbid_overrides ?? false) !== (pB.forbid_overrides ?? false);
+    
+    const groupA = getPromptGroupName(nameA, pA.identifier);
+    const groupB = getPromptGroupName(nameB, pB.identifier);
+    const groupDiff = groupA !== groupB;
+    
+    return contentDiff || nameDiff || roleDiff || posDiff || depthDiff || orderDiff || forbidDiff || groupDiff;
+}
+
+function getPropValues(p, presetName) {
+    if (!p) return {
+        name: '--',
+        group: '--',
+        role: '--',
+        position: '--',
+        depth: '--',
+        order: '--',
+        forbid: '--'
+    };
+    return {
+        name: p.name || p.identifier || '未命名',
+        group: getPromptGroupName(presetName, p.identifier),
+        role: p.role || 'system',
+        position: p.injection_position === 1 ? 'Absolute (绝对)' : 'Relative (相对)',
+        depth: String(p.injection_depth ?? 4),
+        order: String(p.injection_order ?? 100),
+        forbid: p.forbid_overrides ? '是' : '否'
+    };
+}
+
 
 export async function showManualLinksManager() {
     const nameA = $('#contrast-preset-a').val();
@@ -184,7 +231,9 @@ export function renderMatchResults(matched, onlyA, onlyB, allItems, manualMatche
         let actions = '';
         
         if (type === 'matched' || type === 'manual') {
-            const hasChange = item.a.content !== item.b.content;
+            const nameA = $('#contrast-preset-a').val();
+            const nameB = $('#contrast-preset-b').val();
+            const hasChange = hasPromptDifference(item.a, item.b, nameA, nameB);
             status = hasChange ? '已修改' : '无变动';
             color = hasChange ? 'var(--SmartThemeQuoteColor)' : 'inherit';
             if (type === 'manual') {
@@ -281,7 +330,14 @@ export async function startComparison() {
     showComparisonDetail(selectedItems[0].index, window.zero_contrast_allItems);
 }
 
+let activeRefresh = null;
+
 export async function showComparisonDetail(index, allItems) {
+    if (activeRefresh) {
+        window.removeEventListener('zero-content-updated', activeRefresh);
+        activeRefresh = null;
+    }
+
     if (!allItems || index < 0 || index >= allItems.length) {
         console.error('[Zero] Invalid comparison index:', index);
         return;
@@ -293,8 +349,15 @@ export async function showComparisonDetail(index, allItems) {
     const nameA = $('#contrast-preset-a').val();
     const nameB = $('#contrast-preset-b').val();
     
-    const promptsA = await getPresetPrompts(nameA);
-    const promptsB = await getPresetPrompts(nameB);
+    let promptsA = await getPresetPrompts(nameA);
+    let promptsB = await getPresetPrompts(nameB);
+
+    activeRefresh = async (e) => {
+        promptsA = await getPresetPrompts(nameA);
+        promptsB = await getPresetPrompts(nameB);
+        renderDetailContent();
+    };
+    window.addEventListener('zero-content-updated', activeRefresh);
 
     function getLink(idA) {
         const links = JSON.parse(localStorage.getItem('zero_manual_links') || '{}');
@@ -389,6 +452,94 @@ export async function showComparisonDetail(index, allItems) {
             const isMatched = pA && pB;
             let contentHtml = '';
 
+            if (pA || pB) {
+                const propsA = getPropValues(pA, nameA);
+                const propsB = getPropValues(pB, nameB);
+
+                const isNameDiff = pA && pB && (propsA.name !== propsB.name);
+                const isGroupDiff = pA && pB && (propsA.group !== propsB.group);
+                const isRoleDiff = pA && pB && (propsA.role !== propsB.role);
+                const isPosDiff = pA && pB && (propsA.position !== propsB.position);
+                const isDepthDiff = pA && pB && (propsA.depth !== propsB.depth);
+                const isOrderDiff = pA && pB && (propsA.order !== propsB.order);
+                const isForbidDiff = pA && pB && (propsA.forbid !== propsB.forbid);
+
+                const rowStyle = (isDiff) => isDiff ? 'background: rgba(255, 100, 100, 0.08);' : 'border-bottom: 1px solid rgba(255,255,255,0.02);';
+                const cellStyle = (isDiff) => isDiff ? 'color: var(--SmartThemeQuoteColor, #ff5555); font-weight: bold;' : '';
+                
+                const hasOtherDiff = pA && pB && (isRoleDiff || isPosDiff || isDepthDiff || isOrderDiff || isForbidDiff);
+                const headerColor = hasOtherDiff ? 'color: var(--SmartThemeQuoteColor, #ff5555); font-weight: bold;' : 'color: var(--SmartThemeBodyColor);';
+
+                contentHtml += `
+                    <!-- Collapsible Bar Header -->
+                    <div id="toggle-comp-params" class="interactable" style="cursor: pointer; padding: 6px 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--SmartThemeBorderColor); border-radius: 8px; font-size: 12px; display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; user-select: none; ${headerColor} flex-shrink: 0;">
+                        <span><i class="fa-solid fa-sliders" style="margin-right: 6px;"></i> 属性对比</span>
+                        <i class="chevron fa-solid fa-chevron-right" style="transition: transform 0.2s ease;"></i>
+                    </div>
+
+                    <!-- Collapsible Bar Content -->
+                    <div id="comp-params-container" style="display: none; background: rgba(255,255,255,0.01); border: 1px solid var(--SmartThemeBorderColor); border-radius: 8px; padding: 10px; margin-bottom: 16px; flex-shrink: 0; font-family: var(--mainFontFamily, sans-serif);">
+                        <div style="display: flex; flex-direction: column; gap: 2px;">
+                            <!-- Header -->
+                            <div style="display: flex; align-items: center; padding: 6px 8px; font-weight: bold; opacity: 0.6; font-size: 11px; border-bottom: 1px solid rgba(255,255,255,0.08); color: var(--SmartThemeBodyColor);">
+                                <div style="width: 100px; flex-shrink: 0;">属性</div>
+                                <div style="flex: 1; min-width: 0; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">预设 A: ${escapeHtml(nameA)}</div>
+                                <div style="flex: 1; min-width: 0; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; margin-left: 10px;">预设 B: ${escapeHtml(nameB)}</div>
+                            </div>
+                            
+                            <!-- Name Row -->
+                            <div style="display: flex; align-items: center; padding: 6px 8px; ${rowStyle(isNameDiff)}">
+                                <div style="width: 100px; flex-shrink: 0; font-size: 12px; opacity: 0.7; color: var(--SmartThemeBodyColor);">条目名称</div>
+                                <div style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--SmartThemeBodyColor); ${cellStyle(isNameDiff)}" title="${escapeHtml(propsA.name)}">${escapeHtml(propsA.name)}</div>
+                                <div style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-left: 10px; font-size: 12px; color: var(--SmartThemeBodyColor); ${cellStyle(isNameDiff)}" title="${escapeHtml(propsB.name)}">${escapeHtml(propsB.name)}</div>
+                            </div>
+
+                            <!-- Group Row -->
+                            <div style="display: flex; align-items: center; padding: 6px 8px; ${rowStyle(isGroupDiff)}">
+                                <div style="width: 100px; flex-shrink: 0; font-size: 12px; opacity: 0.7; color: var(--SmartThemeBodyColor);">所属分组</div>
+                                <div style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--SmartThemeBodyColor); ${cellStyle(isGroupDiff)}" title="${escapeHtml(propsA.group)}">${escapeHtml(propsA.group)}</div>
+                                <div style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-left: 10px; font-size: 12px; color: var(--SmartThemeBodyColor); ${cellStyle(isGroupDiff)}" title="${escapeHtml(propsB.group)}">${escapeHtml(propsB.group)}</div>
+                            </div>
+
+                            <!-- Role Row -->
+                            <div style="display: flex; align-items: center; padding: 6px 8px; ${rowStyle(isRoleDiff)}">
+                                <div style="width: 100px; flex-shrink: 0; font-size: 12px; opacity: 0.7; color: var(--SmartThemeBodyColor);">身份角色</div>
+                                <div style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--SmartThemeBodyColor); ${cellStyle(isRoleDiff)}" title="${escapeHtml(propsA.role)}">${escapeHtml(propsA.role)}</div>
+                                <div style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-left: 10px; font-size: 12px; color: var(--SmartThemeBodyColor); ${cellStyle(isRoleDiff)}" title="${escapeHtml(propsB.role)}">${escapeHtml(propsB.role)}</div>
+                            </div>
+
+                            <!-- Position Row -->
+                            <div style="display: flex; align-items: center; padding: 6px 8px; ${rowStyle(isPosDiff)}">
+                                <div style="width: 100px; flex-shrink: 0; font-size: 12px; opacity: 0.7; color: var(--SmartThemeBodyColor);">插入位置</div>
+                                <div style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--SmartThemeBodyColor); ${cellStyle(isPosDiff)}" title="${escapeHtml(propsA.position)}">${escapeHtml(propsA.position)}</div>
+                                <div style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-left: 10px; font-size: 12px; color: var(--SmartThemeBodyColor); ${cellStyle(isPosDiff)}" title="${escapeHtml(propsB.position)}">${escapeHtml(propsB.position)}</div>
+                            </div>
+
+                            <!-- Depth Row -->
+                            <div style="display: flex; align-items: center; padding: 6px 8px; ${rowStyle(isDepthDiff)}">
+                                <div style="width: 100px; flex-shrink: 0; font-size: 12px; opacity: 0.7; color: var(--SmartThemeBodyColor);">插入深度</div>
+                                <div style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--SmartThemeBodyColor); ${cellStyle(isDepthDiff)}" title="${escapeHtml(propsA.depth)}">${escapeHtml(propsA.depth)}</div>
+                                <div style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-left: 10px; font-size: 12px; color: var(--SmartThemeBodyColor); ${cellStyle(isDepthDiff)}" title="${escapeHtml(propsB.depth)}">${escapeHtml(propsB.depth)}</div>
+                            </div>
+
+                            <!-- Order Row -->
+                            <div style="display: flex; align-items: center; padding: 6px 8px; ${rowStyle(isOrderDiff)}">
+                                <div style="width: 100px; flex-shrink: 0; font-size: 12px; opacity: 0.7; color: var(--SmartThemeBodyColor);">插入顺序</div>
+                                <div style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--SmartThemeBodyColor); ${cellStyle(isOrderDiff)}" title="${escapeHtml(propsA.order)}">${escapeHtml(propsA.order)}</div>
+                                <div style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-left: 10px; font-size: 12px; color: var(--SmartThemeBodyColor); ${cellStyle(isOrderDiff)}" title="${escapeHtml(propsB.order)}">${escapeHtml(propsB.order)}</div>
+                            </div>
+
+                            <!-- Forbid Overrides Row -->
+                            <div style="display: flex; align-items: center; padding: 6px 8px; ${rowStyle(isForbidDiff)}">
+                                <div style="width: 100px; flex-shrink: 0; font-size: 12px; opacity: 0.7; color: var(--SmartThemeBodyColor);">禁止覆盖</div>
+                                <div style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--SmartThemeBodyColor); ${cellStyle(isForbidDiff)}" title="${escapeHtml(propsA.forbid)}">${escapeHtml(propsA.forbid)}</div>
+                                <div style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-left: 10px; font-size: 12px; color: var(--SmartThemeBodyColor); ${cellStyle(isForbidDiff)}" title="${escapeHtml(propsB.forbid)}">${escapeHtml(propsB.forbid)}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
             if (pA) {
                 const nameStr = escapeHtml(pA.name || pA.identifier || '未命名');
                 contentHtml += `
@@ -396,7 +547,7 @@ export async function showComparisonDetail(index, allItems) {
                         <div style="font-size: 11px; opacity: 0.5; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
                             <span>${isMatched ? `源预设 (A): ${nameA}` : `预设 A 独有`}</span>
                              <div style="display: flex; gap: 8px;">
-                                ${isMatched ? `<button class="zero-overwrite-btn interactable" data-source-text="${escapeHtml(pB ? pB.content : '')}" data-preset="${nameA}" data-item="${nameStr}" title="用 B 覆盖 A" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;"><i class="fa-solid fa-file-import"></i></button>` : ''}
+                                ${isMatched ? `<button class="zero-overwrite-btn interactable" data-direction="b-to-a" title="用 B 覆盖 A" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;"><i class="fa-solid fa-file-import"></i></button>` : ''}
                                 ${typeof window.translate === 'function' && pA.content ? `<button class="zero-trans-btn interactable" data-target="a" data-original="${escapeHtml(pA.content)}" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="翻译内容"><i class="fa-solid fa-language"></i></button>` : ''}
                                 <button class="zero-edit-btn interactable" data-preset="${nameA}" data-item="${nameStr}" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="修改"><i class="fa-solid fa-pencil"></i></button>
                                 <button class="zero-copy-btn interactable" data-text="${escapeHtml(pA.content)}" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="复制"><i class="fa-solid fa-copy"></i></button>
@@ -414,7 +565,7 @@ export async function showComparisonDetail(index, allItems) {
                         <div style="font-size: 11px; opacity: 0.5; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
                             <span>目标预设 (B): ${nameB}</span>
                              <div style="display: flex; gap: 8px;">
-                                ${isMatched ? `<button class="zero-overwrite-btn interactable" data-source-text="${escapeHtml(pA ? pA.content : '')}" data-preset="${nameB}" data-item="${nameStr}" title="用 A 覆盖 B" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;"><i class="fa-solid fa-file-import"></i></button>` : ''}
+                                ${isMatched ? `<button class="zero-overwrite-btn interactable" data-direction="a-to-b" title="用 A 覆盖 B" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;"><i class="fa-solid fa-file-import"></i></button>` : ''}
                                 ${typeof window.translate === 'function' && pB.content ? `<button class="zero-trans-btn interactable" data-target="b" data-original="${escapeHtml(pB.content)}" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="翻译内容"><i class="fa-solid fa-language"></i></button>` : ''}
                                 <button class="zero-edit-btn interactable" data-preset="${nameB}" data-item="${nameStr}" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="修改"><i class="fa-solid fa-pencil"></i></button>
                                 <button class="zero-copy-btn interactable" data-text="${escapeHtml(pB.content)}" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="复制"><i class="fa-solid fa-copy"></i></button>
@@ -438,8 +589,26 @@ export async function showComparisonDetail(index, allItems) {
     renderDetailContent();
 
     $('#close-comparison').on('click', () => {
+        if (activeRefresh) {
+            window.removeEventListener('zero-content-updated', activeRefresh);
+            activeRefresh = null;
+        }
         $('#comparison-overlay').remove();
         performAutoMatch();
+    });
+
+    $('#comparison-overlay').on('click', '#toggle-comp-params', function() {
+        const $container = $('#comp-params-container');
+        const $chevron = $(this).find('.chevron');
+        const isVisible = $container.is(':visible');
+        
+        if (isVisible) {
+            $container.slideUp(200);
+            $chevron.css('transform', 'rotate(0deg)');
+        } else {
+            $container.slideDown(200);
+            $chevron.css('transform', 'rotate(90deg)');
+        }
     });
 
     $('#comp-item-selector-a').on('change', function() {
@@ -567,32 +736,75 @@ export async function showComparisonDetail(index, allItems) {
     });
 
     $('#comparison-overlay').on('click', '.zero-overwrite-btn', async function() {
-        const sourceText = $(this).data('source-text');
-        const targetPreset = $(this).data('preset');
-        const targetItem = $(this).data('item');
+        const direction = $(this).data('direction');
+        const isBToA = direction === 'b-to-a';
+        
+        const srcPreset = isBToA ? nameB : nameA;
+        const tgtPreset = isBToA ? nameA : nameB;
+        
+        const srcId = isBToA ? currentIdB : currentIdA;
+        const tgtId = isBToA ? currentIdA : currentIdB;
 
         const pm = SillyTavern.getContext().getPresetManager('openai');
-        const preset = pm.getCompletionPresetByName(targetPreset);
-        const prompt = preset.prompts.find(p => (p.name || p.identifier) === targetItem);
+        
+        const srcPresetObj = pm.getCompletionPresetByName(srcPreset);
+        const tgtPresetObj = pm.getCompletionPresetByName(tgtPreset);
+        if (!srcPresetObj || !tgtPresetObj) return;
 
-        if (!prompt) return;
+        const srcPrompt = srcPresetObj.prompts.find(p => p.identifier === srcId);
+        const tgtPrompt = tgtPresetObj.prompts.find(p => p.identifier === tgtId);
 
-        if (confirm(`确认要将此项内容替换为另一侧的内容吗？`)) {
-            prompt.content = sourceText;
+        if (!srcPrompt || !tgtPrompt) {
+            toastr.error('无法定位源或目标条目');
+            return;
+        }
+
+        if (confirm(`确认要将此项的所有设置与内容替换为另一侧的内容吗？`)) {
+            // Overwrite all properties
+            tgtPrompt.content = srcPrompt.content;
+            tgtPrompt.name = srcPrompt.name;
+            tgtPrompt.role = srcPrompt.role;
+            tgtPrompt.injection_position = srcPrompt.injection_position;
+            tgtPrompt.injection_depth = srcPrompt.injection_depth;
+            tgtPrompt.injection_order = srcPrompt.injection_order;
+            tgtPrompt.forbid_overrides = srcPrompt.forbid_overrides;
+
             try {
-                const isActive = pm.getSelectedPresetName() === targetPreset;
-                await pm.savePreset(targetPreset, preset, { skipUpdate: !isActive });
+                // Sync group
+                const srcGroups = GroupManager.get(srcPreset);
+                const srcGroup = srcGroups.find(g => g.ids.includes(srcId));
+                if (srcGroup) {
+                    const tgtGroups = GroupManager.get(tgtPreset);
+                    let tgtGroup = tgtGroups.find(g => g.name === srcGroup.name);
+                    if (!tgtGroup) {
+                        tgtGroup = GroupManager.create(tgtPreset, srcGroup.name);
+                    }
+                    GroupManager.assign(tgtPreset, tgtGroup.id, [tgtId]);
+                } else {
+                    GroupManager.unassign(tgtPreset, tgtId);
+                }
+
+                const isActive = pm.getSelectedPresetName() === tgtPreset;
+                await pm.savePreset(tgtPreset, tgtPresetObj, { skipUpdate: !isActive });
                 
                 toastr.success('同步成功');
-                if (targetPreset === nameA) {
-                    const p = promptsA.find(x => x.identifier === prompt.identifier);
-                    if (p) p.content = sourceText;
-                } else {
-                    const p = promptsB.find(x => x.identifier === prompt.identifier);
-                    if (p) p.content = sourceText;
+                
+                // Update local loaded prompts data
+                const localTgtPrompts = isBToA ? promptsA : promptsB;
+                const p = localTgtPrompts.find(x => x.identifier === tgtId);
+                if (p) {
+                    p.content = srcPrompt.content;
+                    p.name = srcPrompt.name;
+                    p.role = srcPrompt.role;
+                    p.injection_position = srcPrompt.injection_position;
+                    p.injection_depth = srcPrompt.injection_depth;
+                    p.injection_order = srcPrompt.injection_order;
+                    p.forbid_overrides = srcPrompt.forbid_overrides;
                 }
+                
                 renderDetailContent();
             } catch (e) {
+                console.error('[Zero] Overwrite failed:', e);
                 toastr.error('保存失败');
             }
         }
