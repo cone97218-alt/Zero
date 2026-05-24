@@ -85,19 +85,23 @@ export async function handleRename(oldName) {
         const activeName = pm.getSelectedPresetName();
         const isEditingActive = (oldName === activeName);
 
-        // 1. If not editing active, temporarily select it so renamePreset works on it
-        if (!isEditingActive) {
-            const oldVal = pm.findPreset(oldName);
-            if (oldVal) {
-                pm.selectPreset(oldVal);
-            }
+        // 1. Retrieve the complete preset settings object synchronously from memory
+        const presetObj = pm.getCompletionPresetByName(oldName);
+        if (!presetObj) {
+            toastr.error('未找到源预设数据');
+            return;
         }
 
         // 2. Perform native rename operations (emits events & preserves ST extensions)
         await eventSource.emit(event_types.PRESET_RENAMED_BEFORE, { apiId: 'openai', oldName, newName });
         const extensions = pm.readPresetExtensionField({ name: oldName, path: '' });
-        await pm.renamePreset(newName);
-        await pm.writePresetExtensionField({ name: newName, path: '', value: extensions });
+        
+        await pm.savePreset(newName, presetObj);
+        if (extensions) {
+            await pm.writePresetExtensionField({ name: newName, path: '', value: extensions });
+        }
+        await pm.deletePreset(oldName);
+        
         await eventSource.emit(event_types.PRESET_RENAMED, { apiId: 'openai', oldName, newName });
 
         // 3. Rename Zero's internal settings (groups, hidden items, linkages, snapshots)
@@ -106,7 +110,7 @@ export async function handleRename(oldName) {
         // 4. Restore active preset selection if it wasn't the one renamed
         if (!isEditingActive) {
             const activeVal = pm.findPreset(activeName);
-            if (activeVal) {
+            if (activeVal !== undefined && activeVal !== null) {
                 pm.selectPreset(activeVal);
             }
         }
