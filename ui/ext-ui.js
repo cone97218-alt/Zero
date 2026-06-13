@@ -370,8 +370,12 @@ function ensurePanel() {
         $(`#zero-tab-${tab}`).css('display', 'flex');
         
         if (tab === 'manage') _manage.renderManageTab();
-        else if (tab === 'contrast') populatePresetSelects();
-        else if (tab === 'stitch') populatePresetSelects().then(() => _stitch.renderStitchList());
+        else if (tab === 'contrast') populatePresetSelects().then(() => {
+            if (_contrast && typeof _contrast.restoreScroll === 'function') _contrast.restoreScroll();
+        });
+        else if (tab === 'stitch') populatePresetSelects().then(() => _stitch.renderStitchList()).then(() => {
+            if (_stitch && typeof _stitch.restorePeekScroll === 'function') _stitch.restorePeekScroll();
+        });
         else if (tab === 'check') populatePresetSelects().then(() => {
             _checker.Checker.render('check-results-container', $('#check-preset-select').val());
         });
@@ -634,6 +638,9 @@ function ensurePanel() {
         $('#manage-preset-list input[type="checkbox"]:not(:disabled)').prop('checked', checked);
     });
 
+    if (_contrast && typeof _contrast.initScroll === 'function') _contrast.initScroll();
+    if (_stitch && typeof _stitch.initScroll === 'function') _stitch.initScroll();
+
     syncTheme();
 }
 
@@ -642,15 +649,17 @@ export async function showPanel() {
     ensurePanel();
     syncTheme();
     _presetsLastFetch = 0; // 每次打开面板强制刷新预设列表
-    populatePresetSelects();
     
-    const lastTab = localStorage.getItem('zero_last_main_tab') || 'contrast';
-    $(`#${PANEL_ID} .zero-tab-link[data-tab="${lastTab}"]`).click();
-
     const $panel = $(`#${PANEL_ID}`);
     $panel.css('display', 'flex');
     $panel[0].offsetHeight;
     $panel.css('opacity', '1');
+
+    // Defer heavy rendering to the next animation frame so the panel open transition starts instantly
+    requestAnimationFrame(() => {
+        const lastTab = localStorage.getItem('zero_last_main_tab') || 'contrast';
+        $(`#${PANEL_ID} .zero-tab-link[data-tab="${lastTab}"]`).click();
+    });
 }
 
 export function closePanel() {
@@ -680,6 +689,11 @@ export function injectExtensionButton() {
 
 export function init() {
     injectExtensionButton();
+    
+    // Background preloading of UI modules to eliminate lag on first open
+    setTimeout(() => {
+        loadModules().catch(() => {});
+    }, 2000);
     
     const observer = new MutationObserver(() => {
         if (!$(`#${BTN_ID}`).length && $('#extensionsMenu.options-content').length) {

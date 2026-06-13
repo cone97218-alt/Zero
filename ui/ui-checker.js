@@ -277,7 +277,6 @@ export const Checker = {
             const val = $('#check-xml-exemptions').val();
             const list = val.split(',').map(s => s.trim()).filter(s => s !== '');
             localStorage.setItem('zero_xml_exemptions', JSON.stringify(list));
-            toastr.success('已保存 XML 豁免列表');
             this.render(containerId, presetName);
         });
 

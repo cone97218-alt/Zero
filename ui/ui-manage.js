@@ -114,8 +114,6 @@ export async function handleRename(oldName) {
                 pm.selectPreset(activeVal);
             }
         }
-
-        toastr.success('预设重命名成功');
         window.dispatchEvent(new Event('zero-presets-list-changed')); // 通知缓存失效
         refreshNativePresetManager(pm);
         
@@ -138,9 +136,7 @@ export async function handleBatchDelete() {
         return;
     }
 
-    if (!confirm(`确定要删除选中的 ${selected.length} 个预设吗？此操作不可撤销。`)) {
-        return;
-    }
+
 
     let successCount = 0;
     let failCount = 0;
@@ -157,7 +153,6 @@ export async function handleBatchDelete() {
     }
 
     if (successCount > 0) {
-        toastr.success(`成功删除 ${successCount} 个预设`);
         window.dispatchEvent(new Event('zero-presets-list-changed')); // 通知缓存失效
         if (pm && pm.select) {
             for (const name of selected) {
@@ -196,7 +191,6 @@ export async function handleBatchImport(files) {
     }
 
     if (successCount > 0) {
-        toastr.success(`成功导入 ${successCount} 个预设`);
         window.dispatchEvent(new Event('zero-presets-list-changed')); // 通知缓存失效
         
         if (pm) {

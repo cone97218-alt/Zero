@@ -1,6 +1,39 @@
-import { getPresetPrompts, escapeHtml } from './ui-utils.js';
+import { getPresetPrompts, escapeHtml, debounce } from './ui-utils.js';
 import { openQuickEditor } from './ui-editor.js';
-import { GroupManager } from '../qr-state.js';
+import { GroupManager, zeroTranslate } from '../qr-state.js';
+
+let isRestoringContrastScroll = false;
+
+export function initScroll() {
+    const saveScrollDebounced = debounce((scrollTop) => {
+        const nameA = $('#contrast-preset-a').val();
+        const nameB = $('#contrast-preset-b').val();
+        const sub = $('.zero-sub-tab.active').data('sub') || 'matched';
+        if (nameA || nameB) {
+            localStorage.setItem(`zero_scroll_contrast_${nameA}_${nameB}_${sub}`, scrollTop);
+        }
+    }, 150);
+
+    $('#contrast-list').off('scroll.zero-contrast').on('scroll.zero-contrast', function() {
+        if (isRestoringContrastScroll) return;
+        saveScrollDebounced($(this).scrollTop());
+    });
+}
+
+export function restoreScroll() {
+    const nameA = $('#contrast-preset-a').val();
+    const nameB = $('#contrast-preset-b').val();
+    const sub = $('.zero-sub-tab.active').data('sub') || 'matched';
+    if (nameA || nameB) {
+        const savedScroll = localStorage.getItem(`zero_scroll_contrast_${nameA}_${nameB}_${sub}`) || 0;
+        const $list = $('#contrast-list');
+        isRestoringContrastScroll = true;
+        $list.scrollTop(savedScroll);
+        setTimeout(() => {
+            isRestoringContrastScroll = false;
+        }, 50);
+    }
+}
 
 function getPromptGroupName(presetName, identifier) {
     if (!presetName || !identifier) return '未分组';
@@ -110,13 +143,10 @@ export async function showManualLinksManager() {
     });
 
     $('#clear-all-links').on('click', () => {
-        if (confirm('确定清空当前这对预设的所有手动匹配吗？')) {
-            delete links[key];
-            localStorage.setItem('zero_manual_links', JSON.stringify(links));
-            $('#links-manager-modal').remove();
-            toastr.success('已清空记录');
-            performAutoMatch();
-        }
+        delete links[key];
+        localStorage.setItem('zero_manual_links', JSON.stringify(links));
+        $('#links-manager-modal').remove();
+        performAutoMatch();
     });
 
     $('#close-links-manager').on('click', () => $('#links-manager-modal').remove());
@@ -289,7 +319,6 @@ export function renderMatchResults(matched, onlyA, onlyB, allItems, manualMatche
                 if (Object.keys(links[key]).length === 0) delete links[key];
                 localStorage.setItem('zero_manual_links', JSON.stringify(links));
                 performAutoMatch();
-                toastr.success('已取消关联');
             }
             return;
         }
@@ -304,6 +333,7 @@ export function renderMatchResults(matched, onlyA, onlyB, allItems, manualMatche
         $(this).addClass('active').css('background', 'rgba(255,255,255,0.1)');
         $('.zero-sub-content').hide();
         $(`#sub-content-${sub}`).show();
+        restoreScroll();
     });
 
     const lastSub = localStorage.getItem('zero_last_sub_tab') || 'matched';
@@ -712,7 +742,7 @@ export async function showComparisonDetail(index, allItems) {
         $icon.attr('class', 'fa-solid fa-spinner fa-spin');
 
         try {
-            const result = await window.translate(originalText);
+            const result = await zeroTranslate(originalText);
             if (result) {
                 $textField.text(result);
                 $btn.addClass('showing-trans');
@@ -759,54 +789,50 @@ export async function showComparisonDetail(index, allItems) {
             return;
         }
 
-        if (confirm(`确认要将此项的所有设置与内容替换为另一侧的内容吗？`)) {
-            // Overwrite all properties
-            tgtPrompt.content = srcPrompt.content;
-            tgtPrompt.name = srcPrompt.name;
-            tgtPrompt.role = srcPrompt.role;
-            tgtPrompt.injection_position = srcPrompt.injection_position;
-            tgtPrompt.injection_depth = srcPrompt.injection_depth;
-            tgtPrompt.injection_order = srcPrompt.injection_order;
-            tgtPrompt.forbid_overrides = srcPrompt.forbid_overrides;
+        // Overwrite all properties
+        tgtPrompt.content = srcPrompt.content;
+        tgtPrompt.name = srcPrompt.name;
+        tgtPrompt.role = srcPrompt.role;
+        tgtPrompt.injection_position = srcPrompt.injection_position;
+        tgtPrompt.injection_depth = srcPrompt.injection_depth;
+        tgtPrompt.injection_order = srcPrompt.injection_order;
+        tgtPrompt.forbid_overrides = srcPrompt.forbid_overrides;
 
-            try {
-                // Sync group
-                const srcGroups = GroupManager.get(srcPreset);
-                const srcGroup = srcGroups.find(g => g.ids.includes(srcId));
-                if (srcGroup) {
-                    const tgtGroups = GroupManager.get(tgtPreset);
-                    let tgtGroup = tgtGroups.find(g => g.name === srcGroup.name);
-                    if (!tgtGroup) {
-                        tgtGroup = GroupManager.create(tgtPreset, srcGroup.name);
-                    }
-                    GroupManager.assign(tgtPreset, tgtGroup.id, [tgtId]);
-                } else {
-                    GroupManager.unassign(tgtPreset, tgtId);
+        try {
+            // Sync group
+            const srcGroups = GroupManager.get(srcPreset);
+            const srcGroup = srcGroups.find(g => g.ids.includes(srcId));
+            if (srcGroup) {
+                const tgtGroups = GroupManager.get(tgtPreset);
+                let tgtGroup = tgtGroups.find(g => g.name === srcGroup.name);
+                if (!tgtGroup) {
+                    tgtGroup = GroupManager.create(tgtPreset, srcGroup.name);
                 }
-
-                const isActive = pm.getSelectedPresetName() === tgtPreset;
-                await pm.savePreset(tgtPreset, tgtPresetObj, { skipUpdate: !isActive });
-                
-                toastr.success('同步成功');
-                
-                // Update local loaded prompts data
-                const localTgtPrompts = isBToA ? promptsA : promptsB;
-                const p = localTgtPrompts.find(x => x.identifier === tgtId);
-                if (p) {
-                    p.content = srcPrompt.content;
-                    p.name = srcPrompt.name;
-                    p.role = srcPrompt.role;
-                    p.injection_position = srcPrompt.injection_position;
-                    p.injection_depth = srcPrompt.injection_depth;
-                    p.injection_order = srcPrompt.injection_order;
-                    p.forbid_overrides = srcPrompt.forbid_overrides;
-                }
-                
-                renderDetailContent();
-            } catch (e) {
-                console.error('[Zero] Overwrite failed:', e);
-                toastr.error('保存失败');
+                GroupManager.assign(tgtPreset, tgtGroup.id, [tgtId]);
+            } else {
+                GroupManager.unassign(tgtPreset, tgtId);
             }
+
+            const isActive = pm.getSelectedPresetName() === tgtPreset;
+            await pm.savePreset(tgtPreset, tgtPresetObj, { skipUpdate: !isActive });
+            
+            // Update local loaded prompts data
+            const localTgtPrompts = isBToA ? promptsA : promptsB;
+            const p = localTgtPrompts.find(x => x.identifier === tgtId);
+            if (p) {
+                p.content = srcPrompt.content;
+                p.name = srcPrompt.name;
+                p.role = srcPrompt.role;
+                p.injection_position = srcPrompt.injection_position;
+                p.injection_depth = srcPrompt.injection_depth;
+                p.injection_order = srcPrompt.injection_order;
+                p.forbid_overrides = srcPrompt.forbid_overrides;
+            }
+            
+            renderDetailContent();
+        } catch (e) {
+            console.error('[Zero] Overwrite failed:', e);
+            toastr.error('保存失败');
         }
     });
 

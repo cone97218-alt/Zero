@@ -2,7 +2,7 @@
  * Zero Preset Manager - UI
  * Performance-optimized v2: innerHTML templates, event delegation, lazy rendering.
  */
-import { PresetManager, SnapshotManager, GroupManager, HiddenManager, UiStateManager, LinkageManager } from './qr-state.js';
+import { PresetManager, SnapshotManager, GroupManager, HiddenManager, UiStateManager, LinkageManager, zeroTranslate } from './qr-state.js';
 
 let overlay = null;
 let pendingToggles = new Map();
@@ -57,16 +57,7 @@ async function flushToggles() {
 }
 
 function showConfirm(modal, msg, onYes) {
-    const box = h('div', { class: 'zero-confirm' },
-        h('div', { class: 'zero-confirm-box' },
-            h('div', { class: 'zero-confirm-msg', text: msg }),
-            h('div', { class: 'zero-confirm-btns' },
-                h('button', { class: 'zero-btn', text: '取消', onclick: () => box.remove() }),
-                h('button', { class: 'zero-btn primary', text: '确认', onclick: () => { box.remove(); onYes(); } })
-            )
-        )
-    );
-    modal.appendChild(box);
+    onYes();
 }
 
 function showPrompt(modal, msg, defaultVal, onOk) {
@@ -130,6 +121,9 @@ function groupSectionHTML(group, members, isUngrouped) {
 export async function openUI() {
     if (overlay && !document.body.contains(overlay)) overlay = null;
     if (overlay) return;
+
+    // Background preload ext-ui.js to avoid transition lag when entering Preset Manager
+    import('./ui/ext-ui.js').catch(() => {});
 
     overlay = document.createElement('div');
     overlay.id = 'zero-overlay';
@@ -725,7 +719,7 @@ function showContentPreview(modal, prompt) {
                 icon.className = 'fa-solid fa-spinner fa-spin';
                 
                 try {
-                    const result = await window.translate(originalText);
+                    const result = await zeroTranslate(originalText);
                     if (result) {
                         translatedText = result;
                         bodyEl.textContent = translatedText;
@@ -882,7 +876,6 @@ function showBatchGroupAssign(modal, panel, preset) {
                 menuBox.remove();
                 exitMultiSelect();
                 renderEntries(panel, preset, modal);
-                toastr.success(`已将 ${count} 个条目分到「${g.name}」`);
             }
         }));
     });
@@ -1004,7 +997,6 @@ function showLinkageManager(panel, preset, modal) {
                 }
                 LinkageManager.add(pName, src, tgt);
                 renderList();
-                toastr.success('已添加联动规则');
             }
         })
     );
@@ -1322,7 +1314,6 @@ function renderSnapshots(panel, preset, modal, viewMode = 'local') {
             showPrompt(modal, '快照名称', `快照 ${formatDate(Date.now())}`, (name) => {
                 SnapshotManager.create(name, preset);
                 renderSnapshots(panel, preset, modal, viewMode);
-                toastr.success('快照已创建');
             });
         }})
     );
@@ -1366,7 +1357,6 @@ function buildSnapCard(snap, preset, panel, modal, viewMode) {
                                 await new Promise(r => requestAnimationFrame(r));
                                 const nextPreset = await PresetManager.load();
                                 await SnapshotManager.apply(snap, nextPreset);
-                                toastr.success(`已切换至 ${snap.presetName} 并应用快照`);
                                 const newList = await PresetManager.listNames();
                                 modal.innerHTML = '';
                                 buildModal(modal, nextPreset, newList);
@@ -1380,7 +1370,6 @@ function buildSnapCard(snap, preset, panel, modal, viewMode) {
                         await SnapshotManager.apply(snap, preset);
                         // Refresh cached preset so entries tab shows changes
                         const p = await PresetManager.load();
-                        toastr.success('快照已应用');
                         renderSnapshots(panel, p || preset, modal, viewMode);
                     } catch (e) { toastr.error('应用失败'); console.error(e); }
                 });
@@ -1398,7 +1387,6 @@ function buildSnapCard(snap, preset, panel, modal, viewMode) {
             showConfirm(modal, `用当前状态覆盖快照「${snap.name}」?`, () => {
                 SnapshotManager.overwrite(snap.id, preset);
                 renderSnapshots(panel, preset, modal, viewMode);
-                toastr.success('快照已覆盖');
             });
         }}));
     }
@@ -1428,7 +1416,11 @@ function renderSnapshotDiff(container, snap, preset) {
             statusHTML = '<span class="zero-diff-status off">已移除</span>';
         } else if (d.type === 'new') {
             cls += ' new-entry';
-            statusHTML = '<span class="zero-diff-status on">新条目</span>';
+            if (d.curEnabled) {
+                statusHTML = '<span class="zero-diff-status on">新条目</span><span class="zero-diff-status arrow">→</span><span class="zero-diff-status off">OFF</span>';
+            } else {
+                statusHTML = '<span class="zero-diff-status on">新条目</span>';
+            }
         } else {
             statusHTML = `<span class="zero-diff-status">${d.snapEnabled ? 'ON' : 'OFF'}</span>`;
         }

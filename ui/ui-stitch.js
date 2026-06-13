@@ -1,8 +1,67 @@
-import { getPresetPrompts, escapeHtml } from './ui-utils.js';
+import { getPresetPrompts, escapeHtml, debounce } from './ui-utils.js';
 
 export let stitch_batch_mode = false;
 let _cachedStitchPrompts = null;
 let _cachedStitchName = null;
+
+let isRestoringStitchScroll = false;
+let isRestoringStitchPeekScroll = false;
+
+export function initScroll() {
+    const saveListScrollDebounced = debounce((effectiveName, scrollTop) => {
+        localStorage.setItem(`zero_scroll_stitch_list_${effectiveName}`, scrollTop);
+    }, 150);
+
+    const savePeekScrollDebounced = debounce((nameB, scrollTop) => {
+        localStorage.setItem(`zero_scroll_stitch_peek_${nameB}`, scrollTop);
+    }, 150);
+
+    $('#stitch-list').off('scroll.zero-stitch').on('scroll.zero-stitch', function() {
+        if (isRestoringStitchScroll) return;
+        const nameA = $('#stitch-preset-source').val();
+        const nameB = $('#stitch-preset-target').val();
+        const effectiveName = nameA || nameB;
+        if (effectiveName) {
+            saveListScrollDebounced(effectiveName, $(this).scrollTop());
+        }
+    });
+
+    $('#stitch-peek-body').off('scroll.zero-stitch-peek').on('scroll.zero-stitch-peek', function() {
+        if (isRestoringStitchPeekScroll) return;
+        const nameB = $('#stitch-preset-target').val();
+        if (nameB) {
+            savePeekScrollDebounced(nameB, $(this).scrollTop());
+        }
+    });
+}
+
+export function restoreScroll() {
+    const nameA = $('#stitch-preset-source').val();
+    const nameB = $('#stitch-preset-target').val();
+    const effectiveName = nameA || nameB;
+    if (effectiveName) {
+        const savedScroll = localStorage.getItem(`zero_scroll_stitch_list_${effectiveName}`) || 0;
+        const $list = $('#stitch-list');
+        isRestoringStitchScroll = true;
+        $list.scrollTop(savedScroll);
+        setTimeout(() => {
+            isRestoringStitchScroll = false;
+        }, 50);
+    }
+}
+
+export function restorePeekScroll() {
+    const nameB = $('#stitch-preset-target').val();
+    if (nameB) {
+        const savedScroll = localStorage.getItem(`zero_scroll_stitch_peek_${nameB}`) || 0;
+        const $peekBody = $('#stitch-peek-body');
+        isRestoringStitchPeekScroll = true;
+        $peekBody.scrollTop(savedScroll);
+        setTimeout(() => {
+            isRestoringStitchPeekScroll = false;
+        }, 50);
+    }
+}
 
 export function toggleStitchBatchMode() {
     stitch_batch_mode = !stitch_batch_mode;
@@ -22,8 +81,6 @@ export async function renderStitchList(forceRefresh = true) {
     const effectiveName = nameA || nameB;
     if (!effectiveName) return;
 
-    const $body = $('.zero-panel-body');
-    const scrollPos = $body.scrollTop();
     const $list = $('#stitch-list');
     
     if (forceRefresh || _cachedStitchName !== nameA) {
@@ -159,9 +216,7 @@ export async function renderStitchList(forceRefresh = true) {
         window.zero_stitch_promptsA = promptsA;
         window.zero_stitch_sourceName = effectiveName;
 
-        setTimeout(() => {
-            $body.scrollTop(scrollPos);
-        }, 0);
+        restoreScroll();
     } catch (e) {
         console.error('[Zero] Failed to render stitch list:', e);
         $list.html('<p style="text-align: center; color: var(--SmartThemeShadowColor);">加载失败</p>');
@@ -225,8 +280,6 @@ export async function performStitch(itemsA, targetName, position) {
 
         const isActive = pm.getSelectedPresetName() === targetName;
         await pm.savePreset(targetName, targetPreset, { skipUpdate: !isActive });
-        
-        toastr.success(items.length > 1 ? `成功缝合 ${items.length} 个条目！` : '缝合成功！');
     } catch (err) {
         console.error('[Zero] Perform stitch failed:', err);
         toastr.error('缝合失败');
@@ -299,8 +352,6 @@ export async function performMove(itemsA, presetName, position) {
         _cachedStitchPrompts = await getPresetPrompts(presetName);
         renderStitchList(false);
 
-        toastr.success(items.length > 1 ? `成功移动 ${items.length} 个条目！` : '移动成功！');
-        
         if (isActive && typeof pm.loadPreset === 'function') {
             await pm.loadPreset(presetName);
         }
@@ -311,8 +362,6 @@ export async function performMove(itemsA, presetName, position) {
 }
 
 export async function performBatchDelete(items, presetName) {
-    if (!confirm(`确定要从预设 "${presetName}" 中删除选中的 ${items.length} 个条目吗？该操作不可撤销。`)) return;
-    
     try {
         const manager = SillyTavern.getContext().getPresetManager('openai');
         const preset = manager.getCompletionPresetByName(presetName);
@@ -362,8 +411,6 @@ export async function performBatchDelete(items, presetName) {
         renderStitchList(false);
 
         await manager.savePreset(presetName, preset, { skipUpdate: !isActive });
-        
-        toastr.success(`成功从 "${presetName}" 中删除 ${items.length} 个条目`);
         
         if (isActive && typeof manager.loadPreset === 'function') {
             await manager.loadPreset(presetName);
@@ -432,8 +479,6 @@ export async function performSingleClone(item, presetName) {
 
         await manager.savePreset(presetName, preset, { skipUpdate: !isActive });
         
-        toastr.success('已复制条目');
-        
         if (isActive && typeof manager.loadPreset === 'function') {
             await manager.loadPreset(presetName);
         }
@@ -447,60 +492,15 @@ export async function performSingleClone(item, presetName) {
 
 export async function showMoveModal(items, presetName) {
     try {
-        const prompts = await getPresetPrompts(presetName);
-        const itemIds = items.map(i => i.identifier);
-        // Exclude items being moved from the target options so user doesn't insert after an item being moved
-        const validPrompts = prompts.filter(p => !itemIds.includes(p.identifier));
-        
-        const targetOptions = `
-            <option value="top">-- 最顶部 --</option>
-            <option value="bottom" selected>-- 最底部 --</option>
-            ${validPrompts.map(p => `<option value="${p.identifier}">在 "${escapeHtml(p.name || p.identifier)}" 之后</option>`).join('')}
-        `;
-
         const isBatch = items.length > 1;
-        const title = isBatch ? '移动条目' : '移动条目';
-        const desc = isBatch 
-            ? `在 <b>${presetName}</b> 内移动选中的 <b>${items.length}</b> 个条目`
-            : `在 <b>${presetName}</b> 内移动 <b>${escapeHtml(items[0].name || items[0].identifier)}</b>`;
-
-        const modalHtml = `
-            <div id="move-modal" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.85); z-index: 20000; display: flex; align-items: center; justify-content: center; padding: 20px;">
-                <div style="background: var(--SmartThemeBlurTintColor); padding: 24px; border-radius: 16px; width: 100%; max-width: 360px; border: 1px solid var(--SmartThemeBorderColor); display: flex; flex-direction: column;">
-                    <div style="font-weight: bold; margin-bottom: 4px; font-size: 16px;">${title}</div>
-                    <div style="font-size: 11px; opacity: 0.6; margin-bottom: 16px;">${desc}</div>
-                    
-                    <div style="margin-bottom: 16px; display: flex; flex-direction: column; gap: 8px;">
-                        <label style="font-size: 12px; opacity: 0.8;">插入位置:</label>
-                        <select id="move-position-select" class="interactable" style="padding: 8px; background: rgba(255,255,255,0.05); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 4px; font-size: 13px;">
-                            ${targetOptions}
-                        </select>
-                    </div>
-                    
-                    <div style="display: flex; gap: 10px;">
-                        <button id="confirm-move" class="interactable" style="flex: 1; padding: 10px; border: none; border-radius: 8px; background: var(--SmartThemeQuoteColor); color: white; cursor: pointer; font-size: 13px;">确认移动</button>
-                        <button id="close-move-modal" class="interactable" style="flex: 1; padding: 10px; border: none; border-radius: 8px; background: rgba(255,255,255,0.1); color: inherit; cursor: pointer; font-size: 13px;">取消</button>
-                    </div>
-                </div>
-            </div>
-        `;
-
-        $('body').append(modalHtml);
-        $('#close-move-modal').on('click', () => $('#move-modal').remove());
-
-        $('#confirm-move').on('click', async () => {
-            const position = $('#move-position-select').val();
-            await performMove(items, presetName, position);
-            $('#move-modal').remove();
-            if (isBatch) {
-                $('.stitch-item-cb').prop('checked', false).trigger('change');
-                resetStitchBatchMode();
-                // renderStitchList is called in performMove
-            }
-        });
+        await performMove(items, presetName, 'bottom');
+        if (isBatch) {
+            $('.stitch-item-cb').prop('checked', false).trigger('change');
+            resetStitchBatchMode();
+        }
     } catch (err) {
-        console.error('[Zero] Failed to show move modal:', err);
-        toastr.error('无法显示移动窗口');
+        console.error('[Zero] Failed to move:', err);
+        toastr.error('移动失败');
     }
 }
 
@@ -628,7 +628,7 @@ export async function renderTargetBPeek() {
         });
 
         // Insert handler function
-        const doInsertStitch = async (position) => {
+        const doInsertStitch = async (position, $btn) => {
             const selectedIndexes = $('.stitch-item-cb:checked').map(function() {
                 return parseInt($(this).data('index'));
             }).get();
@@ -641,6 +641,13 @@ export async function renderTargetBPeek() {
             const items = selectedIndexes.map(idx => window.zero_stitch_promptsA[idx]);
             const nameB = $('#stitch-preset-target').val();
             
+            // If it's a single item, we show a visual checkmark on the button
+            let oldClass = '';
+            if ($btn && items.length === 1) {
+                oldClass = $btn.attr('class');
+                $btn.attr('class', 'fa-solid fa-check').css('color', '#55ff55').css('opacity', '1');
+            }
+
             await performStitch(items, nameB, position);
             
             // Clear checked state
@@ -652,15 +659,18 @@ export async function renderTargetBPeek() {
 
         $('.stitch-peek-insert-top').off('click').on('click', function(e) {
             e.stopPropagation();
-            doInsertStitch('top');
+            doInsertStitch('top', $(this));
         });
 
         $('.stitch-peek-insert-btn').off('click').on('click', function(e) {
             e.stopPropagation();
-            const id = $(this).data('id');
-            doInsertStitch(id);
+            const eTarget = $(e.target);
+            const $btn = eTarget.hasClass('stitch-peek-insert-btn') ? eTarget : eTarget.find('.stitch-peek-insert-btn');
+            const id = $btn.data('id');
+            doInsertStitch(id, $btn);
         });
 
+        restorePeekScroll();
     } catch (e) {
         console.error('[Zero] Failed to render target B peek:', e);
         $list.html('<p style="text-align: center; color: #ff5555; font-size: 11px; padding: 10px;">加载失败</p>');

@@ -73,3 +73,11 @@ export function refreshNativePresetManager(pm) {
         console.warn('[Zero] Failed to refresh native preset manager:', e);
     }
 }
+
+export function debounce(func, wait) {
+    let timeout;
+    return function(...args) {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func.apply(this, args), wait);
+    };
+}

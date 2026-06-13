@@ -22,7 +22,7 @@ export async function openQuickEditor(presetName, itemName) {
     `).join('');
 
     const editHtml = `
-        <div id="zero-quick-editor" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: var(--SmartThemeBlurTintColor, rgba(15,15,15,0.95)); backdrop-filter: blur(5px); z-index: 20001; display: flex; flex-direction: column; padding: 20px; font-family: var(--mainFontFamily, sans-serif);">
+        <div id="zero-quick-editor" style="position: fixed; inset: 0; background: var(--SmartThemeBlurTintColor, rgba(15,15,15,0.95)); z-index: 20001; display: flex; flex-direction: column; padding: 20px; font-family: var(--mainFontFamily, sans-serif);">
             <!-- Header with Title-style Name Input and Group Select Badge -->
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; color: var(--SmartThemeBodyColor); gap: 12px;">
                 <div style="display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0;">
@@ -366,7 +366,6 @@ export async function openQuickEditor(presetName, itemName) {
             const isActive = pm.getSelectedPresetName() === presetName;
             await pm.savePreset(presetName, preset, { skipUpdate: !isActive });
             
-            toastr.success('已保存修改');
             $('#zero-quick-editor').remove();
             
             // Trigger refresh of the currently active tab in Zero panel

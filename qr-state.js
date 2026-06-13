@@ -334,6 +334,17 @@ export const SnapshotManager = {
         }
         const map = new Map();
         snapshot.entries.forEach(e => map.set(e.id, e.e));
+
+        // Disable new entries that are not present in the snapshot
+        if (preset && Array.isArray(preset.prompts)) {
+            const snapIds = new Set(snapshot.entries.map(e => e.id));
+            preset.prompts.forEach(p => {
+                if (!snapIds.has(p.identifier)) {
+                    map.set(p.identifier, false);
+                }
+            });
+        }
+
         await PresetManager.batchToggleMap(map);
     }
 };
@@ -470,3 +481,79 @@ export const LinkageManager = {
         this._save(presetName, list);
     }
 };
+
+// ═══════════════════════════════════════
+//  Mixed Language Translation Helper
+// ═══════════════════════════════════════
+export async function zeroTranslate(text) {
+    if (typeof window.translate !== 'function') return text;
+    if (!text || text.trim() === '') return '';
+
+    const targetLang = (window.SillyTavern?.getContext?.()?.extensionSettings?.translate?.target_language || 'zh-cn').toLowerCase();
+
+    const parts = text.split(/(\n\n+)/);
+    const translateIndices = [];
+    const translateTexts = [];
+
+    for (let i = 0; i < parts.length; i += 2) {
+        const part = parts[i];
+        if (part.trim() === '') continue;
+
+        let needTranslate = true;
+        if (targetLang.startsWith('zh')) {
+            // Target is Chinese: translate if it contains any Latin letters, Japanese Kana, or Korean Hangul
+            if (!/[a-zA-Z\u3040-\u30ff\uac00-\ud7af]/.test(part)) {
+                needTranslate = false;
+            }
+        } else if (targetLang.startsWith('en')) {
+            // Target is English: translate if it contains any CJK characters (Chinese, Japanese, Korean)
+            if (!/[\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af]/.test(part)) {
+                needTranslate = false;
+            }
+        }
+
+        if (needTranslate) {
+            translateIndices.push(i);
+            translateTexts.push(part);
+        }
+    }
+
+    if (translateTexts.length === 0) {
+        return text;
+    }
+
+    // Try batch translation to prevent rate limiting
+    try {
+        const combinedText = translateTexts.join('\n\n=====\n\n');
+        const translatedCombined = await window.translate(combinedText);
+        if (translatedCombined) {
+            const translatedParts = translatedCombined.split(/\n+={3,}\s*\n+/);
+            if (translatedParts.length === translateTexts.length) {
+                for (let k = 0; k < translateIndices.length; k++) {
+                    parts[translateIndices[k]] = translatedParts[k].trim();
+                }
+                return parts.join('');
+            } else {
+                console.warn('[Zero] Batch translation parts length mismatch. Expected:', translateTexts.length, 'Got:', translatedParts.length, 'Falling back to individual translation.');
+            }
+        }
+    } catch (e) {
+        console.error('[Zero] Batch translation failed, falling back to individual translation:', e);
+    }
+
+    // Fallback: translate paragraph-by-paragraph
+    for (let k = 0; k < translateIndices.length; k++) {
+        const idx = translateIndices[k];
+        try {
+            const singleTranslated = await window.translate(parts[idx]);
+            if (singleTranslated) {
+                parts[idx] = singleTranslated;
+            }
+        } catch (err) {
+            console.error('[Zero] Paragraph translation fallback failed for index:', idx, err);
+        }
+    }
+
+    return parts.join('');
+}
+
