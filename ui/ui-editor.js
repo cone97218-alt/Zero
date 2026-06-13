@@ -1,6 +1,6 @@
 import { escapeHtml } from './ui-utils.js';
 import { Checker } from './ui-checker.js';
-import { GroupManager } from '../qr-state.js';
+import { GroupManager, HistoryManager } from '../qr-state.js';
 
 export async function openQuickEditor(presetName, itemName) {
     const pm = SillyTavern.getContext().getPresetManager('openai');
@@ -88,7 +88,7 @@ export async function openQuickEditor(presetName, itemName) {
 
             <!-- Content Area (Main Focus) -->
             <div style="flex: 1; display: flex; flex-direction: column; gap: 10px; overflow: hidden;">
-                <textarea id="quick-edit-content" spellcheck="false" autocomplete="off" style="flex: 1; background: var(--SmartThemeChatTintColor, rgba(255,255,255,0.05)); border: 1px solid var(--SmartThemeBorderColor); color: var(--SmartThemeBodyColor); padding: 20px; border-radius: 12px; font-family: 'Consolas', 'Monaco', monospace; font-size: 15px; resize: none; outline: none; line-height: 1.6; box-shadow: inset 0 2px 10px rgba(0,0,0,0.2);">${escapeHtml(prompt.content)}</textarea>
+                <textarea id="quick-edit-content" class="zero-quick-textarea" spellcheck="false" autocomplete="off" style="flex: 1; background: var(--SmartThemeChatTintColor, rgba(255,255,255,0.05)); border: 1px solid var(--SmartThemeBorderColor); color: var(--SmartThemeBodyColor); padding: 20px; border-radius: 12px; font-family: 'Consolas', 'Monaco', monospace; font-size: 15px; resize: none; outline: none; line-height: 1.6; box-shadow: inset 0 2px 10px rgba(0,0,0,0.2);">${escapeHtml(prompt.content)}</textarea>
                 
                 <!-- Quick Phrases Section -->
                 <div id="quick-phrases-section" style="background: rgba(255,255,255,0.01); border: 1px solid var(--SmartThemeBorderColor); border-radius: 12px; padding: 12px; flex-shrink: 0;">
@@ -125,8 +125,20 @@ export async function openQuickEditor(presetName, itemName) {
         </div>
     `;
     
+    const originalBodyOverflow = $('body').css('overflow');
+    const originalHtmlOverflow = $('html').css('overflow');
+    
+    $('body').css('overflow', 'hidden');
+    $('html').css('overflow', 'hidden');
+    
+    const closeEditor = () => {
+        $('body').css('overflow', originalBodyOverflow || '');
+        $('html').css('overflow', originalHtmlOverflow || '');
+        $('#zero-quick-editor').remove();
+    };
+
     $('body').append(editHtml);
-    $('#close-quick-editor').on('click', () => $('#zero-quick-editor').remove());
+    $('#close-quick-editor').on('click', closeEditor);
     
     // --- Auto-resizing Group select width helper ---
     const adjustSelectWidth = ($select) => {
@@ -347,6 +359,7 @@ export async function openQuickEditor(presetName, itemName) {
         }
 
         // Apply changes to the prompt object
+        HistoryManager.record();
         prompt.name = name;
         prompt.role = role;
         prompt.injection_position = position;
@@ -366,7 +379,7 @@ export async function openQuickEditor(presetName, itemName) {
             const isActive = pm.getSelectedPresetName() === presetName;
             await pm.savePreset(presetName, preset, { skipUpdate: !isActive });
             
-            $('#zero-quick-editor').remove();
+            closeEditor();
             
             // Trigger refresh of the currently active tab in Zero panel
             if ($('#zero-tab-check').is(':visible')) {

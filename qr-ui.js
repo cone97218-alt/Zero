@@ -2,7 +2,7 @@
  * Zero Preset Manager - UI
  * Performance-optimized v2: innerHTML templates, event delegation, lazy rendering.
  */
-import { PresetManager, SnapshotManager, GroupManager, HiddenManager, UiStateManager, LinkageManager, zeroTranslate } from './qr-state.js';
+import { PresetManager, SnapshotManager, GroupManager, HiddenManager, UiStateManager, LinkageManager, zeroTranslate, HistoryManager } from './qr-state.js';
 
 let overlay = null;
 let pendingToggles = new Map();
@@ -165,6 +165,11 @@ export function closeUI() {
         }
         overlay.remove();
         overlay = null;
+    }
+    try {
+        HistoryManager.clear();
+    } catch (e) {
+        console.error('[Zero] Failed to clear history:', e);
     }
 }
 

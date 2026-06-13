@@ -1,4 +1,4 @@
-import { PresetManager } from '../qr-state.js';
+import { PresetManager, HistoryManager } from '../qr-state.js';
 import { escapeHtml, refreshNativePresetManager } from './ui-utils.js';
 import { populatePresetSelects } from './ext-ui.js';
 
@@ -68,6 +68,7 @@ export async function handleRename(oldName) {
         const newName = await getSanitizedFilename(newNameRaw.trim());
         if (!newName || newName === oldName) return;
 
+        HistoryManager.record();
         const pm = SillyTavern.getContext().getPresetManager('openai');
         if (!pm) {
             toastr.error('未找到预设管理器');
@@ -136,8 +137,7 @@ export async function handleBatchDelete() {
         return;
     }
 
-
-
+    HistoryManager.record();
     let successCount = 0;
     let failCount = 0;
     const pm = SillyTavern.getContext().getPresetManager('openai');
@@ -169,6 +169,7 @@ export async function handleBatchDelete() {
 }
 
 export async function handleBatchImport(files) {
+    HistoryManager.record();
     let successCount = 0;
     let failCount = 0;
     const pm = SillyTavern.getContext().getPresetManager('openai');

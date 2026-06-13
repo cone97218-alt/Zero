@@ -5,7 +5,7 @@
  * 子模块采用懒加载策略：仅在用户首次打开面板时并行加载，之后缓存复用。
  */
 
-import { PresetManager } from '../qr-state.js';
+import { PresetManager, HistoryManager } from '../qr-state.js';
 import { syncTheme } from './ui-utils.js';
 
 // ── 懒加载缓存 ──────────────────────────────────────────────────────────────
@@ -136,6 +136,14 @@ function ensurePanel() {
                     <div class="zero-tab-link" data-tab="stitch" style="padding: 10px 12px; font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent;">缝合</div>
                     <div class="zero-tab-link" data-tab="check" style="padding: 10px 12px; font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent;">自查</div>
                     <div class="zero-tab-link" data-tab="manage" style="padding: 10px 12px; font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent;">管理</div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 4px; margin-right: 8px;">
+                    <button id="zero-history-undo" class="interactable zero-icon-btn" title="撤回上一个操作" style="background: none; border: none; color: inherit; padding: 8px; cursor: pointer; opacity: 0.4; font-size: 14px; display: flex; align-items: center; justify-content: center;" disabled>
+                        <i class="fa-solid fa-rotate-left"></i>
+                    </button>
+                    <button id="zero-history-redo" class="interactable zero-icon-btn" title="还原上一个操作" style="background: none; border: none; color: inherit; padding: 8px; cursor: pointer; opacity: 0.4; font-size: 14px; display: flex; align-items: center; justify-content: center;" disabled>
+                        <i class="fa-solid fa-rotate-right"></i>
+                    </button>
                 </div>
                 <div id="zero-panel-close" class="interactable" style="cursor: pointer; padding: 10px; font-size: 16px; opacity: 0.8;">
                     <i class="fa-solid fa-xmark"></i>
@@ -382,6 +390,39 @@ function ensurePanel() {
     });
 
     $(`#zero-panel-close`).on('click', () => closePanel());
+
+    $('body').off('click', '#zero-history-undo').on('click', '#zero-history-undo', async function() {
+        const $btn = $(this);
+        if ($btn.prop('disabled')) return;
+        $('#zero-history-undo, #zero-history-redo')
+            .prop('disabled', true)
+            .css('opacity', '0.4')
+            .css('cursor', 'default');
+        try {
+            await HistoryManager.undo();
+        } finally {
+            HistoryManager.updateButtonsState();
+        }
+    });
+
+    $('body').off('click', '#zero-history-redo').on('click', '#zero-history-redo', async function() {
+        const $btn = $(this);
+        if ($btn.prop('disabled')) return;
+        $('#zero-history-undo, #zero-history-redo')
+            .prop('disabled', true)
+            .css('opacity', '0.4')
+            .css('cursor', 'default');
+        try {
+            await HistoryManager.redo();
+        } finally {
+            HistoryManager.updateButtonsState();
+        }
+    });
+
+    $(window).off('zero-history-changed.zero').on('zero-history-changed.zero', async () => {
+        _presetsLastFetch = 0; // Force cache invalidation so fresh preset list renders
+        await refreshActiveTab();
+    });
 
     $('#contrast-auto-match').on('click', () => _contrast.performAutoMatch());
     $('#contrast-start').on('click', () => _contrast.startComparison());
@@ -650,6 +691,9 @@ export async function showPanel() {
     syncTheme();
     _presetsLastFetch = 0; // 每次打开面板强制刷新预设列表
     
+    // Initialize history button states
+    HistoryManager.updateButtonsState();
+    
     const $panel = $(`#${PANEL_ID}`);
     $panel.css('display', 'flex');
     $panel[0].offsetHeight;
@@ -668,6 +712,12 @@ export function closePanel() {
     setTimeout(() => {
         $panel.css('display', 'none');
     }, 150);
+    
+    try {
+        HistoryManager.clear();
+    } catch (e) {
+        console.error('[Zero] Failed to clear history:', e);
+    }
 }
 
 export function injectExtensionButton() {
@@ -701,4 +751,28 @@ export function init() {
         }
     });
     observer.observe(document.body, { childList: true, subtree: true });
+}
+
+export async function refreshActiveTab() {
+    const tab = $(`#${PANEL_ID} .zero-tab-link.active`).data('tab');
+    if (tab === 'manage') {
+        if (_manage && typeof _manage.renderManageTab === 'function') {
+            await _manage.renderManageTab();
+        }
+    } else if (tab === 'contrast') {
+        await populatePresetSelects();
+        if (_contrast && typeof _contrast.performAutoMatch === 'function') {
+            await _contrast.performAutoMatch();
+        }
+    } else if (tab === 'stitch') {
+        await populatePresetSelects();
+        if (_stitch && typeof _stitch.renderStitchList === 'function') {
+            await _stitch.renderStitchList();
+        }
+    } else if (tab === 'check') {
+        await populatePresetSelects();
+        if (_checker && _checker.Checker && typeof _checker.Checker.render === 'function') {
+            _checker.Checker.render('check-results-container', $('#check-preset-select').val());
+        }
+    }
 }

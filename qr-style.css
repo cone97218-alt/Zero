@@ -902,3 +902,17 @@
     background: var(--SmartThemeBorderColor, #555);
     border-radius: 4px;
 }
+
+/* ===== Responsive Quick Editor for Mobile ===== */
+@media (max-width: 768px) {
+    #zero-quick-editor {
+        display: block !important;
+        overflow-y: auto !important;
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: 80px !important;
+    }
+    .zero-quick-textarea {
+        flex: none !important;
+        height: 280px !important;
+    }
+}

@@ -1,4 +1,5 @@
 import { getPresetPrompts, escapeHtml, debounce } from './ui-utils.js';
+import { HistoryManager } from '../qr-state.js';
 
 export let stitch_batch_mode = false;
 let _cachedStitchPrompts = null;
@@ -227,6 +228,7 @@ export async function performStitch(itemsA, targetName, position) {
     const items = Array.isArray(itemsA) ? itemsA : [itemsA];
     if (items.length === 0) return;
 
+    HistoryManager.record();
     try {
         if (!targetName) throw new Error('未选择目标预设');
         const pm = SillyTavern.getContext().getPresetManager('openai');
@@ -290,6 +292,7 @@ export async function performMove(itemsA, presetName, position) {
     const items = Array.isArray(itemsA) ? itemsA : [itemsA];
     if (items.length === 0) return;
 
+    HistoryManager.record();
     try {
         const pm = SillyTavern.getContext().getPresetManager('openai');
         const preset = pm.getCompletionPresetByName(presetName);
@@ -362,6 +365,7 @@ export async function performMove(itemsA, presetName, position) {
 }
 
 export async function performBatchDelete(items, presetName) {
+    HistoryManager.record();
     try {
         const manager = SillyTavern.getContext().getPresetManager('openai');
         const preset = manager.getCompletionPresetByName(presetName);
@@ -422,6 +426,7 @@ export async function performBatchDelete(items, presetName) {
 }
 
 export async function performSingleClone(item, presetName) {
+    HistoryManager.record();
     try {
         const manager = SillyTavern.getContext().getPresetManager('openai');
         const preset = manager.getCompletionPresetByName(presetName);
@@ -492,15 +497,60 @@ export async function performSingleClone(item, presetName) {
 
 export async function showMoveModal(items, presetName) {
     try {
+        const prompts = await getPresetPrompts(presetName);
+        const itemIds = items.map(i => i.identifier);
+        // Exclude items being moved from the target options so user doesn't insert after an item being moved
+        const validPrompts = prompts.filter(p => !itemIds.includes(p.identifier));
+        
+        const targetOptions = `
+            <option value="top">-- 最顶部 --</option>
+            <option value="bottom" selected>-- 最底部 --</option>
+            ${validPrompts.map(p => `<option value="${p.identifier}">在 "${escapeHtml(p.name || p.identifier)}" 之后</option>`).join('')}
+        `;
+
         const isBatch = items.length > 1;
-        await performMove(items, presetName, 'bottom');
-        if (isBatch) {
-            $('.stitch-item-cb').prop('checked', false).trigger('change');
-            resetStitchBatchMode();
-        }
+        const title = isBatch ? '移动条目' : '移动条目';
+        const desc = isBatch 
+            ? `在 <b>${presetName}</b> 内移动选中的 <b>${items.length}</b> 个条目`
+            : `在 <b>${presetName}</b> 内移动 <b>${escapeHtml(items[0].name || items[0].identifier)}</b>`;
+
+        const modalHtml = `
+            <div id="move-modal" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.85); z-index: 20000; display: flex; align-items: center; justify-content: center; padding: 20px;">
+                <div style="background: var(--SmartThemeBlurTintColor); padding: 24px; border-radius: 16px; width: 100%; max-width: 360px; border: 1px solid var(--SmartThemeBorderColor); display: flex; flex-direction: column;">
+                    <div style="font-weight: bold; margin-bottom: 4px; font-size: 16px;">${title}</div>
+                    <div style="font-size: 11px; opacity: 0.6; margin-bottom: 16px;">${desc}</div>
+                    
+                    <div style="margin-bottom: 16px; display: flex; flex-direction: column; gap: 8px;">
+                        <label style="font-size: 12px; opacity: 0.8;">插入位置:</label>
+                        <select id="move-position-select" class="interactable" style="padding: 8px; background: rgba(255,255,255,0.05); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 4px; font-size: 13px;">
+                            ${targetOptions}
+                        </select>
+                    </div>
+                    
+                    <div style="display: flex; gap: 10px;">
+                        <button id="confirm-move" class="interactable" style="flex: 1; padding: 10px; border: none; border-radius: 8px; background: var(--SmartThemeQuoteColor); color: white; cursor: pointer; font-size: 13px;">确认移动</button>
+                        <button id="close-move-modal" class="interactable" style="flex: 1; padding: 10px; border: none; border-radius: 8px; background: rgba(255,255,255,0.1); color: inherit; cursor: pointer; font-size: 13px;">取消</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        $('body').append(modalHtml);
+        $('#close-move-modal').on('click', () => $('#move-modal').remove());
+
+        $('#confirm-move').on('click', async () => {
+            const position = $('#move-position-select').val();
+            await performMove(items, presetName, position);
+            $('#move-modal').remove();
+            if (isBatch) {
+                $('.stitch-item-cb').prop('checked', false).trigger('change');
+                resetStitchBatchMode();
+                // renderStitchList is called in performMove
+            }
+        });
     } catch (err) {
-        console.error('[Zero] Failed to move:', err);
-        toastr.error('移动失败');
+        console.error('[Zero] Failed to show move modal:', err);
+        toastr.error('无法显示移动窗口');
     }
 }
 

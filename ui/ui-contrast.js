@@ -1,6 +1,6 @@
 import { getPresetPrompts, escapeHtml, debounce } from './ui-utils.js';
 import { openQuickEditor } from './ui-editor.js';
-import { GroupManager, zeroTranslate } from '../qr-state.js';
+import { GroupManager, zeroTranslate, HistoryManager } from '../qr-state.js';
 
 let isRestoringContrastScroll = false;
 
@@ -132,6 +132,7 @@ export async function showManualLinksManager() {
     $('body').append(html);
 
     $('.delete-link').on('click', function() {
+        HistoryManager.record();
         const idA = $(this).data('ida');
         delete pairLinks[idA];
         if (Object.keys(pairLinks).length === 0) delete links[key];
@@ -143,6 +144,7 @@ export async function showManualLinksManager() {
     });
 
     $('#clear-all-links').on('click', () => {
+        HistoryManager.record();
         delete links[key];
         localStorage.setItem('zero_manual_links', JSON.stringify(links));
         $('#links-manager-modal').remove();
@@ -790,6 +792,7 @@ export async function showComparisonDetail(index, allItems) {
         }
 
         // Overwrite all properties
+        HistoryManager.record();
         tgtPrompt.content = srcPrompt.content;
         tgtPrompt.name = srcPrompt.name;
         tgtPrompt.role = srcPrompt.role;

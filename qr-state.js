@@ -150,6 +150,7 @@ export const PresetManager = {
     },
 
     async togglePrompt(identifier, enabled) {
+        HistoryManager.record();
         const openai = await getOpenai();
         const promptManager = openai.promptManager;
         if (promptManager) {
@@ -177,6 +178,7 @@ export const PresetManager = {
 
     /** Batch update from a Map<identifier, enabled> */
     async batchToggleMap(toggleMap) {
+        HistoryManager.record();
         if (!_preset) await this.load();
         
         // Mutate existing cache instances
@@ -273,6 +275,7 @@ export const SnapshotManager = {
     },
 
     create(name, preset) {
+        HistoryManager.record();
         const snap = {
             id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
             name,
@@ -288,17 +291,20 @@ export const SnapshotManager = {
     },
 
     delete(id) {
+        HistoryManager.record();
         const s = getSettings();
         s.snapshots = (s.snapshots || []).filter(x => x.id !== id);
         saveSettings();
     },
 
     rename(id, newName) {
+        HistoryManager.record();
         const snap = (getSettings().snapshots || []).find(x => x.id === id);
         if (snap) { snap.name = newName; saveSettings(); }
     },
 
     overwrite(id, preset) {
+        HistoryManager.record();
         const snap = (getSettings().snapshots || []).find(x => x.id === id);
         if (snap) {
             snap.presetName = preset.name;
@@ -367,6 +373,7 @@ export const GroupManager = {
     },
 
     create(presetName, name) {
+        HistoryManager.record();
         const groups = this.get(presetName);
         const g = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5), name, ids: [], col: false };
         groups.push(g);
@@ -375,16 +382,19 @@ export const GroupManager = {
     },
 
     remove(presetName, gid) {
+        HistoryManager.record();
         this._save(presetName, this.get(presetName).filter(g => g.id !== gid));
     },
 
     rename(presetName, gid, n) {
+        HistoryManager.record();
         const groups = this.get(presetName);
         const g = groups.find(x => x.id === gid);
         if (g) { g.name = n; this._save(presetName, groups); }
     },
 
     assign(presetName, gid, identifiers) {
+        HistoryManager.record();
         const groups = this.get(presetName);
         for (const g of groups) g.ids = g.ids.filter(id => !identifiers.includes(id));
         const tgt = groups.find(x => x.id === gid);
@@ -393,6 +403,7 @@ export const GroupManager = {
     },
 
     unassign(presetName, identifier) {
+        HistoryManager.record();
         const groups = this.get(presetName);
         for (const g of groups) g.ids = g.ids.filter(id => id !== identifier);
         this._save(presetName, groups);
@@ -412,6 +423,7 @@ export const GroupManager = {
 
     /** Reorder groups by array of group ids */
     reorder(presetName, orderedIds) {
+        HistoryManager.record();
         const groups = this.get(presetName);
         const map = new Map(groups.map(g => [g.id, g]));
         const reordered = orderedIds.map(id => map.get(id)).filter(Boolean);
@@ -431,6 +443,7 @@ export const HiddenManager = {
     },
 
     hide(presetName, identifier) {
+        HistoryManager.record();
         const s = getSettings();
         if (!s.hidden[presetName]) s.hidden[presetName] = [];
         if (!s.hidden[presetName].includes(identifier)) {
@@ -440,6 +453,7 @@ export const HiddenManager = {
     },
 
     show(presetName, identifier) {
+        HistoryManager.record();
         const s = getSettings();
         if (s.hidden[presetName]) {
             s.hidden[presetName] = s.hidden[presetName].filter(id => id !== identifier);
@@ -448,6 +462,7 @@ export const HiddenManager = {
     },
 
     showAll(presetName) {
+        HistoryManager.record();
         const s = getSettings();
         s.hidden[presetName] = [];
         saveSettings();
@@ -470,6 +485,7 @@ export const LinkageManager = {
         saveSettings();
     },
     add(presetName, source, target) {
+        HistoryManager.record();
         const list = this.get(presetName);
         if (!list.some(l => l.source === source && l.target === target)) {
             list.push({ source, target });
@@ -477,6 +493,7 @@ export const LinkageManager = {
         }
     },
     remove(presetName, source, target) {
+        HistoryManager.record();
         const list = this.get(presetName).filter(l => !(l.source === source && l.target === target));
         this._save(presetName, list);
     }
@@ -556,4 +573,277 @@ export async function zeroTranslate(text) {
 
     return parts.join('');
 }
+
+// ─── Undo / Redo History Manager ───
+let undoStack = [];
+let redoStack = [];
+let alreadyRecorded = false;
+let isRestoring = false;
+
+export const HistoryManager = {
+    clear() {
+        undoStack = [];
+        redoStack = [];
+        alreadyRecorded = false;
+        isRestoring = false;
+        this.updateButtonsState();
+    },
+
+    captureState() {
+        try {
+            const pm = SillyTavern.getContext().getPresetManager('openai');
+            if (!pm) return null;
+            const { presets, preset_names } = pm.getPresetList();
+            const activePresetName = pm.getSelectedPresetName();
+            
+            // Deep clone presets & names
+            const clonedPresets = JSON.parse(JSON.stringify(presets));
+            const clonedNames = JSON.parse(JSON.stringify(preset_names));
+            
+            // Deep clone Zero extension settings
+            const zeroSettings = JSON.parse(JSON.stringify(getSettings()));
+
+            // Deep clone manual links from localStorage
+            const manualLinks = JSON.parse(localStorage.getItem('zero_manual_links') || '{}');
+
+            return {
+                presets: clonedPresets,
+                preset_names: clonedNames,
+                activePresetName: activePresetName,
+                zeroSettings: zeroSettings,
+                manualLinks: manualLinks
+            };
+        } catch (e) {
+            console.error('[Zero] Failed to capture state for undo:', e);
+            return null;
+        }
+    },
+
+    record() {
+        if (isRestoring || alreadyRecorded) return;
+        
+        const state = this.captureState();
+        if (!state) return;
+
+        alreadyRecorded = true;
+        Promise.resolve().then(() => {
+            alreadyRecorded = false;
+        });
+        
+        // Push to undo stack
+        undoStack.push(state);
+        // Limit to 5 steps
+        if (undoStack.length > 5) {
+            undoStack.shift();
+        }
+        // Clear redo stack on new action
+        redoStack = [];
+        
+        this.updateButtonsState();
+    },
+
+    async undo() {
+        if (undoStack.length === 0) return;
+        
+        // Capture current state to push to redo stack
+        const currentState = this.captureState();
+        if (currentState) {
+            redoStack.push(currentState);
+            if (redoStack.length > 5) {
+                redoStack.shift();
+            }
+        }
+        
+        const prevState = undoStack.pop();
+        await this.restoreState(prevState);
+        
+        this.updateButtonsState();
+        window.dispatchEvent(new Event('zero-history-changed'));
+    },
+
+    async redo() {
+        if (redoStack.length === 0) return;
+        
+        // Capture current state to push to undo stack
+        const currentState = this.captureState();
+        if (currentState) {
+            undoStack.push(currentState);
+            if (undoStack.length > 5) {
+                undoStack.shift();
+            }
+        }
+        
+        const nextState = redoStack.pop();
+        await this.restoreState(nextState);
+        
+        this.updateButtonsState();
+        window.dispatchEvent(new Event('zero-history-changed'));
+    },
+
+    async restoreState(snapshot) {
+        try {
+            isRestoring = true;
+            const pm = SillyTavern.getContext().getPresetManager('openai');
+            if (!pm) return;
+            const list = pm.getPresetList();
+            const isKeyed = pm.isKeyedApi();
+            
+            // Build current presets map (name -> presetData)
+            const currentPresetsMap = new Map();
+            if (isKeyed) {
+                if (Array.isArray(list.preset_names)) {
+                    list.preset_names.forEach((name, idx) => {
+                        const presetData = list.presets[idx];
+                        if (presetData) {
+                            currentPresetsMap.set(name, presetData);
+                        }
+                    });
+                }
+            } else {
+                if (list.preset_names && typeof list.preset_names === 'object') {
+                    for (const name in list.preset_names) {
+                        const idx = list.preset_names[name];
+                        const presetData = list.presets[idx];
+                        if (presetData) {
+                            currentPresetsMap.set(name, presetData);
+                        }
+                    }
+                }
+            }
+
+            // Build snapshot presets map (name -> presetData)
+            const snapshotPresetsMap = new Map();
+            if (isKeyed) {
+                if (Array.isArray(snapshot.preset_names)) {
+                    snapshot.preset_names.forEach((name, idx) => {
+                        const presetData = snapshot.presets[idx];
+                        if (presetData) {
+                            snapshotPresetsMap.set(name, presetData);
+                        }
+                    });
+                }
+            } else {
+                if (snapshot.preset_names && typeof snapshot.preset_names === 'object') {
+                    for (const name in snapshot.preset_names) {
+                        const idx = snapshot.preset_names[name];
+                        const presetData = snapshot.presets[idx];
+                        if (presetData) {
+                            snapshotPresetsMap.set(name, presetData);
+                        }
+                    }
+                }
+            }
+
+            // Parallel sync backend
+            const syncTasks = [];
+
+            // 1. Delete presets from backend that are in current but not in snapshot
+            for (const name of currentPresetsMap.keys()) {
+                if (!snapshotPresetsMap.has(name)) {
+                    syncTasks.push((async () => {
+                        try {
+                            await pm.deletePreset(name);
+                        } catch (e) {
+                            console.error('[Zero] Failed to delete preset on undo/redo:', name, e);
+                        }
+                    })());
+                }
+            }
+
+            // 2. Save/Restore presets to backend that are in snapshot and changed
+            for (const [name, presetData] of snapshotPresetsMap.entries()) {
+                const currentData = currentPresetsMap.get(name);
+                if (!currentData || JSON.stringify(currentData) !== JSON.stringify(presetData)) {
+                    syncTasks.push((async () => {
+                        try {
+                            await pm.savePreset(name, presetData, { skipUpdate: true });
+                        } catch (e) {
+                            console.error('[Zero] Failed to save preset on undo/redo:', name, e);
+                        }
+                    })());
+                }
+            }
+
+            if (syncTasks.length > 0) {
+                await Promise.all(syncTasks);
+            }
+            
+            // Restore presets in SillyTavern in-memory lists
+            list.presets.length = 0;
+            snapshot.presets.forEach(p => list.presets.push(p));
+            
+            // Restore preset names
+            if (Array.isArray(list.preset_names)) {
+                list.preset_names.length = 0;
+                snapshot.preset_names.forEach(n => list.preset_names.push(n));
+            } else if (list.preset_names && typeof list.preset_names === 'object') {
+                for (const key in list.preset_names) {
+                    delete list.preset_names[key];
+                }
+                Object.assign(list.preset_names, snapshot.preset_names);
+            }
+            
+            // Restore active preset selection
+            const currentActiveName = pm.getSelectedPresetName();
+            if (currentActiveName !== snapshot.activePresetName) {
+                const activeVal = pm.findPreset(snapshot.activePresetName);
+                if (activeVal !== undefined && activeVal !== null) {
+                    await pm.selectPreset(activeVal);
+                }
+            } else {
+                // If active preset didn't change, trigger light-weight refresh of prompt order
+                const openai = await getOpenai();
+                const promptManager = openai?.promptManager;
+                if (promptManager && typeof promptManager.render === 'function') {
+                    if (typeof promptManager.renderDebounced === 'function') {
+                        promptManager.renderDebounced();
+                    } else {
+                        promptManager.render();
+                    }
+                }
+            }
+            
+            // Restore Zero extension settings
+            const s = getSettings();
+            for (const key in s) {
+                delete s[key];
+            }
+            Object.assign(s, JSON.parse(JSON.stringify(snapshot.zeroSettings)));
+            saveSettings();
+
+            // Restore manual links in localStorage
+            if (snapshot.manualLinks) {
+                localStorage.setItem('zero_manual_links', JSON.stringify(snapshot.manualLinks));
+            } else {
+                localStorage.removeItem('zero_manual_links');
+            }
+            
+            // Invalidate Zero caches
+            PresetManager.invalidate();
+            
+            // Force refresh native preset manager
+            if (typeof pm.render === 'function') pm.render();
+            else if (typeof pm.populate === 'function') pm.populate();
+        } catch (e) {
+            console.error('[Zero] Failed to restore state:', e);
+        } finally {
+            isRestoring = false;
+        }
+    },
+
+    updateButtonsState() {
+        const hasUndo = undoStack.length > 0;
+        const hasRedo = redoStack.length > 0;
+        
+        const $undoBtn = $('#zero-history-undo');
+        const $redoBtn = $('#zero-history-redo');
+        
+        if ($undoBtn.length) {
+            $undoBtn.prop('disabled', !hasUndo).css('opacity', hasUndo ? '1' : '0.4').css('cursor', hasUndo ? 'pointer' : 'default');
+        }
+        if ($redoBtn.length) {
+            $redoBtn.prop('disabled', !hasRedo).css('opacity', hasRedo ? '1' : '0.4').css('cursor', hasRedo ? 'pointer' : 'default');
+        }
+    }
+};
 
