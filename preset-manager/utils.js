@@ -389,7 +389,8 @@ async function saveToFavoritePreset(presetName, prompts, isNewPreset = false, or
         // 记录当前活跃的预设名称，防止自动切换
         const activeName = pm.getSelectedPresetName();
 
-        await pm.savePreset(presetName, presetData);
+        const skipUpdate = activeName !== presetName;
+        await pm.savePreset(presetName, presetData, { skipUpdate });
 
         if (isNewPreset) {
             const { presets, preset_names } = pm.getPresetList();
@@ -415,7 +416,19 @@ async function saveToFavoritePreset(presetName, prompts, isNewPreset = false, or
 
         window.dispatchEvent(new Event('zero-presets-list-changed'));
 
-        refreshNativePresetManager(pm);
+        if (activeName === presetName) {
+            refreshNativePresetManager(pm);
+        }
+
+        if (isNewPreset) {
+            try {
+                const { addPresetToCache } = await import('./main.js');
+                addPresetToCache(presetName);
+            } catch (e) {
+                console.warn('[Zero] Failed to add preset to cache:', e);
+            }
+        }
+
         const { populatePresetSelects } = await import('./main.js');
         await populatePresetSelects();
     } catch (e) {

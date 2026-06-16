@@ -2,7 +2,7 @@
  * Zero Preset Manager - UI
  * Performance-optimized v2: innerHTML templates, event delegation, lazy rendering.
  */
-import { PresetManager, SnapshotManager, GroupManager, HiddenManager, UiStateManager, LinkageManager, zeroTranslate, HistoryManager } from './state.js';
+import { PresetManager, SnapshotManager, GroupManager, HiddenManager, UiStateManager, LinkageManager, zeroTranslate, HistoryManager, ModelProfileManager, SamplingParamsHelper } from './state.js';
 
 let overlay = null;
 let pendingToggles = new Map();
@@ -1185,6 +1185,19 @@ function showGroupManager(panel, preset, modal) {
             row.appendChild(h('div', { class: 'zero-group-mgr-name', text: g.name }));
             const actions = h('div', { class: 'zero-group-mgr-actions' });
             const isSingle = g.single || false;
+            const isJailbreak = g.type === 'jailbreak';
+            // Jailbreak type toggle
+            actions.appendChild(h('button', {
+                class: 'zero-icon-btn' + (isJailbreak ? ' zero-group-jailbreak-active' : ''),
+                title: isJailbreak ? '破限分组 (点击切换为普通)' : '普通分组 (点击切换为破限)',
+                style: isJailbreak ? 'color: #e88c6e; opacity: 1;' : 'opacity: 0.4;',
+                html: '<i class="fa-solid fa-shield-halved"></i>',
+                onclick: (e) => {
+                    e.stopPropagation();
+                    GroupManager.setType(pName, g.id, isJailbreak ? 'normal' : 'jailbreak');
+                    renderList();
+                }
+            }));
             actions.appendChild(h('button', {
                 class: 'zero-icon-btn' + (isSingle ? ' zero-group-single-active' : ''),
                 title: isSingle ? '单选分组 (点击切换为普通)' : '普通分组 (点击切换为单选)',
@@ -1311,6 +1324,18 @@ function showGroupManager(panel, preset, modal) {
 // ═══════════════════════════════════════
 function renderSnapshots(panel, preset, modal, viewMode = 'local') {
     panel.innerHTML = '';
+    // Sub-tab bar: 快照 | 方案
+    const subTabBar = h('div', { class: 'zero-sub-tabs', style: 'display:flex; gap:6px; margin-bottom:12px;' },
+        h('button', { class: 'zero-chip' + (viewMode !== 'profiles' ? ' active' : ''), text: '快照', onclick: () => renderSnapshots(panel, preset, modal, viewMode !== 'profiles' ? viewMode : 'local') }),
+        h('button', { class: 'zero-chip' + (viewMode === 'profiles' ? ' active' : ''), text: '模型方案', onclick: () => renderSnapshots(panel, preset, modal, 'profiles') })
+    );
+    panel.appendChild(subTabBar);
+
+    if (viewMode === 'profiles') {
+        renderModelProfiles(panel, preset, modal);
+        return;
+    }
+
     const headerRow = h('div', { class: 'zero-filters', style: 'margin-bottom: 12px; justify-content: space-between;' },
         h('div', { style: 'display: flex; gap: 6px;' },
             h('button', { class: 'zero-chip ' + (viewMode === 'local' ? 'active' : ''), text: '当前预设', onclick: () => renderSnapshots(panel, preset, modal, 'local') }),
@@ -1433,6 +1458,263 @@ function renderSnapshotDiff(container, snap, preset) {
         return `<div class="${cls}"><span class="zero-diff-name">${esc(d.name)}</span><div>${statusHTML}</div></div>`;
     }).join('');
     container.innerHTML = html;
+}
+
+// ═══════════════════════════════════════
+//  Model Profiles UI
+// ═══════════════════════════════════════
+function renderModelProfiles(panel, preset, modal) {
+    const pName = preset.name;
+    const jbGroups = GroupManager.getJailbreakGroups(pName);
+
+    const headerRow = h('div', { class: 'zero-filters', style: 'margin-bottom: 12px; justify-content: space-between;' },
+        jbGroups.length === 0
+            ? h('span', { style: 'font-size:12px; color:var(--SmartThemeEmColor)', text: '请先在「分组管理」中将分组标记为破限类型' })
+            : h('span', { style: 'font-size:12px; color:var(--SmartThemeEmColor)', text: `${jbGroups.length} 个破限分组` }),
+        h('button', { class: 'zero-btn primary', html: '<i class="fa-solid fa-plus"></i> 新建方案', onclick: () => {
+            showCreateProfileDialog(panel, preset, modal, null);
+        }})
+    );
+    panel.appendChild(headerRow);
+
+    const profiles = ModelProfileManager.list(pName);
+    if (profiles.length === 0) {
+        panel.appendChild(h('div', { class: 'zero-empty', text: '暂无模型方案，点击右上方按钮创建' }));
+        return;
+    }
+    const frag = document.createDocumentFragment();
+    profiles.forEach(profile => frag.appendChild(buildProfileCard(profile, preset, panel, modal)));
+    panel.appendChild(frag);
+}
+
+function buildProfileCard(profile, preset, panel, modal) {
+    const pName = preset.name;
+    const card = h('div', { class: 'zero-snap' });
+
+    // Header matches snapshot style
+    const cardHeader = h('div', { class: 'zero-snap-header' },
+        h('span', { class: 'zero-snap-name', text: profile.name }),
+        h('span', { class: 'zero-snap-meta', text: `${profile.presetName} · ${formatDate(profile.ts)}` })
+    );
+    const body = h('div', { class: 'zero-snap-body' });
+    let expanded = false;
+    cardHeader.addEventListener('click', () => {
+        expanded = !expanded;
+        body.classList.toggle('expanded', expanded);
+        if (expanded) {
+            body.innerHTML = '';
+            renderProfileDetail(body, profile, preset);
+        }
+    });
+
+    // Action buttons
+    const btnRow = h('div', { class: 'zero-snap-actions' },
+        h('button', { class: 'zero-btn', html: '<i class="fa-solid fa-check"></i> 应用', onclick: async () => {
+            try {
+                await ModelProfileManager.apply(profile, preset);
+                const p = await PresetManager.load();
+                renderSnapshots(panel, p || preset, modal, 'profiles');
+                toastr.success(`已应用方案「${profile.name}」`);
+            } catch (e) { toastr.error('应用失败'); console.error(e); }
+        }}),
+        h('button', { class: 'zero-btn', html: '<i class="fa-solid fa-pen"></i> 重命名', onclick: () => {
+            showPrompt(modal, '新名称', profile.name, n => {
+                ModelProfileManager.rename(pName, profile.id, n);
+                renderSnapshots(panel, preset, modal, 'profiles');
+            });
+        }}),
+        h('button', { class: 'zero-btn', html: '<i class="fa-solid fa-sync"></i> 覆盖', onclick: () => {
+            showCreateProfileDialog(panel, preset, modal, profile);
+        }}),
+        h('button', { class: 'zero-btn', html: '<i class="fa-solid fa-trash"></i> 删除', onclick: () => {
+            showConfirm(modal, `删除方案「${profile.name}」?`, () => {
+                ModelProfileManager.delete(pName, profile.id);
+                renderSnapshots(panel, preset, modal, 'profiles');
+            });
+        }})
+    );
+
+    card.appendChild(cardHeader);
+    card.appendChild(btnRow);
+    card.appendChild(body);
+    return card;
+}
+
+function renderProfileDetail(container, profile, preset) {
+    const pName = preset.name;
+    // Render active group tags inside expanded body
+    const activeGids = profile.selectedGroupIds || [];
+    if (activeGids.length > 0) {
+        const tagsContainer = h('div', { style: 'margin-bottom: 12px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center;' });
+        tagsContainer.appendChild(h('span', { style: 'font-size: 11px; color: var(--SmartThemeEmColor, #999); font-weight: bold; margin-right: 4px;', text: '激活分组:' }));
+        activeGids.forEach(gid => {
+            const g = GroupManager.get(pName).find(x => x.id === gid);
+            if (g) {
+                tagsContainer.appendChild(h('span', { class: 'zero-profile-tag', text: g.name }));
+            }
+        });
+        container.appendChild(tagsContainer);
+    }
+
+    // Two-column layout for parameters
+    const columns = h('div', { class: 'zero-profile-detail-columns', style: 'display: flex; gap: 16px;' });
+    const leftCol = h('div', { class: 'zero-profile-detail-col', style: 'flex: 1; min-width: 0;' });
+    const rightCol = h('div', { class: 'zero-profile-detail-col', style: 'flex: 1; min-width: 0;' });
+    columns.appendChild(leftCol);
+    columns.appendChild(rightCol);
+    container.appendChild(columns);
+
+    // Sampling params (Left column)
+    const sp = profile.samplingParams || {};
+    const labels = {
+        temp_openai: '温度', top_p_openai: 'Top P', top_k_openai: 'Top K',
+        min_p_openai: 'Min P', top_a_openai: 'Top A',
+        repetition_penalty_openai: '重复惩罚', freq_pen_openai: '频率惩罚', pres_pen_openai: '存在惩罚'
+    };
+    const rows = Object.entries(sp).filter(([, v]) => v !== undefined && v !== null);
+    if (rows.length > 0) {
+        const table = h('div', { class: 'zero-profile-detail-section' });
+        table.appendChild(h('div', { class: 'zero-profile-detail-title', text: '采样参数' }));
+        rows.forEach(([k, v]) => {
+            table.appendChild(h('div', { class: 'zero-profile-detail-row' },
+                h('span', { class: 'zero-profile-detail-key', text: labels[k] || k }),
+                h('span', { class: 'zero-profile-detail-val', text: String(v) })
+            ));
+        });
+        leftCol.appendChild(table);
+    }
+
+    // Additional params (Right column)
+    const ap = profile.additionalParams || {};
+    const apEntries = Object.entries(ap).filter(([, v]) => v && String(v).trim());
+    if (apEntries.length > 0) {
+        const apLabels = { custom_include_body: '包括主体', custom_exclude_body: '排除主体', custom_include_headers: '请求标头' };
+        const sec = h('div', { class: 'zero-profile-detail-section' });
+        sec.appendChild(h('div', { class: 'zero-profile-detail-title', text: '附加参数' }));
+        apEntries.forEach(([k, v]) => {
+            sec.appendChild(h('div', { class: 'zero-profile-detail-row', style: 'align-items:flex-start' },
+                h('span', { class: 'zero-profile-detail-key', text: apLabels[k] || k }),
+                h('span', { class: 'zero-profile-detail-val', style: 'white-space:pre-wrap; word-break:break-all', text: v })
+            ));
+        });
+        rightCol.appendChild(sec);
+    }
+}
+
+/**
+ * Create/overwrite profile dialog.
+ * If existingProfile is provided, we are overwriting it.
+ */
+async function showCreateProfileDialog(panel, preset, modal, existingProfile) {
+    const pName = preset.name;
+    const jbGroups = GroupManager.getJailbreakGroups(pName);
+
+    if (jbGroups.length === 0) {
+        toastr.info('请先在「分组管理」中将至少一个分组标记为破限类型');
+        return;
+    }
+
+    // Read current sampling params
+    const currentParams = await SamplingParamsHelper.read();
+    const sp = currentParams?.sampling || {};
+    const ap = currentParams?.additional || {};
+
+    const isOverwrite = !!existingProfile;
+    const dialogTitle = isOverwrite ? `覆盖方案「${existingProfile.name}」` : '新建模型方案';
+
+    const box = h('div', { class: 'zero-confirm' });
+    const content = h('div', { class: 'zero-confirm-box zero-profile-dialog' });
+    content.appendChild(h('div', { class: 'zero-confirm-msg', text: dialogTitle }));
+
+    // Name input (only for new)
+    let nameInput = null;
+    if (!isOverwrite) {
+        nameInput = h('input', { class: 'zero-input', type: 'text', value: `方案 ${formatDate(Date.now())}`, style: 'width:100%; margin-bottom:12px;' });
+        content.appendChild(nameInput);
+    }
+
+    // Group selection
+    content.appendChild(h('div', { class: 'zero-profile-section-title', text: '激活的破限分组（未选中的分组将全部关闭）' }));
+    const groupChecks = new Map(); // gid -> checkbox el
+    const groupList = h('div', { class: 'zero-profile-group-list' });
+    const preSelected = new Set(existingProfile?.selectedGroupIds || jbGroups.map(g => g.id));
+    jbGroups.forEach(g => {
+        const cb = h('input', { type: 'checkbox' });
+        cb.checked = preSelected.has(g.id);
+        groupChecks.set(g.id, cb);
+        const row = h('label', { class: 'zero-profile-group-row' }, cb, h('span', { text: ` ${g.name}` }));
+        groupList.appendChild(row);
+    });
+    content.appendChild(groupList);
+
+    // Sampling params display (read-only from current ST values)
+    content.appendChild(h('div', { class: 'zero-profile-section-title', style: 'margin-top:12px', text: '采样参数（读取当前值）' }));
+    const spLabels = {
+        temp_openai: '温度', top_p_openai: 'Top P', top_k_openai: 'Top K',
+        min_p_openai: 'Min P', top_a_openai: 'Top A',
+        repetition_penalty_openai: '重复惩罚', freq_pen_openai: '频率惩罚', pres_pen_openai: '存在惩罚'
+    };
+    const spGrid = h('div', { class: 'zero-profile-sp-grid' });
+    Object.entries(spLabels).forEach(([k, label]) => {
+        spGrid.appendChild(h('div', { class: 'zero-profile-sp-item' },
+            h('span', { class: 'zero-profile-sp-label', text: label }),
+            h('span', { class: 'zero-profile-sp-val', text: String(sp[k] ?? '—') })
+        ));
+    });
+    content.appendChild(spGrid);
+
+    // Additional params display
+    const hasAdditional = Object.values(ap).some(v => v && String(v).trim());
+    if (hasAdditional) {
+        content.appendChild(h('div', { class: 'zero-profile-section-title', style: 'margin-top:8px', text: '附加参数（读取当前值）' }));
+        const apLabels = { custom_include_body: '包括主体', custom_exclude_body: '排除主体', custom_include_headers: '请求标头' };
+        Object.entries(ap).filter(([, v]) => v && String(v).trim()).forEach(([k, v]) => {
+            content.appendChild(h('div', { class: 'zero-profile-detail-row', style: 'font-size:11px; padding: 2px 0;' },
+                h('span', { class: 'zero-profile-detail-key', text: apLabels[k] || k }),
+                h('span', { class: 'zero-profile-detail-val', style: 'max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap', text: v })
+            ));
+        });
+    }
+
+    // Confirm buttons
+    content.appendChild(h('div', { class: 'zero-confirm-btns', style: 'margin-top:16px' },
+        h('button', { class: 'zero-btn', text: '取消', onclick: () => box.remove() }),
+        h('button', { class: 'zero-btn primary', text: isOverwrite ? '覆盖保存' : '创建', onclick: async () => {
+            const selectedGroupIds = jbGroups.filter(g => groupChecks.get(g.id)?.checked).map(g => g.id);
+
+            // Capture per-group entry states for selected groups
+            const groupEntryStates = {};
+            selectedGroupIds.forEach(gid => {
+                const g = jbGroups.find(x => x.id === gid);
+                if (g) {
+                    groupEntryStates[gid] = g.ids.map(id => {
+                        const p = preset.prompts.find(x => x.identifier === id);
+                        return { id, e: p ? p.enabled : false };
+                    });
+                }
+            });
+
+            const freshParams = await SamplingParamsHelper.read();
+            const finalSp = freshParams?.sampling || {};
+            const finalAp = freshParams?.additional || {};
+
+            if (isOverwrite) {
+                ModelProfileManager.overwrite(pName, existingProfile.id, selectedGroupIds, groupEntryStates, finalSp, finalAp);
+                toastr.success(`方案「${existingProfile.name}」已覆盖`);
+            } else {
+                const name = nameInput?.value?.trim();
+                if (!name) { toastr.error('请输入方案名称'); return; }
+                ModelProfileManager.create(pName, name, selectedGroupIds, groupEntryStates, finalSp, finalAp);
+                toastr.success(`方案「${name}」已创建`);
+            }
+            box.remove();
+            renderSnapshots(panel, preset, modal, 'profiles');
+        }})
+    ));
+
+    box.appendChild(content);
+    modal.appendChild(box);
+    if (nameInput) setTimeout(() => nameInput.focus(), 50);
 }
 
 // ═══════════════════════════════════════

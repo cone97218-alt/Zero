@@ -369,7 +369,7 @@ export async function openQuickEditor(presetName, itemName) {
             content: $('#quick-edit-content').val()
         };
         const { showCollectModal } = await import('./utils.js');
-        await showCollectModal(currentItem);
+        await showCollectModal(currentItem, presetName);
     });
 
     // --- Save Handler ---

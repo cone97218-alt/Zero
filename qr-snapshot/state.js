@@ -236,6 +236,8 @@ export const PresetManager = {
                 }
             });
         }
+        // Rename model profiles as well
+        ModelProfileManager.renameSettings(oldName, newName);
         saveSettings();
     },
 
@@ -421,6 +423,18 @@ export const GroupManager = {
         if (g) { g.single = isSingle; this._save(presetName, groups); }
     },
 
+    /** Set group type: 'normal' | 'jailbreak' */
+    setType(presetName, gid, type) {
+        const groups = this.get(presetName);
+        const g = groups.find(x => x.id === gid);
+        if (g) { g.type = type; this._save(presetName, groups); }
+    },
+
+    /** Returns all jailbreak-type groups for a preset */
+    getJailbreakGroups(presetName) {
+        return this.get(presetName).filter(g => g.type === 'jailbreak');
+    },
+
     /** Reorder groups by array of group ids */
     reorder(presetName, orderedIds) {
         HistoryManager.record();
@@ -496,6 +510,182 @@ export const LinkageManager = {
         HistoryManager.record();
         const list = this.get(presetName).filter(l => !(l.source === source && l.target === target));
         this._save(presetName, list);
+    }
+};
+
+// ═══════════════════════════════════════
+//  Sampling Params Helper
+// ═══════════════════════════════════════
+const SAMPLING_KEYS = [
+    'temp_openai', 'top_p_openai', 'top_k_openai', 'min_p_openai', 'top_a_openai',
+    'repetition_penalty_openai', 'freq_pen_openai', 'pres_pen_openai'
+];
+const ADDITIONAL_KEYS = ['custom_include_body', 'custom_exclude_body', 'custom_include_headers'];
+
+export const SamplingParamsHelper = {
+    /** Read current values from oai_settings via the openai module */
+    async read() {
+        const openai = await getOpenai();
+        const s = openai.oai_settings;
+        if (!s) return null;
+        const sampling = {};
+        SAMPLING_KEYS.forEach(k => { sampling[k] = s[k]; });
+        const additional = {};
+        ADDITIONAL_KEYS.forEach(k => { additional[k] = s[k] ?? ''; });
+        return { sampling, additional };
+    },
+
+    /** Write values back: update DOM inputs and dispatch change events */
+    async apply(sampling, additional) {
+        const openai = await getOpenai();
+        const s = openai.oai_settings;
+        if (!s) return;
+
+        // Mapping from oai_settings key to DOM element id
+        const domMap = {
+            temp_openai: 'temp_openai',
+            top_p_openai: 'top_p_openai',
+            top_k_openai: 'top_k_openai',
+            min_p_openai: 'min_p_openai',
+            top_a_openai: 'top_a_openai',
+            repetition_penalty_openai: 'repetition_penalty_openai',
+            freq_pen_openai: 'freq_pen_openai',
+            pres_pen_openai: 'pres_pen_openai',
+            custom_include_body: 'custom_include_body',
+            custom_exclude_body: 'custom_exclude_body',
+            custom_include_headers: 'custom_include_headers',
+        };
+
+        const allParams = Object.assign({}, sampling || {}, additional || {});
+        for (const [key, val] of Object.entries(allParams)) {
+            if (val === undefined || val === null) continue;
+            s[key] = val;
+            // Try to update DOM element
+            const elId = domMap[key];
+            if (elId) {
+                const el = document.getElementById(elId);
+                if (el) {
+                    el.value = val;
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            }
+        }
+        SillyTavern.getContext().saveSettingsDebounced();
+    }
+};
+
+// ═══════════════════════════════════════
+//  Model Profile Manager
+// ═══════════════════════════════════════
+export const ModelProfileManager = {
+    _key(presetName) { return presetName; },
+
+    list(presetName) {
+        const s = getSettings();
+        if (!s.modelProfiles) s.modelProfiles = {};
+        return s.modelProfiles[this._key(presetName)] || [];
+    },
+
+    _save(presetName, profiles) {
+        const s = getSettings();
+        if (!s.modelProfiles) s.modelProfiles = {};
+        s.modelProfiles[this._key(presetName)] = profiles;
+        saveSettings();
+    },
+
+    /**
+     * Create a new model profile.
+     * @param {string} presetName
+     * @param {string} name - Profile display name
+     * @param {string[]} selectedGroupIds - Jailbreak group IDs to be activated by this profile
+     * @param {object} groupEntryStates - Map of { groupId: [{id, e}] } — current entry states per group
+     * @param {object} samplingParams - { temp_openai, top_p_openai, ... }
+     * @param {object} additionalParams - { custom_include_body, custom_exclude_body, custom_include_headers }
+     */
+    create(presetName, name, selectedGroupIds, groupEntryStates, samplingParams, additionalParams) {
+        const profiles = this.list(presetName);
+        const profile = {
+            id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+            name,
+            presetName,
+            ts: Date.now(),
+            selectedGroupIds,       // string[] — which jailbreak groups are ON
+            groupEntryStates,       // { [gid]: [{id, e}] } — per-group entry states
+            samplingParams,
+            additionalParams
+        };
+        profiles.unshift(profile);
+        this._save(presetName, profiles);
+        return profile;
+    },
+
+    delete(presetName, id) {
+        this._save(presetName, this.list(presetName).filter(p => p.id !== id));
+    },
+
+    rename(presetName, id, newName) {
+        const profiles = this.list(presetName);
+        const p = profiles.find(x => x.id === id);
+        if (p) { p.name = newName; this._save(presetName, profiles); }
+    },
+
+    overwrite(presetName, id, selectedGroupIds, groupEntryStates, samplingParams, additionalParams) {
+        const profiles = this.list(presetName);
+        const p = profiles.find(x => x.id === id);
+        if (p) {
+            p.ts = Date.now();
+            p.selectedGroupIds = selectedGroupIds;
+            p.groupEntryStates = groupEntryStates;
+            p.samplingParams = samplingParams;
+            p.additionalParams = additionalParams;
+            this._save(presetName, profiles);
+        }
+    },
+
+    /**
+     * Apply a profile:
+     * 1. Force-OFF all entries in unselected jailbreak groups
+     * 2. Restore entry states for selected jailbreak groups (selected group wins on conflict)
+     * 3. Apply sampling + additional params
+     */
+    async apply(profile, preset) {
+        const allJbGroups = GroupManager.getJailbreakGroups(profile.presetName);
+        const selectedSet = new Set(profile.selectedGroupIds || []);
+        const toggleMap = new Map();
+
+        // Step 1: turn OFF all entries in unselected jailbreak groups
+        allJbGroups.forEach(g => {
+            if (!selectedSet.has(g.id)) {
+                g.ids.forEach(id => toggleMap.set(id, false));
+            }
+        });
+
+        // Step 2: apply selected group entry states (overrides any conflicts)
+        const states = profile.groupEntryStates || {};
+        selectedSet.forEach(gid => {
+            const entries = states[gid] || [];
+            entries.forEach(e => toggleMap.set(e.id, e.e));
+        });
+
+        if (toggleMap.size > 0) {
+            await PresetManager.batchToggleMap(toggleMap);
+        }
+
+        // Step 3: apply sampling & additional params
+        await SamplingParamsHelper.apply(profile.samplingParams, profile.additionalParams);
+    },
+
+    /** Rename profile references if preset is renamed */
+    renameSettings(oldName, newName) {
+        const s = getSettings();
+        if (!s.modelProfiles) return;
+        if (s.modelProfiles[oldName]) {
+            s.modelProfiles[newName] = s.modelProfiles[oldName];
+            delete s.modelProfiles[oldName];
+            s.modelProfiles[newName].forEach(p => { p.presetName = newName; });
+        }
+        saveSettings();
     }
 };
 

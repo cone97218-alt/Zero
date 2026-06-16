@@ -27,6 +27,15 @@ window.addEventListener('zero-presets-list-changed', () => { _presetsLastFetch =
 /** 供外部模块主动失效缓存（如批量导入/删除后） */
 export function invalidatePresetsCache() { _presetsLastFetch = 0; }
 
+export function addPresetToCache(presetName) {
+    if (_presetsListCache && Array.isArray(_presetsListCache.names)) {
+        if (!_presetsListCache.names.includes(presetName)) {
+            _presetsListCache.names.push(presetName);
+            _presetsListCache.names.sort();
+        }
+    }
+}
+
 async function loadModules() {
     if (_modulesLoaded) return;
     [_contrast, _stitch, _manage, _checker, _editor] = await Promise.all([
