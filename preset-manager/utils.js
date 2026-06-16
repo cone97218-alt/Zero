@@ -295,9 +295,8 @@ export async function showCollectModal(promptOrPrompts, originPreset = '') {
                 return;
             }
 
-            const note = getNote();
-            await saveToFavoritePreset(presetName, prompts, true, originPreset, note);
-            closeModal();
+            await saveToFavoritePreset(presetName, [], true);
+            showCollectModal(prompts, originPreset);
         });
 
     } catch (e) {

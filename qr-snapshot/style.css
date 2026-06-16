@@ -915,4 +915,53 @@
         flex: none !important;
         height: 280px !important;
     }
+
+    /* --- Mobile Input Focus & Jitter Bugfix --- */
+    /* 1. Prevent iOS Auto-Zoom (which causes viewport shifts & layout loops) */
+    .zero-input,
+    .zero-quick-textarea,
+    #zero-quick-editor input,
+    #zero-quick-editor textarea,
+    #zero-collect-modal input,
+    #zero-collect-modal textarea,
+    [id*="zero-"] input,
+    [id*="zero-"] textarea {
+        font-size: 16px !important;
+    }
+
+    /* 2. Disable heavy/buggy backdrop-filter on mobile (major cause of typing flicker) */
+    #zero-preset-manager-panel,
+    #zero-quick-editor,
+    #zero-collect-modal,
+    .zero-overlay,
+    .zero-modal,
+    [id*="zero-"],
+    [class*="zero-"] {
+        -webkit-backdrop-filter: none !important;
+        backdrop-filter: none !important;
+    }
+
+    /* 3. Avoid vh-resizing height conflicts during keyboard popups */
+    #zero-preset-manager-panel,
+    #zero-quick-editor,
+    #zero-collect-modal,
+    .zero-overlay {
+        top: 0 !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        width: 100% !important;
+        height: auto !important;
+    }
+
+    /* 4. Force hardware acceleration to stabilize rendering */
+    .zero-overlay,
+    #zero-quick-editor,
+    #zero-collect-modal,
+    .zero-modal {
+        -webkit-transform: translate3d(0, 0, 0);
+        transform: translate3d(0, 0, 0);
+        -webkit-backface-visibility: hidden;
+        backface-visibility: hidden;
+    }
 }
