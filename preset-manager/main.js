@@ -202,9 +202,27 @@ function ensurePanel() {
                         <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
                             <span style="font-size: 12px; opacity: 0.7; width: 80px; flex-shrink: 0;">目标预设 (B):</span>
                             <select id="stitch-preset-target" class="interactable" style="flex: 1; min-width: 0; padding: 4px; background: var(--SmartThemeChatTintColor); color: inherit; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px;"></select>
-                            <button id="stitch-mode-toggle" class="interactable" title="切换批量模式" style="width: 28px; height: 28px; padding: 0; background: rgba(255,255,255,0.05); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; color: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                            <button id="stitch-mode-toggle" class="interactable" title="切换批量模式" style="width: 28px; height: 28px; padding: 0; background: rgba(255,255,255,0.05); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; color: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-right: 4px;">
                                 <i class="fa-solid fa-layer-group"></i>
                             </button>
+                            <button id="stitch-search-toggle" class="interactable" title="展开/折叠搜索" style="width: 28px; height: 28px; padding: 0; background: rgba(255,255,255,0.05); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; color: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                                <i class="fa-solid fa-magnifying-glass"></i>
+                            </button>
+                        </div>
+                        <div id="stitch-search-container" style="display: none; flex-direction: column; gap: 6px; margin-top: 4px; padding: 6px 0; background: none; box-shadow: none;">
+                            <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+                                <span style="font-size: 11px; opacity: 0.7; width: 60px; flex-shrink: 0;">搜索条目:</span>
+                                <div style="position: relative; flex: 1; display: flex; align-items: center;">
+                                    <input type="text" id="stitch-search-input" class="interactable" placeholder="输入关键字搜索..." style="width: 100%; padding: 4px 24px 4px 8px; background: var(--SmartThemeChatTintColor); color: inherit; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; font-size: 12px;">
+                                    <i id="stitch-search-clear" class="fa-solid fa-circle-xmark interactable" title="清空搜索" style="position: absolute; right: 8px; cursor: pointer; opacity: 0.5; display: none; font-size: 12px;"></i>
+                                </div>
+                            </div>
+                            <div id="stitch-search-filters" style="display: flex; gap: 6px; align-items: center; padding-left: 68px;">
+                                <span class="stitch-search-filter-badge interactable active" data-filter="name" style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background: var(--SmartThemeQuoteColor); color: white; cursor: pointer; user-select: none; transition: all 0.15s ease;">名称</span>
+                                <span class="stitch-search-filter-badge interactable active" data-filter="content" style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background: var(--SmartThemeQuoteColor); color: white; cursor: pointer; user-select: none; transition: all 0.15s ease;">内容</span>
+                                <span class="stitch-search-filter-badge interactable active" data-filter="note" style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background: var(--SmartThemeQuoteColor); color: white; cursor: pointer; user-select: none; transition: all 0.15s ease;">备注</span>
+                                <span class="stitch-search-filter-badge interactable active" data-filter="origin" style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background: var(--SmartThemeQuoteColor); color: white; cursor: pointer; user-select: none; transition: all 0.15s ease;">来源</span>
+                            </div>
                         </div>
                     </div>
                     <div id="stitch-controls" style="display: none; align-items: center; gap: 6px; padding: 4px; background: rgba(255,255,255,0.03); border-radius: 8px; margin-top: 4px; flex-shrink: 0;">
@@ -269,8 +287,13 @@ function ensurePanel() {
                             <div style="font-weight: bold; font-size: 13px; display: flex; align-items: center; gap: 6px;">
                                 <i class="fa-solid fa-eye"></i> 目标预设 (B)
                             </div>
-                            <div id="stitch-peek-toggle-icon" style="font-size: 12px; opacity: 0.8;">
-                                <i class="fa-solid fa-chevron-up"></i>
+                             <div style="display: flex; align-items: center; gap: 8px;">
+                                <button id="stitch-peek-search-toggle" class="interactable" title="展开/折叠搜索" style="width: 24px; height: 24px; padding: 0; background: rgba(255,255,255,0.05); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; color: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 11px; margin-right: 4px;">
+                                    <i class="fa-solid fa-magnifying-glass"></i>
+                                </button>
+                                <div id="stitch-peek-toggle-icon" style="font-size: 12px; opacity: 0.8;">
+                                    <i class="fa-solid fa-chevron-up"></i>
+                                </div>
                             </div>
                         </div>
                         <div id="stitch-peek-body" style="
@@ -281,6 +304,21 @@ function ensurePanel() {
                             overflow-y: auto;
                             flex: 1;
                         ">
+                            <div id="stitch-peek-search-container" style="display: none; flex-direction: column; gap: 6px; margin-bottom: 8px; flex-shrink: 0; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 8px;">
+                                <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+                                    <span style="font-size: 11px; opacity: 0.7; width: 60px; flex-shrink: 0;">搜索条目:</span>
+                                    <div style="position: relative; flex: 1; display: flex; align-items: center;">
+                                        <input type="text" id="stitch-peek-search-input" class="interactable" placeholder="输入关键字搜索..." style="width: 100%; padding: 4px 24px 4px 8px; background: var(--SmartThemeChatTintColor); color: inherit; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; font-size: 12px;">
+                                        <i id="stitch-peek-search-clear" class="fa-solid fa-circle-xmark interactable" title="清空搜索" style="position: absolute; right: 8px; cursor: pointer; opacity: 0.5; display: none; font-size: 12px;"></i>
+                                    </div>
+                                </div>
+                                <div id="stitch-peek-search-filters" style="display: flex; gap: 6px; align-items: center; padding-left: 68px;">
+                                    <span class="stitch-peek-search-filter-badge interactable active" data-filter="name" style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background: var(--SmartThemeQuoteColor); color: white; cursor: pointer; user-select: none; transition: all 0.15s ease;">名称</span>
+                                    <span class="stitch-peek-search-filter-badge interactable active" data-filter="content" style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background: var(--SmartThemeQuoteColor); color: white; cursor: pointer; user-select: none; transition: all 0.15s ease;">内容</span>
+                                    <span class="stitch-peek-search-filter-badge interactable active" data-filter="note" style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background: var(--SmartThemeQuoteColor); color: white; cursor: pointer; user-select: none; transition: all 0.15s ease;">备注</span>
+                                    <span class="stitch-peek-search-filter-badge interactable active" data-filter="origin" style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background: var(--SmartThemeQuoteColor); color: white; cursor: pointer; user-select: none; transition: all 0.15s ease;">来源</span>
+                                </div>
+                            </div>
                             <div id="stitch-peek-list" style="display: flex; flex-direction: column; gap: 6px;"></div>
                         </div>
                     </div>
@@ -398,7 +436,13 @@ function ensurePanel() {
         else if (tab === 'contrast') populatePresetSelects().then(() => {
             if (_contrast && typeof _contrast.restoreScroll === 'function') _contrast.restoreScroll();
         });
-        else if (tab === 'stitch') populatePresetSelects().then(() => _stitch.renderStitchList()).then(() => {
+        else if (tab === 'stitch') populatePresetSelects().then(() => {
+            $('#stitch-search-input').val('');
+            $('#stitch-search-clear').hide();
+            $('#stitch-peek-search-input').val('');
+            $('#stitch-peek-search-clear').hide();
+            return _stitch.renderStitchList();
+        }).then(() => {
             if (_stitch && typeof _stitch.restorePeekScroll === 'function') _stitch.restorePeekScroll();
         });
         else if (tab === 'check') populatePresetSelects().then(() => {
@@ -455,12 +499,113 @@ function ensurePanel() {
     });
 
     $('#stitch-preset-source').on('change', function() {
+        $('#stitch-search-input').val('');
+        $('#stitch-search-clear').hide();
+        $('#stitch-peek-search-input').val('');
+        $('#stitch-peek-search-clear').hide();
         localStorage.setItem('zero_last_stitch_a', $(this).val());
         _stitch.renderStitchList();
     });
     $('#stitch-preset-target').on('change', function() {
+        $('#stitch-search-input').val('');
+        $('#stitch-search-clear').hide();
+        $('#stitch-peek-search-input').val('');
+        $('#stitch-peek-search-clear').hide();
         localStorage.setItem('zero_last_stitch_b', $(this).val());
         _stitch.renderStitchList();
+    });
+
+    let searchTimeout = null;
+    $('body').off('input', '#stitch-search-input').on('input', '#stitch-search-input', function() {
+        const query = $(this).val().trim();
+        if (query) {
+            $('#stitch-search-clear').show();
+        } else {
+            $('#stitch-search-clear').hide();
+        }
+        
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => {
+            _stitch.renderStitchList(false);
+        }, 1000); // 1s delay to adapt to low-performance devices
+    });
+
+    $('body').off('click', '#stitch-search-clear').on('click', '#stitch-search-clear', function() {
+        $('#stitch-search-input').val('');
+        $('#stitch-search-clear').hide();
+        clearTimeout(searchTimeout);
+        _stitch.renderStitchList(false);
+    });
+
+    $('body').off('click', '#stitch-search-toggle').on('click', '#stitch-search-toggle', function() {
+        const $container = $('#stitch-search-container');
+        const isCollapsed = $container.css('display') === 'none';
+        if (isCollapsed) {
+            $container.css('display', 'flex');
+            $(this).css('background', 'var(--SmartThemeQuoteColor)').css('color', 'white');
+            $('#stitch-search-input').focus();
+        } else {
+            $container.css('display', 'none');
+            $(this).css('background', 'rgba(255,255,255,0.05)').css('color', 'inherit');
+        }
+    });
+
+    $('body').off('click', '.stitch-search-filter-badge').on('click', '.stitch-search-filter-badge', function() {
+        $(this).toggleClass('active');
+        if ($(this).hasClass('active')) {
+            $(this).css('background', 'var(--SmartThemeQuoteColor)').css('color', 'white').css('opacity', '1');
+        } else {
+            $(this).css('background', 'rgba(255,255,255,0.08)').css('color', 'inherit').css('opacity', '0.5');
+        }
+        clearTimeout(searchTimeout);
+        _stitch.renderStitchList(false);
+    });
+
+    let peekSearchTimeout = null;
+    $('body').off('input', '#stitch-peek-search-input').on('input', '#stitch-peek-search-input', function() {
+        const query = $(this).val().trim();
+        if (query) {
+            $('#stitch-peek-search-clear').show();
+        } else {
+            $('#stitch-peek-search-clear').hide();
+        }
+        
+        clearTimeout(peekSearchTimeout);
+        peekSearchTimeout = setTimeout(() => {
+            _stitch.renderTargetBPeek();
+        }, 1000); // 1s delay to adapt to low-performance devices
+    });
+
+    $('body').off('click', '#stitch-peek-search-clear').on('click', '#stitch-peek-search-clear', function() {
+        $('#stitch-peek-search-input').val('');
+        $('#stitch-peek-search-clear').hide();
+        clearTimeout(peekSearchTimeout);
+        _stitch.renderTargetBPeek();
+    });
+
+    $('body').off('click', '.stitch-peek-search-filter-badge').on('click', '.stitch-peek-search-filter-badge', function() {
+        $(this).toggleClass('active');
+        if ($(this).hasClass('active')) {
+            $(this).css('background', 'var(--SmartThemeQuoteColor)').css('color', 'white').css('opacity', '1');
+        } else {
+            $(this).css('background', 'rgba(255,255,255,0.08)').css('color', 'inherit').css('opacity', '0.5');
+        }
+        clearTimeout(peekSearchTimeout);
+        _stitch.renderTargetBPeek();
+    });
+
+    $('body').off('click', '#stitch-peek-search-toggle').on('click', '#stitch-peek-search-toggle', function(e) {
+        e.stopPropagation(); // Prevent accordion from folding/unfolding the drawer
+        const $container = $('#stitch-peek-search-container');
+        const isCollapsed = $container.css('display') === 'none';
+        if (isCollapsed) {
+            $container.css('display', 'flex');
+            $(this).css('background', 'var(--SmartThemeQuoteColor)').css('color', 'white');
+            $('#stitch-peek-search-input').focus();
+        } else {
+            $container.css('display', 'none');
+            $(this).css('background', 'rgba(255,255,255,0.05)').css('color', 'inherit');
+        }
     });
 
     $('#check-preset-select').on('change', function() {
@@ -487,6 +632,46 @@ function ensurePanel() {
         
         localStorage.setItem('zero_last_stitch_a', valB);
         localStorage.setItem('zero_last_stitch_b', valA);
+
+        // Swap search input values and clear button visibility
+        const qA = $('#stitch-search-input').val();
+        const qB = $('#stitch-peek-search-input').val();
+        $('#stitch-search-input').val(qB);
+        $('#stitch-peek-search-input').val(qA);
+        
+        if (qB) $('#stitch-search-clear').show();
+        else $('#stitch-search-clear').hide();
+        
+        if (qA) $('#stitch-peek-search-clear').show();
+        else $('#stitch-peek-search-clear').hide();
+
+        // Swap active filter badges
+        const filters = ['name', 'content', 'note', 'origin'];
+        filters.forEach(f => {
+            const $badgeA = $(`.stitch-search-filter-badge[data-filter="${f}"]`);
+            const $badgeB = $(`.stitch-peek-search-filter-badge[data-filter="${f}"]`);
+            const isActiveA = $badgeA.hasClass('active');
+            const isActiveB = $badgeB.hasClass('active');
+            
+            if (isActiveA) $badgeB.addClass('active');
+            else $badgeB.removeClass('active');
+            
+            if (isActiveB) $badgeA.addClass('active');
+            else $badgeA.removeClass('active');
+            
+            // Sync styles
+            if ($badgeA.hasClass('active')) {
+                $badgeA.css('background', 'var(--SmartThemeQuoteColor)').css('color', 'white').css('opacity', '1');
+            } else {
+                $badgeA.css('background', 'rgba(255,255,255,0.08)').css('color', 'inherit').css('opacity', '0.5');
+            }
+            
+            if ($badgeB.hasClass('active')) {
+                $badgeB.css('background', 'var(--SmartThemeQuoteColor)').css('color', 'white').css('opacity', '1');
+            } else {
+                $badgeB.css('background', 'rgba(255,255,255,0.08)').css('color', 'inherit').css('opacity', '0.5');
+            }
+        });
         
         _stitch.renderStitchList();
     });

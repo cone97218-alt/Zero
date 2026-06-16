@@ -94,7 +94,34 @@ export async function renderStitchList(forceRefresh = true) {
             _cachedStitchName = effectiveName;
         }
         
-        const promptsA = _cachedStitchPrompts;
+        let promptsA = _cachedStitchPrompts;
+        const query = $('#stitch-search-input').val()?.trim();
+        const queryLower = query?.toLowerCase();
+        const activeFilters = [];
+        $('.stitch-search-filter-badge.active').each(function() {
+            activeFilters.push($(this).data('filter'));
+        });
+
+        const highlightText = (text, filterName) => {
+            const safeText = escapeHtml(text || '');
+            if (!query || !activeFilters.includes(filterName)) return safeText;
+            const escapedQuery = query.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+            const regex = new RegExp(`(${escapedQuery})`, 'gi');
+            return safeText.replace(regex, '<mark style="background: var(--SmartThemeQuoteColor); color: white; border-radius: 2px; padding: 0 2px; font-weight: bold;">$1</mark>');
+        };
+
+        if (queryLower) {
+            promptsA = promptsA.filter(p => {
+                const name = activeFilters.includes('name') ? (p.name || p.identifier || '').toLowerCase() : '';
+                const content = activeFilters.includes('content') ? (p.content || '').toLowerCase() : '';
+                const note = activeFilters.includes('note') ? (p.fav_note || '').toLowerCase() : '';
+                const origin = activeFilters.includes('origin') ? (p.fav_origin_preset || '').toLowerCase() : '';
+                return (name && name.includes(queryLower)) || 
+                       (content && content.includes(queryLower)) || 
+                       (note && note.includes(queryLower)) || 
+                       (origin && origin.includes(queryLower));
+            });
+        }
         
         const pm = SillyTavern.getContext().getPresetManager('openai');
         const presetListObj = pm ? pm.getPresetList() : null;
@@ -105,13 +132,14 @@ export async function renderStitchList(forceRefresh = true) {
         renderTargetBPeek();
         
         if (promptsA.length === 0) {
-            $list.html('<p style="text-align: center; opacity: 0.5; font-size: 12px; margin-top: 20px;">源预设为空</p>');
+            const msg = queryLower ? '无匹配结果' : '源预设为空';
+            $list.html(`<p style="text-align: center; opacity: 0.5; font-size: 12px; margin-top: 20px;">${msg}</p>`);
             return;
         }
 
         const rowParts = [];
         promptsA.forEach((pA, index) => {
-            const nameStr = escapeHtml(pA.name || pA.identifier || '未命名');
+            const nameStr = highlightText(pA.name || pA.identifier || '未命名', 'name');
             
             let metaHtml = '';
             if (pA.fav_origin_preset || pA.fav_note) {
@@ -130,10 +158,10 @@ export async function renderStitchList(forceRefresh = true) {
                 
                 metaHtml = `<div class="stitch-item-meta" style="font-size: 11px; margin-top: 4px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; opacity: 0.85;">`;
                 if (pA.fav_origin_preset) {
-                    metaHtml += `<span style="background: ${badgeColor}; color: ${badgeTextColor}; padding: 1px 6px; border-radius: 4px; font-size: 10px; display: inline-flex; align-items: center; gap: 4px;"><i class="fa-solid fa-map-pin"></i> ${escapeHtml(originText)}</span>`;
+                    metaHtml += `<span style="background: ${badgeColor}; color: ${badgeTextColor}; padding: 1px 6px; border-radius: 4px; font-size: 10px; display: inline-flex; align-items: center; gap: 4px;"><i class="fa-solid fa-map-pin"></i> ${highlightText(originText, 'origin')}</span>`;
                 }
                 if (pA.fav_note) {
-                    metaHtml += `<span style="color: var(--SmartThemeBodyColor); opacity: 0.6; display: inline-flex; align-items: center; gap: 4px;"><i class="fa-solid fa-tag"></i> 备注: ${escapeHtml(pA.fav_note)}</span>`;
+                    metaHtml += `<span style="color: var(--SmartThemeBodyColor); opacity: 0.6; display: inline-flex; align-items: center; gap: 4px;"><i class="fa-solid fa-tag"></i> 备注: ${highlightText(pA.fav_note, 'note')}</span>`;
                 }
                 metaHtml += `</div>`;
             }
@@ -210,7 +238,7 @@ export async function renderStitchList(forceRefresh = true) {
                     white-space: pre-wrap;
                     word-break: break-all;
                     color: var(--SmartThemeBodyColor);
-                ">${escapeHtml(pA.content || '')}</div>
+                ">${highlightText(pA.content || '', 'content')}</div>
             `);
         });
         $list.html(rowParts.join(''));
@@ -603,11 +631,40 @@ export async function renderTargetBPeek() {
     $list.html('<p style="text-align: center; padding: 10px; font-size: 11px; opacity: 0.6;"><i class="fa-solid fa-spinner fa-spin"></i> 加载中...</p>');
 
     try {
-        const promptsB = await getPresetPrompts(nameB);
+        let promptsB = await getPresetPrompts(nameB);
+        const query = $('#stitch-peek-search-input').val()?.trim();
+        const queryLower = query?.toLowerCase();
+        const activeFilters = [];
+        $('.stitch-peek-search-filter-badge.active').each(function() {
+            activeFilters.push($(this).data('filter'));
+        });
+
+        const highlightText = (text, filterName) => {
+            const safeText = escapeHtml(text || '');
+            if (!query || !activeFilters.includes(filterName)) return safeText;
+            const escapedQuery = query.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+            const regex = new RegExp(`(${escapedQuery})`, 'gi');
+            return safeText.replace(regex, '<mark style="background: var(--SmartThemeQuoteColor); color: white; border-radius: 2px; padding: 0 2px; font-weight: bold;">$1</mark>');
+        };
+
+        if (queryLower) {
+            promptsB = promptsB.filter(p => {
+                const name = activeFilters.includes('name') ? (p.name || p.identifier || '').toLowerCase() : '';
+                const content = activeFilters.includes('content') ? (p.content || '').toLowerCase() : '';
+                const note = activeFilters.includes('note') ? (p.fav_note || '').toLowerCase() : '';
+                const origin = activeFilters.includes('origin') ? (p.fav_origin_preset || '').toLowerCase() : '';
+                return (name && name.includes(queryLower)) || 
+                       (content && content.includes(queryLower)) || 
+                       (note && note.includes(queryLower)) || 
+                       (origin && origin.includes(queryLower));
+            });
+        }
+
         $list.empty();
 
         if (promptsB.length === 0) {
-            $list.html('<p style="text-align: center; opacity: 0.5; font-size: 11px; padding: 10px; margin-bottom: 8px;">目标预设 B 为空，请点击下方按钮直接插入</p>');
+            const msg = queryLower ? '无匹配结果' : '目标预设 B 为空，请点击下方按钮直接插入';
+            $list.html(`<p style="text-align: center; opacity: 0.5; font-size: 11px; padding: 10px; margin-bottom: 8px;">${msg}</p>`);
             
             const emptyInsertRow = `
                 <div class="stitch-peek-insert-top interactable" style="
@@ -649,7 +706,7 @@ export async function renderTargetBPeek() {
 
             const peekParts = [firstInsertRow];
             promptsB.forEach((pB, index) => {
-                const nameStr = escapeHtml(pB.name || pB.identifier || '未命名');
+                const nameStr = highlightText(pB.name || pB.identifier || '未命名', 'name');
                 peekParts.push(`
                     <div class="stitch-peek-row interactable" data-index="${index}" style="
                         padding: 6px 10px;
@@ -680,7 +737,7 @@ export async function renderTargetBPeek() {
                         white-space: pre-wrap;
                         word-break: break-all;
                         color: var(--SmartThemeBodyColor);
-                    ">${escapeHtml(pB.content || '')}</div>
+                    ">${highlightText(pB.content || '', 'content')}</div>
                 `);
             });
             $list.html(peekParts.join(''));
