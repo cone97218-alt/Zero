@@ -238,6 +238,7 @@ export const PresetManager = {
         }
         // Rename model profiles as well
         ModelProfileManager.renameSettings(oldName, newName);
+        SnapshotGroupManager.renameSettings(oldName, newName);
         saveSettings();
     },
 
@@ -276,14 +277,42 @@ export const SnapshotManager = {
         return all.filter(s => s.presetName === presetName);
     },
 
-    create(name, preset) {
+    async create(name, preset) {
         HistoryManager.record();
+        const decouple = UiStateManager.get().decoupleJailbreak === true;
+
+        let snapEntries;
+        let samplingParams = null;
+        let additionalParams = null;
+
+        if (decouple) {
+            const jbGroups = GroupManager.getJailbreakGroups(preset.name);
+            const jbPromptIds = new Set();
+            jbGroups.forEach(g => g.ids.forEach(id => jbPromptIds.add(id)));
+            snapEntries = preset.prompts
+                .filter(p => !jbPromptIds.has(p.identifier))
+                .map(p => ({ id: p.identifier, n: p.name, e: p.enabled }));
+        } else {
+            snapEntries = preset.prompts.map(p => ({ id: p.identifier, n: p.name, e: p.enabled }));
+            try {
+                const params = await SamplingParamsHelper.read();
+                if (params) {
+                    samplingParams = params.sampling;
+                    additionalParams = params.additional;
+                }
+            } catch (e) {
+                console.warn('[Zero] Failed to read sampling params for snapshot:', e);
+            }
+        }
+
         const snap = {
             id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
             name,
             presetName: preset.name,
             ts: Date.now(),
-            entries: preset.prompts.map(p => ({ id: p.identifier, n: p.name, e: p.enabled }))
+            entries: snapEntries,
+            samplingParams,
+            additionalParams
         };
         const s = getSettings();
         if (!s.snapshots) s.snapshots = [];
@@ -305,21 +334,61 @@ export const SnapshotManager = {
         if (snap) { snap.name = newName; saveSettings(); }
     },
 
-    overwrite(id, preset) {
+    async overwrite(id, preset) {
         HistoryManager.record();
         const snap = (getSettings().snapshots || []).find(x => x.id === id);
         if (snap) {
+            const decouple = UiStateManager.get().decoupleJailbreak === true;
+            let snapEntries;
+            let samplingParams = null;
+            let additionalParams = null;
+
+            if (decouple) {
+                const jbGroups = GroupManager.getJailbreakGroups(preset.name);
+                const jbPromptIds = new Set();
+                jbGroups.forEach(g => g.ids.forEach(id => jbPromptIds.add(id)));
+                snapEntries = preset.prompts
+                    .filter(p => !jbPromptIds.has(p.identifier))
+                    .map(p => ({ id: p.identifier, n: p.name, e: p.enabled }));
+            } else {
+                snapEntries = preset.prompts.map(p => ({ id: p.identifier, n: p.name, e: p.enabled }));
+                try {
+                    const params = await SamplingParamsHelper.read();
+                    if (params) {
+                        samplingParams = params.sampling;
+                        additionalParams = params.additional;
+                    }
+                } catch (e) {
+                    console.warn('[Zero] Failed to read sampling params for snapshot:', e);
+                }
+            }
+
             snap.presetName = preset.name;
             snap.ts = Date.now();
-            snap.entries = preset.prompts.map(p => ({ id: p.identifier, n: p.name, e: p.enabled }));
+            snap.entries = snapEntries;
+            snap.samplingParams = samplingParams;
+            snap.additionalParams = additionalParams;
             saveSettings();
         }
     },
 
     /** Returns diff array: [{id, name, snapEnabled, curEnabled, type}] */
     diff(snapshot, preset) {
+        const decouple = UiStateManager.get().decoupleJailbreak === true;
+
+        let jbPromptIds = new Set();
+        if (decouple) {
+            const jbGroups = GroupManager.getJailbreakGroups(preset.name);
+            jbGroups.forEach(g => g.ids.forEach(id => jbPromptIds.add(id)));
+        }
+
         const curMap = new Map();
-        preset.prompts.forEach(p => curMap.set(p.identifier, p));
+        preset.prompts.forEach(p => {
+            if (!decouple || !jbPromptIds.has(p.identifier)) {
+                curMap.set(p.identifier, p);
+            }
+        });
+
         const result = [];
         for (const e of snapshot.entries) {
             const c = curMap.get(e.id);
@@ -328,7 +397,7 @@ export const SnapshotManager = {
             else { result.push({ id: e.id, name: e.n, snapEnabled: e.e, curEnabled: c.enabled, type: 'same' }); }
         }
         preset.prompts.forEach(p => {
-            if (!snapshot.entries.find(e => e.id === p.identifier)) {
+            if ((!decouple || !jbPromptIds.has(p.identifier)) && !snapshot.entries.find(e => e.id === p.identifier)) {
                 result.push({ id: p.identifier, name: p.name, snapEnabled: null, curEnabled: p.enabled, type: 'new' });
             }
         });
@@ -336,24 +405,34 @@ export const SnapshotManager = {
     },
 
     async apply(snapshot, preset) {
-        // Safety check: warn if applying to a different preset
         if (preset && snapshot.presetName !== preset.name) {
             console.warn(`[Zero] Applying snapshot from "${snapshot.presetName}" to "${preset.name}"`);
         }
         const map = new Map();
         snapshot.entries.forEach(e => map.set(e.id, e.e));
 
-        // Disable new entries that are not present in the snapshot
+        const decouple = UiStateManager.get().decoupleJailbreak === true;
+
         if (preset && Array.isArray(preset.prompts)) {
+            let jbPromptIds = new Set();
+            if (decouple) {
+                const jbGroups = GroupManager.getJailbreakGroups(preset.name);
+                jbGroups.forEach(g => g.ids.forEach(id => jbPromptIds.add(id)));
+            }
+
             const snapIds = new Set(snapshot.entries.map(e => e.id));
             preset.prompts.forEach(p => {
-                if (!snapIds.has(p.identifier)) {
+                if (!snapIds.has(p.identifier) && (!decouple || !jbPromptIds.has(p.identifier))) {
                     map.set(p.identifier, false);
                 }
             });
         }
 
         await PresetManager.batchToggleMap(map);
+
+        if (!decouple && snapshot.samplingParams) {
+            await SamplingParamsHelper.apply(snapshot.samplingParams, snapshot.additionalParams);
+        }
     }
 };
 
@@ -684,6 +763,93 @@ export const ModelProfileManager = {
             s.modelProfiles[newName] = s.modelProfiles[oldName];
             delete s.modelProfiles[oldName];
             s.modelProfiles[newName].forEach(p => { p.presetName = newName; });
+        }
+        saveSettings();
+    }
+};
+
+// ═══════════════════════════════════════
+//  Snapshot Group Manager
+// ═══════════════════════════════════════
+export const SnapshotGroupManager = {
+    get(presetName) {
+        const s = getSettings();
+        if (!s.snapshotGroups) s.snapshotGroups = {};
+        return s.snapshotGroups[presetName] || [];
+    },
+
+    _save(presetName, groups) {
+        const s = getSettings();
+        if (!s.snapshotGroups) s.snapshotGroups = {};
+        s.snapshotGroups[presetName] = groups;
+        saveSettings();
+    },
+
+    create(presetName, name) {
+        HistoryManager.record();
+        const groups = this.get(presetName);
+        const g = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5), name, sids: [], col: false };
+        groups.push(g);
+        this._save(presetName, groups);
+        return g;
+    },
+
+    remove(presetName, gid) {
+        HistoryManager.record();
+        this._save(presetName, this.get(presetName).filter(g => g.id !== gid));
+    },
+
+    rename(presetName, gid, n) {
+        HistoryManager.record();
+        const groups = this.get(presetName);
+        const g = groups.find(x => x.id === gid);
+        if (g) { g.name = n; this._save(presetName, groups); }
+    },
+
+    assign(presetName, gid, snapshotIds) {
+        HistoryManager.record();
+        const groups = this.get(presetName);
+        // Remove from all other groups first
+        for (const g of groups) {
+            g.sids = g.sids.filter(id => !snapshotIds.includes(id));
+        }
+        const tgt = groups.find(x => x.id === gid);
+        if (tgt) {
+            tgt.sids.push(...snapshotIds);
+        }
+        this._save(presetName, groups);
+    },
+
+    unassign(presetName, snapshotId) {
+        HistoryManager.record();
+        const groups = this.get(presetName);
+        for (const g of groups) {
+            g.sids = g.sids.filter(id => id !== snapshotId);
+        }
+        this._save(presetName, groups);
+    },
+
+    setCollapse(presetName, gid, collapsed) {
+        const groups = this.get(presetName);
+        const g = groups.find(x => x.id === gid);
+        if (g && g.col !== collapsed) { g.col = collapsed; this._save(presetName, groups); }
+    },
+
+    reorder(presetName, orderedIds) {
+        HistoryManager.record();
+        const groups = this.get(presetName);
+        const map = new Map(groups.map(g => [g.id, g]));
+        const reordered = orderedIds.map(id => map.get(id)).filter(Boolean);
+        groups.forEach(g => { if (!orderedIds.includes(g.id)) reordered.push(g); });
+        this._save(presetName, reordered);
+    },
+
+    renameSettings(oldName, newName) {
+        const s = getSettings();
+        if (!s.snapshotGroups) return;
+        if (s.snapshotGroups[oldName]) {
+            s.snapshotGroups[newName] = s.snapshotGroups[oldName];
+            delete s.snapshotGroups[oldName];
         }
         saveSettings();
     }

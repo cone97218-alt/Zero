@@ -2,7 +2,7 @@
  * Zero Preset Manager - UI
  * Performance-optimized v2: innerHTML templates, event delegation, lazy rendering.
  */
-import { PresetManager, SnapshotManager, GroupManager, HiddenManager, UiStateManager, LinkageManager, zeroTranslate, HistoryManager, ModelProfileManager, SamplingParamsHelper } from './state.js';
+import { PresetManager, SnapshotManager, GroupManager, HiddenManager, UiStateManager, LinkageManager, zeroTranslate, HistoryManager, ModelProfileManager, SamplingParamsHelper, SnapshotGroupManager } from './state.js';
 
 let overlay = null;
 let pendingToggles = new Map();
@@ -75,6 +75,68 @@ function showPrompt(modal, msg, defaultVal, onOk) {
     modal.appendChild(box);
     setTimeout(() => input.focus(), 50);
 }
+
+function showSettingsModal(modal, onSave) {
+    const currentDecouple = UiStateManager.get().decoupleJailbreak === true;
+
+    const optionDecouple = h('label', { style: 'display: flex; align-items: flex-start; gap: 8px; margin-bottom: 12px; cursor: pointer; text-align: left;' },
+        h('input', {
+            type: 'radio',
+            name: 'zero-decouple-mode',
+            value: 'true',
+            checked: currentDecouple,
+            style: 'margin-top: 3px; accent-color: var(--SmartThemeQuoteColor, #7b8cde); width: 14px; height: 14px;'
+        }),
+        h('div', {},
+            h('strong', { text: '完全解耦模式', style: 'display: block; color: var(--SmartThemeBodyTextColor); font-size: 13px; font-weight: 600;' }),
+            h('span', {
+                text: '快照部分仅管理日常条目，不控制或保存破限条目、采样参数 and 附加参数。破限相关的条目与参数独立交由「模型方案」进行专属管理。',
+                style: 'display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); margin-top: 2px; line-height: 1.4;'
+            })
+        )
+    );
+
+    const optionNoDecouple = h('label', { style: 'display: flex; align-items: flex-start; gap: 8px; margin-bottom: 16px; cursor: pointer; text-align: left;' },
+        h('input', {
+            type: 'radio',
+            name: 'zero-decouple-mode',
+            value: 'false',
+            checked: !currentDecouple,
+            style: 'margin-top: 3px; accent-color: var(--SmartThemeQuoteColor, #7b8cde); width: 14px; height: 14px;'
+        }),
+        h('div', {},
+            h('strong', { text: '不解耦模式 (默认)', style: 'display: block; color: var(--SmartThemeBodyTextColor); font-size: 13px; font-weight: 600;' }),
+            h('span', {
+                text: '快照部分统一管理日常和破限条目。创建或应用快照时，会一并记录和恢复所有条目的开关状态，并保存与还原当前预设的采样参数及附加参数。',
+                style: 'display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); margin-top: 2px; line-height: 1.4;'
+            })
+        )
+    );
+
+    const box = h('div', { class: 'zero-confirm' },
+        h('div', { class: 'zero-confirm-box', style: 'max-width: 380px; width: 90%; padding: 18px;' },
+            h('div', { class: 'zero-confirm-msg', text: '快照与模型方案设置', style: 'font-weight: bold; font-size: 15px; margin-bottom: 16px; text-align: left; border-bottom: 1px solid var(--SmartThemeBorderColor); padding-bottom: 8px;' }),
+            optionDecouple,
+            optionNoDecouple,
+            h('div', { class: 'zero-confirm-btns', style: 'margin-top: 16px; justify-content: flex-end; gap: 8px;' },
+                h('button', { class: 'zero-btn', text: '取消', onclick: () => box.remove() }),
+                h('button', {
+                    class: 'zero-btn primary',
+                    text: '确定',
+                    onclick: () => {
+                        const selectedVal = box.querySelector('input[name="zero-decouple-mode"]:checked').value === 'true';
+                        UiStateManager.save({ decoupleJailbreak: selectedVal });
+                        toastr.success(selectedVal ? '已开启完全解耦模式' : '已关闭完全解耦模式（快照将管理全部参数）');
+                        box.remove();
+                        if (onSave) onSave();
+                    }
+                })
+            )
+        )
+    );
+    modal.appendChild(box);
+}
+
 
 // ═══════════════════════════════════════
 //  HTML Templates (fast innerHTML)
@@ -320,7 +382,10 @@ function buildModal(modal, preset, listInfo) {
 function renderTab(id, panel, preset, modal) {
     panel.innerHTML = '';
     if (id === 'entries') renderEntries(panel, preset, modal);
-    else if (id === 'snapshots') renderSnapshots(panel, preset, modal);
+    else if (id === 'snapshots') {
+        const viewMode = UiStateManager.get().snapshotViewMode || 'local';
+        renderSnapshots(panel, preset, modal, viewMode);
+    }
     else if (id === 'editor') renderEditor(panel, preset, modal);
 }
 
@@ -1323,11 +1388,33 @@ function showGroupManager(panel, preset, modal) {
 //  TAB 2: Snapshots
 // ═══════════════════════════════════════
 function renderSnapshots(panel, preset, modal, viewMode = 'local') {
+    _currentPreset = preset;
+    _currentModal = modal;
     panel.innerHTML = '';
-    // Sub-tab bar: 快照 | 方案
-    const subTabBar = h('div', { class: 'zero-sub-tabs', style: 'display:flex; gap:6px; margin-bottom:12px;' },
-        h('button', { class: 'zero-chip' + (viewMode !== 'profiles' ? ' active' : ''), text: '快照', onclick: () => renderSnapshots(panel, preset, modal, viewMode !== 'profiles' ? viewMode : 'local') }),
-        h('button', { class: 'zero-chip' + (viewMode === 'profiles' ? ' active' : ''), text: '模型方案', onclick: () => renderSnapshots(panel, preset, modal, 'profiles') })
+    // Sub-tab bar: 快照 | 方案 + ⚙️设置
+    const subTabBar = h('div', { class: 'zero-sub-tabs', style: 'display:flex; gap:6px; margin-bottom:12px; justify-content: space-between; align-items: center;' },
+        h('div', { style: 'display:flex; gap:6px;' },
+            h('button', { class: 'zero-chip' + (viewMode !== 'profiles' ? ' active' : ''), text: '快照', onclick: () => {
+                const nextMode = viewMode !== 'profiles' ? viewMode : 'local';
+                UiStateManager.save({ snapshotViewMode: nextMode });
+                renderSnapshots(panel, preset, modal, nextMode);
+            } }),
+            h('button', { class: 'zero-chip' + (viewMode === 'profiles' ? ' active' : ''), text: '模型方案', onclick: () => {
+                UiStateManager.save({ snapshotViewMode: 'profiles' });
+                renderSnapshots(panel, preset, modal, 'profiles');
+            } })
+        ),
+        h('button', {
+            class: 'zero-icon-btn',
+            title: '快照与方案设置',
+            style: 'opacity: 0.8; font-size: 14px; padding: 4px 8px; display: flex; align-items: center; justify-content: center;',
+            html: '<i class="fa-solid fa-gear"></i>',
+            onclick: () => {
+                showSettingsModal(modal, () => {
+                    renderSnapshots(panel, preset, modal, viewMode);
+                });
+            }
+        })
     );
     panel.appendChild(subTabBar);
 
@@ -1338,15 +1425,24 @@ function renderSnapshots(panel, preset, modal, viewMode = 'local') {
 
     const headerRow = h('div', { class: 'zero-filters', style: 'margin-bottom: 12px; justify-content: space-between;' },
         h('div', { style: 'display: flex; gap: 6px;' },
-            h('button', { class: 'zero-chip ' + (viewMode === 'local' ? 'active' : ''), text: '当前预设', onclick: () => renderSnapshots(panel, preset, modal, 'local') }),
-            h('button', { class: 'zero-chip ' + (viewMode === 'other' ? 'active' : ''), text: '其他预设', onclick: () => renderSnapshots(panel, preset, modal, 'other') })
+            h('button', { class: 'zero-chip ' + (viewMode === 'local' ? 'active' : ''), text: '当前预设', onclick: () => {
+                UiStateManager.save({ snapshotViewMode: 'local' });
+                renderSnapshots(panel, preset, modal, 'local');
+            } }),
+            h('button', { class: 'zero-chip ' + (viewMode === 'other' ? 'active' : ''), text: '其他预设', onclick: () => {
+                UiStateManager.save({ snapshotViewMode: 'other' });
+                renderSnapshots(panel, preset, modal, 'other');
+            } })
         ),
-        h('button', { class: 'zero-btn primary', html: '<i class="fa-solid fa-plus"></i> 新建', onclick: () => {
-            showPrompt(modal, '快照名称', `快照 ${formatDate(Date.now())}`, (name) => {
-                SnapshotManager.create(name, preset);
-                renderSnapshots(panel, preset, modal, viewMode);
-            });
-        }})
+        h('div', { style: 'display: flex; gap: 6px; align-items: center;' },
+            viewMode === 'local' ? h('button', { class: 'zero-btn', html: '<i class="fa-solid fa-folder"></i> 分组', onclick: () => showSnapshotGroupManager(panel, preset, modal) }) : null,
+            h('button', { class: 'zero-btn primary', html: '<i class="fa-solid fa-plus"></i> 新建', onclick: () => {
+                showPrompt(modal, '快照名称', `快照 ${formatDate(Date.now())}`, async (name) => {
+                    await SnapshotManager.create(name, preset);
+                    renderSnapshots(panel, preset, modal, viewMode);
+                });
+            } })
+        )
     );
     panel.appendChild(headerRow);
 
@@ -1355,9 +1451,76 @@ function renderSnapshots(panel, preset, modal, viewMode = 'local') {
         panel.appendChild(h('div', { class: 'zero-empty', text: viewMode === 'local' ? '当前预设暂无快照，点击上方按钮创建' : '没有来自其他预设的快照' }));
         return;
     }
-    const frag = document.createDocumentFragment();
-    snaps.forEach(snap => frag.appendChild(buildSnapCard(snap, preset, panel, modal, viewMode)));
-    panel.appendChild(frag);
+
+    if (viewMode === 'local') {
+        const sGroups = SnapshotGroupManager.get(preset.name);
+        const assignedSids = new Set();
+        sGroups.forEach(g => g.sids.forEach(id => assignedSids.add(id)));
+
+        const ungroupedSnaps = snaps.filter(s => !assignedSids.has(s.id));
+
+        sGroups.forEach(g => {
+            const groupSnaps = snaps.filter(s => g.sids.includes(s.id));
+            const collapsed = g.col;
+
+            const groupEl = h('div', { class: 'zero-group zero-snapshot-group', 'data-sgid': g.id },
+                h('div', { class: 'zero-group-header zero-snap-group-header', onclick: () => toggleSnapshotGroup(groupEl, preset.name, g.id) },
+                    h('i', { class: 'fa-solid fa-chevron-down chevron' + (collapsed ? ' collapsed' : '') }),
+                    h('span', { class: 'zero-group-title', text: g.name }),
+                    h('span', { class: 'zero-group-count', text: `${groupSnaps.length} 个快照` })
+                ),
+                h('div', { class: 'zero-group-body' + (collapsed ? ' collapsed' : '') },
+                    h('div', { class: 'zero-group-inner zero-snap-group-inner', style: 'padding: 8px 10px 4px;' })
+                )
+            );
+
+            panel.appendChild(groupEl);
+
+            if (!collapsed) {
+                const inner = groupEl.querySelector('.zero-snap-group-inner');
+                groupSnaps.forEach(snap => {
+                    inner.appendChild(buildSnapCard(snap, preset, panel, modal, viewMode));
+                });
+            }
+        });
+
+        if (ungroupedSnaps.length > 0) {
+            const hasGroups = sGroups.length > 0;
+            if (hasGroups) {
+                const collapsed = UiStateManager.get().ungroupedCol || false;
+                const groupEl = h('div', { class: 'zero-group zero-snapshot-group', 'data-sgid': '__ungrouped' },
+                    h('div', { class: 'zero-group-header zero-snap-group-header', onclick: () => toggleSnapshotGroup(groupEl, preset.name, '__ungrouped') },
+                        h('i', { class: 'fa-solid fa-chevron-down chevron' + (collapsed ? ' collapsed' : '') }),
+                        h('span', { class: 'zero-group-title', text: '未分组' }),
+                        h('span', { class: 'zero-group-count', text: `${ungroupedSnaps.length} 个快照` })
+                    ),
+                    h('div', { class: 'zero-group-body' + (collapsed ? ' collapsed' : '') },
+                        h('div', { class: 'zero-group-inner zero-snap-group-inner', style: 'padding: 8px 10px 4px;' })
+                    )
+                );
+                panel.appendChild(groupEl);
+
+                if (!collapsed) {
+                    const inner = groupEl.querySelector('.zero-snap-group-inner');
+                    ungroupedSnaps.forEach(snap => {
+                        inner.appendChild(buildSnapCard(snap, preset, panel, modal, viewMode));
+                    });
+                }
+            } else {
+                const container = h('div', { style: 'padding: 4px 2px 0;' });
+                ungroupedSnaps.forEach(snap => {
+                    container.appendChild(buildSnapCard(snap, preset, panel, modal, viewMode));
+                });
+                panel.appendChild(container);
+            }
+        }
+    } else {
+        const container = h('div', { style: 'padding: 4px 2px 0;' });
+        snaps.forEach(snap => {
+            container.appendChild(buildSnapCard(snap, preset, panel, modal, viewMode));
+        });
+        panel.appendChild(container);
+    }
 }
 
 function buildSnapCard(snap, preset, panel, modal, viewMode) {
@@ -1376,7 +1539,7 @@ function buildSnapCard(snap, preset, panel, modal, viewMode) {
 
     const isOther = snap.presetName !== preset.name;
     const btnRow = h('div', { class: 'zero-snap-actions' },
-        h('button', { class: 'zero-btn', html: '<i class="fa-solid fa-check"></i> 应用', onclick: () => {
+        h('button', { class: 'zero-btn', title: '应用', html: '<i class="fa-solid fa-check"></i>', onclick: () => {
             if (isOther) {
                 showConfirm(modal, `该快照属于预设「${snap.presetName}」。\n是否切换到该预设并应用快照？`, () => {
                     const contentEl = modal.querySelector('.zero-content');
@@ -1399,14 +1562,14 @@ function buildSnapCard(snap, preset, panel, modal, viewMode) {
                 showConfirm(modal, `应用快照「${snap.name}」?\n将切换条目开关状态`, async () => {
                     try {
                         await SnapshotManager.apply(snap, preset);
-                        // Refresh cached preset so entries tab shows changes
                         const p = await PresetManager.load();
                         renderSnapshots(panel, p || preset, modal, viewMode);
                     } catch (e) { toastr.error('应用失败'); console.error(e); }
                 });
             }
         }}),
-        h('button', { class: 'zero-btn', html: '<i class="fa-solid fa-pen"></i> 重命名', onclick: () => {
+        !isOther ? h('button', { class: 'zero-btn', title: '分组', html: '<i class="fa-solid fa-folder-open"></i>', onclick: () => showSnapshotGroupAssignMenu(modal, panel, preset, snap) }) : null,
+        h('button', { class: 'zero-btn', title: '重命名', html: '<i class="fa-solid fa-pen"></i>', onclick: () => {
             showPrompt(modal, '新名称', snap.name, (n) => {
                 SnapshotManager.rename(snap.id, n);
                 renderSnapshots(panel, preset, modal, viewMode);
@@ -1414,14 +1577,14 @@ function buildSnapCard(snap, preset, panel, modal, viewMode) {
         }})
     );
     if (!isOther) {
-        btnRow.appendChild(h('button', { class: 'zero-btn', html: '<i class="fa-solid fa-sync"></i> 覆盖', onclick: () => {
-            showConfirm(modal, `用当前状态覆盖快照「${snap.name}」?`, () => {
-                SnapshotManager.overwrite(snap.id, preset);
+        btnRow.appendChild(h('button', { class: 'zero-btn', title: '覆盖', html: '<i class="fa-solid fa-sync"></i>', onclick: () => {
+            showConfirm(modal, `用当前状态覆盖快照「${snap.name}」?`, async () => {
+                await SnapshotManager.overwrite(snap.id, preset);
                 renderSnapshots(panel, preset, modal, viewMode);
             });
         }}));
     }
-    btnRow.appendChild(h('button', { class: 'zero-btn', html: '<i class="fa-solid fa-trash"></i> 删除', onclick: () => {
+    btnRow.appendChild(h('button', { class: 'zero-btn', title: '删除', html: '<i class="fa-solid fa-trash"></i>', onclick: () => {
         showConfirm(modal, `删除快照「${snap.name}」?`, () => {
             SnapshotManager.delete(snap.id);
             renderSnapshots(panel, preset, modal, viewMode);
@@ -1432,6 +1595,222 @@ function buildSnapCard(snap, preset, panel, modal, viewMode) {
     card.appendChild(btnRow);
     card.appendChild(body);
     return card;
+}
+
+function toggleSnapshotGroup(groupEl, presetName, sgid) {
+    const header = groupEl.querySelector('.zero-group-header');
+    const body = groupEl.querySelector('.zero-group-body');
+    const chevron = header.querySelector('.chevron');
+    const isExpanding = body.classList.contains('collapsed');
+
+    const willCollapse = !isExpanding;
+    body.classList.toggle('collapsed', willCollapse);
+    chevron?.classList.toggle('collapsed', willCollapse);
+
+    if (sgid !== '__ungrouped') {
+        SnapshotGroupManager.setCollapse(presetName, sgid, willCollapse);
+    } else {
+        UiStateManager.save({ ungroupedCol: willCollapse });
+    }
+
+    if (isExpanding) {
+        // 折叠其他所有处于展开状态的快照分组 (实现手风琴效果)
+        const panel = groupEl.closest('.zero-panel');
+        if (panel) {
+            const allGroups = panel.querySelectorAll('.zero-snapshot-group');
+            allGroups.forEach(otherGroup => {
+                if (otherGroup !== groupEl) {
+                    const otherBody = otherGroup.querySelector('.zero-group-body');
+                    const otherChevron = otherGroup.querySelector('.zero-group-header .chevron');
+                    const otherSgid = otherGroup.dataset.sgid;
+
+                    if (otherBody && !otherBody.classList.contains('collapsed')) {
+                        otherBody.classList.add('collapsed');
+                        if (otherChevron) otherChevron.classList.add('collapsed');
+
+                        // 同时更新数据层状态
+                        if (otherSgid === '__ungrouped') {
+                            UiStateManager.save({ ungroupedCol: true });
+                        } else if (otherSgid) {
+                            SnapshotGroupManager.setCollapse(presetName, otherSgid, true);
+                        }
+                    }
+                }
+            });
+        }
+
+        const inner = body.querySelector('.zero-group-inner');
+        if (inner && !inner.hasChildNodes()) {
+            const panel = groupEl.closest('.zero-panel');
+            const modal = groupEl.closest('.zero-modal');
+            const preset = _currentPreset;
+
+            const snaps = SnapshotManager.list(presetName);
+            let groupSnaps = [];
+            if (sgid === '__ungrouped') {
+                const sGroups = SnapshotGroupManager.get(presetName);
+                const assignedSids = new Set();
+                sGroups.forEach(g => g.sids.forEach(id => assignedSids.add(id)));
+                groupSnaps = snaps.filter(s => !assignedSids.has(s.id));
+            } else {
+                const g = SnapshotGroupManager.get(presetName).find(x => x.id === sgid);
+                if (g) {
+                    groupSnaps = snaps.filter(s => g.sids.includes(s.id));
+                }
+            }
+
+            groupSnaps.forEach(snap => {
+                inner.appendChild(buildSnapCard(snap, preset, panel, modal, 'local'));
+            });
+        }
+    }
+}
+
+function showSnapshotGroupManager(panel, preset, modal) {
+    const pName = preset.name;
+    const menuBox = h('div', { class: 'zero-confirm' });
+    const contentBox = h('div', { class: 'zero-confirm-box zero-group-mgr-box' },
+        h('div', { class: 'zero-confirm-msg', text: '管理快照分组' })
+    );
+
+    const listContainer = h('div', { class: 'zero-group-mgr-list' });
+
+    function renderList() {
+        listContainer.innerHTML = '';
+        const groups = SnapshotGroupManager.get(pName);
+        if (groups.length === 0) {
+            listContainer.appendChild(h('div', { class: 'zero-empty', text: '暂无分组' }));
+            return;
+        }
+
+        groups.forEach((g, idx) => {
+            const row = h('div', {
+                class: 'zero-group-mgr-row',
+                draggable: true,
+                'data-gid': g.id
+            });
+
+            row.addEventListener('dragstart', (e) => {
+                row.classList.add('dragging');
+                e.dataTransfer.setData('text/plain', g.id);
+            });
+            row.addEventListener('dragend', () => row.classList.remove('dragging'));
+            row.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                const draggingEl = listContainer.querySelector('.dragging');
+                if (draggingEl && draggingEl !== row) {
+                    const rect = row.getBoundingClientRect();
+                    const next = (e.clientY - rect.top) / (rect.bottom - rect.top) > 0.5;
+                    row.classList.toggle('drag-over-top', !next);
+                    row.classList.toggle('drag-over-bottom', next);
+                }
+            });
+            row.addEventListener('dragleave', () => {
+                row.classList.remove('drag-over-top', 'drag-over-bottom');
+            });
+            row.addEventListener('drop', (e) => {
+                e.preventDefault();
+                row.classList.remove('drag-over-top', 'drag-over-bottom');
+                const dragId = e.dataTransfer.getData('text/plain');
+                if (dragId && dragId !== g.id) {
+                    const currentIds = SnapshotGroupManager.get(pName).map(x => x.id);
+                    const oldIndex = currentIds.indexOf(dragId);
+                    if (oldIndex > -1) {
+                        currentIds.splice(oldIndex, 1);
+                        const adjustedNewIndex = currentIds.indexOf(g.id);
+                        let insertIndex = adjustedNewIndex;
+                        if (row.classList.contains('drag-over-bottom')) {
+                            insertIndex += 1;
+                        }
+                        currentIds.splice(insertIndex, 0, dragId);
+                        SnapshotGroupManager.reorder(pName, currentIds);
+                        renderList();
+                    }
+                }
+            });
+
+            const dragHandle = h('span', { class: 'zero-group-mgr-drag', html: '<i class="fa-solid fa-bars"></i>' });
+            row.appendChild(dragHandle);
+            row.appendChild(h('div', { class: 'zero-group-mgr-name', text: g.name }));
+
+            const actions = h('div', { class: 'zero-group-mgr-actions' });
+            actions.appendChild(h('button', {
+                class: 'zero-icon-btn',
+                title: '重命名',
+                html: '<i class="fa-solid fa-pen"></i>',
+                onclick: (e) => {
+                    e.stopPropagation();
+                    showPrompt(menuBox, '新组名', g.name, name => {
+                        SnapshotGroupManager.rename(pName, g.id, name);
+                        renderList();
+                    });
+                }
+            }));
+            actions.appendChild(h('button', {
+                class: 'zero-icon-btn zero-group-mgr-del',
+                title: '删除分组',
+                html: '<i class="fa-solid fa-trash"></i>',
+                onclick: (e) => {
+                    e.stopPropagation();
+                    showConfirm(menuBox, `确认删除分组「${g.name}」？\n（组内快照不会被删除）`, () => {
+                        SnapshotGroupManager.remove(pName, g.id);
+                        renderList();
+                    });
+                }
+            }));
+
+            row.appendChild(actions);
+            listContainer.appendChild(row);
+        });
+    }
+
+    renderList();
+    contentBox.appendChild(listContainer);
+    contentBox.appendChild(h('button', { class: 'zero-btn', style: 'width:100%; justify-content:center; margin: 12px 0;', html: '<i class="fa-solid fa-plus"></i> 新建分组', onclick: () => showPrompt(menuBox, '分组名称', '', name => { SnapshotGroupManager.create(pName, name); renderList(); }) }));
+    contentBox.appendChild(h('div', { class: 'zero-confirm-btns' }, h('button', { class: 'zero-btn primary', style: 'width:100%;', text: '完成', onclick: () => { menuBox.remove(); renderSnapshots(panel, preset, modal, 'local'); } })));
+    menuBox.appendChild(contentBox);
+    modal.appendChild(menuBox);
+}
+
+function showSnapshotGroupAssignMenu(modal, panel, preset, snap) {
+    const pName = preset.name;
+    const groups = SnapshotGroupManager.get(pName);
+    const menuItems = [];
+
+    const currentGroup = groups.find(g => g.sids.includes(snap.id));
+
+    if (currentGroup) {
+        menuItems.push({ label: '从当前分组移出', icon: 'fa-right-from-bracket', action: () => {
+            SnapshotGroupManager.unassign(pName, snap.id);
+            renderSnapshots(panel, preset, modal, 'local');
+        }});
+    }
+    groups.forEach(g => {
+        if (currentGroup && g.id === currentGroup.id) return;
+        menuItems.push({ label: `移到「${g.name}」`, icon: 'fa-folder', action: () => {
+            SnapshotGroupManager.assign(pName, g.id, [snap.id]);
+            renderSnapshots(panel, preset, modal, 'local');
+        }});
+    });
+
+    if (menuItems.length === 0) { toastr.info('请先创建分组'); return; }
+
+    const menuBox = h('div', { class: 'zero-confirm' });
+    const menuContent = h('div', { class: 'zero-confirm-box zero-menu-box' },
+        h('div', { class: 'zero-confirm-msg', text: `移动快照「${snap.name}」` })
+    );
+    menuItems.forEach(item => {
+        menuContent.appendChild(h('button', {
+            class: 'zero-menu-item',
+            html: `<i class="fa-solid ${item.icon}"></i> ${item.label}`,
+            onclick: () => { menuBox.remove(); item.action(); }
+        }));
+    });
+    menuContent.appendChild(h('div', { class: 'zero-confirm-btns', style: 'margin-top:12px' },
+        h('button', { class: 'zero-btn', text: '取消', onclick: () => menuBox.remove() })
+    ));
+    menuBox.appendChild(menuContent);
+    modal.appendChild(menuBox);
 }
 
 function renderSnapshotDiff(container, snap, preset) {
@@ -1458,6 +1837,18 @@ function renderSnapshotDiff(container, snap, preset) {
         return `<div class="${cls}"><span class="zero-diff-name">${esc(d.name)}</span><div>${statusHTML}</div></div>`;
     }).join('');
     container.innerHTML = html;
+
+    if (snap.samplingParams) {
+        const paramsDivider = h('div', { style: 'margin: 12px 10px 6px; border-top: 1px dashed rgba(255,255,255,0.06);' });
+        container.appendChild(paramsDivider);
+        
+        const mockProfile = {
+            samplingParams: snap.samplingParams,
+            additionalParams: snap.additionalParams,
+            selectedGroupIds: []
+        };
+        renderProfileDetail(container, mockProfile, preset);
+    }
 }
 
 // ═══════════════════════════════════════
@@ -1509,7 +1900,7 @@ function buildProfileCard(profile, preset, panel, modal) {
 
     // Action buttons
     const btnRow = h('div', { class: 'zero-snap-actions' },
-        h('button', { class: 'zero-btn', html: '<i class="fa-solid fa-check"></i> 应用', onclick: async () => {
+        h('button', { class: 'zero-btn', title: '应用', html: '<i class="fa-solid fa-check"></i>', onclick: async () => {
             try {
                 await ModelProfileManager.apply(profile, preset);
                 const p = await PresetManager.load();
@@ -1517,16 +1908,16 @@ function buildProfileCard(profile, preset, panel, modal) {
                 toastr.success(`已应用方案「${profile.name}」`);
             } catch (e) { toastr.error('应用失败'); console.error(e); }
         }}),
-        h('button', { class: 'zero-btn', html: '<i class="fa-solid fa-pen"></i> 重命名', onclick: () => {
+        h('button', { class: 'zero-btn', title: '重命名', html: '<i class="fa-solid fa-pen"></i>', onclick: () => {
             showPrompt(modal, '新名称', profile.name, n => {
                 ModelProfileManager.rename(pName, profile.id, n);
                 renderSnapshots(panel, preset, modal, 'profiles');
             });
         }}),
-        h('button', { class: 'zero-btn', html: '<i class="fa-solid fa-sync"></i> 覆盖', onclick: () => {
+        h('button', { class: 'zero-btn', title: '覆盖', html: '<i class="fa-solid fa-sync"></i>', onclick: () => {
             showCreateProfileDialog(panel, preset, modal, profile);
         }}),
-        h('button', { class: 'zero-btn', html: '<i class="fa-solid fa-trash"></i> 删除', onclick: () => {
+        h('button', { class: 'zero-btn', title: '删除', html: '<i class="fa-solid fa-trash"></i>', onclick: () => {
             showConfirm(modal, `删除方案「${profile.name}」?`, () => {
                 ModelProfileManager.delete(pName, profile.id);
                 renderSnapshots(panel, preset, modal, 'profiles');
