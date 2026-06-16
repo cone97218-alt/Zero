@@ -2,9 +2,9 @@
  * Zero Preset Manager - Entry Point
  * Injects camera icon into QR bar and initializes extension.
  */
-import { openUI } from './qr-ui.js';
-import { preloadOpenai } from './qr-state.js';
-import { init as initPresetManager } from './ui/ext-ui.js';
+import { openUI } from './qr-snapshot/ui.js';
+import { preloadOpenai } from './qr-snapshot/state.js';
+import { init as initPresetManager } from './preset-manager/main.js';
 
 const MODULE_NAME = 'zero';
 const BTN_ID = 'zero-preset-btn';
