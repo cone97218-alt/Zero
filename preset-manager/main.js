@@ -927,27 +927,8 @@ function ensurePanel() {
 }
 
 export async function showPanel() {
-    if (window.addZeroLog) window.addZeroLog('Action', 'showPanel started');
-    try {
-        await loadModules();
-        if (window.addZeroLog) window.addZeroLog('Action', 'loadModules completed');
-    } catch (e) {
-        const err = e && e.stack ? e.stack : (e && e.message ? e.message : String(e));
-        if (window.addZeroLog) window.addZeroLog('Error', 'loadModules failed: ' + err);
-        console.error('[Zero] loadModules failed:', e);
-        toastr.error('预设管理模块加载失败，请查看控制台: ' + (e && e.message ? e.message : String(e)));
-        return;
-    }
-    try {
-        ensurePanel();
-        if (window.addZeroLog) window.addZeroLog('Action', 'ensurePanel completed');
-    } catch (e) {
-        const err = e && e.stack ? e.stack : (e && e.message ? e.message : String(e));
-        if (window.addZeroLog) window.addZeroLog('Error', 'ensurePanel failed: ' + err);
-        console.error('[Zero] ensurePanel failed:', e);
-        toastr.error('预设管理面板初始化失败: ' + (e && e.message ? e.message : String(e)));
-        return;
-    }
+    await loadModules();
+    ensurePanel();
     syncTheme();
     _presetsLastFetch = 0; // 每次打开面板强制刷新预设列表
     
@@ -958,14 +939,11 @@ export async function showPanel() {
     $panel.css('display', 'flex');
     $panel[0].offsetHeight;
     $panel.css('opacity', '1');
-    if (window.addZeroLog) window.addZeroLog('Action', 'Panel CSS display set to flex and opacity to 1');
 
     // Defer heavy rendering to the next animation frame so the panel open transition starts instantly
     requestAnimationFrame(() => {
         const lastTab = localStorage.getItem('zero_last_main_tab') || 'contrast';
-        const $tab = $(`#${PANEL_ID} .zero-tab-link[data-tab="${lastTab}"]`);
-        if (window.addZeroLog) window.addZeroLog('Action', `Switching to last active tab: ${lastTab} (Found: ${$tab.length > 0})`);
-        $tab.click();
+        $(`#${PANEL_ID} .zero-tab-link[data-tab="${lastTab}"]`).click();
     });
 }
 
@@ -996,15 +974,7 @@ export function injectExtensionButton() {
     const $target = $('#extensionsMenu.options-content');
     if ($target.length) {
         $target.append(btnHtml);
-        $(`#${BTN_ID}`).on('click', () => {
-            if (window.addZeroLog) window.addZeroLog('Action', 'Trigger open preset manager from extensions menu');
-            showPanel().catch(e => {
-                const err = e && e.stack ? e.stack : (e && e.message ? e.message : String(e));
-                if (window.addZeroLog) window.addZeroLog('Error', 'Extensions menu click showPanel failed: ' + err);
-                console.error('[Zero] showPanel failed:', e);
-                toastr.error('预设管理打开失败: ' + (e && e.message ? e.message : String(e)));
-            });
-        });
+        $(`#${BTN_ID}`).on('click', () => showPanel());
     }
 }
 

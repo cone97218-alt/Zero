@@ -2,99 +2,7 @@
  * Zero Preset Manager - UI
  * Performance-optimized v2: innerHTML templates, event delegation, lazy rendering.
  */
-window.zeroLogs = window.zeroLogs || [];
-window.addZeroLog = function(type, msg) {
-    const time = new Date().toLocaleTimeString();
-    const logStr = `[${time}] [${type}] ${msg}`;
-    window.zeroLogs.push(logStr);
-};
-
-if (!window.zeroLogInitialized) {
-    window.zeroLogInitialized = true;
-    
-    // 监听全局 promise 失败
-    window.addEventListener('unhandledrejection', (event) => {
-        const reason = event.reason;
-        const errInfo = reason ? (reason.stack || reason.message || String(reason)) : 'Unknown reason';
-        window.addZeroLog('Promise Reject', errInfo);
-    });
-    
-    // 监听全局常规报错
-    window.addEventListener('error', (event) => {
-        const errInfo = event.error ? (event.error.stack || event.error.message || String(event.error)) : event.message;
-        window.addZeroLog('Global Error', errInfo);
-    });
-
-    // 劫持 console.error 自动记录
-    const originalConsoleError = console.error;
-    console.error = function(...args) {
-        originalConsoleError.apply(console, args);
-        const msg = args.map(arg => {
-            if (arg instanceof Error) return arg.stack || arg.message;
-            if (typeof arg === 'object') {
-                try { return JSON.stringify(arg); } catch(e) { return String(arg); }
-            }
-            return String(arg);
-        }).join(' ');
-        window.addZeroLog('console.error', msg);
-    };
-}
-
 import { PresetManager, SnapshotManager, GroupManager, HiddenManager, UiStateManager, LinkageManager, zeroTranslate, HistoryManager, ModelProfileManager, SamplingParamsHelper, SnapshotGroupManager } from './state.js';
-
-function showLogsDialog() {
-    const logsText = window.zeroLogs.join('\n') || '暂无日志记录。';
-    const logOverlay = document.createElement('div');
-    Object.assign(logOverlay.style, {
-        position: 'fixed', top: '0', left: '0', width: '100vw', height: '100vh',
-        zIndex: '10002', background: 'rgba(0,0,0,0.7)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', boxSizing: 'border-box'
-    });
-
-    const box = document.createElement('div');
-    Object.assign(box.style, {
-        background: '#222', color: '#fff', padding: '15px', borderRadius: '8px',
-        width: '90%', maxWidth: '600px', display: 'flex', flexDirection: 'column', height: '80%'
-    });
-
-    const title = document.createElement('h3');
-    title.innerText = 'Zero 插件调试日志';
-    title.style.margin = '0 0 10px 0';
-    box.appendChild(title);
-
-    const txt = document.createElement('textarea');
-    txt.value = logsText;
-    Object.assign(txt.style, {
-        flex: '1', width: '100%', background: '#111', color: '#0f0', border: '1px solid #444',
-        fontFamily: 'monospace', fontSize: '12px', padding: '8px', boxSizing: 'border-box', resize: 'none'
-    });
-    box.appendChild(txt);
-
-    const btnRow = document.createElement('div');
-    btnRow.style.marginTop = '10px';
-    btnRow.style.display = 'flex';
-    btnRow.style.gap = '10px';
-
-    const copyBtn = document.createElement('button');
-    copyBtn.innerText = '复制全部日志';
-    copyBtn.className = 'menu_button';
-    copyBtn.onclick = () => {
-        txt.select();
-        document.execCommand('copy');
-        toastr.success('已复制到剪贴板');
-    };
-    btnRow.appendChild(copyBtn);
-
-    const closeBtn = document.createElement('button');
-    closeBtn.innerText = '关闭';
-    closeBtn.className = 'menu_button';
-    closeBtn.onclick = () => logOverlay.remove();
-    btnRow.appendChild(closeBtn);
-
-    box.appendChild(btnRow);
-    logOverlay.appendChild(box);
-    document.body.appendChild(logOverlay);
-}
 
 let overlay = null;
 let pendingToggles = new Map();
@@ -357,27 +265,13 @@ function buildModal(modal, preset, listInfo) {
         h('label', { class: 'zero-header-label', text: '当前预设' }),
         select,
         h('button', {
-            class: 'zero-logs-btn',
-            title: '查看调试日志',
-            html: '<i class="fa-solid fa-bug"></i>',
-            onclick: showLogsDialog
-        }),
-        h('button', {
             class: 'zero-manage-btn',
             title: '打开预设管理',
             html: '<i class="fa-solid fa-list-ul"></i>',
             onclick: async () => {
-                try {
-                    window.addZeroLog('Action', 'Trigger open preset manager from QR UI');
-                    closeUI();
-                    const { showPanel } = await import('../preset-manager/main.js');
-                    await showPanel();
-                } catch (e) {
-                    const err = e && e.stack ? e.stack : (e && e.message ? e.message : String(e));
-                    window.addZeroLog('Open UI Error', err);
-                    console.error('[Zero] Failed to open preset manager:', e);
-                    toastr.error('打开预设管理失败: ' + (e && e.message ? e.message : String(e)));
-                }
+                closeUI();
+                const { showPanel } = await import('../preset-manager/main.js');
+                await showPanel();
             }
         }),
         h('button', {
