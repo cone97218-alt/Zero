@@ -205,11 +205,17 @@ export async function openUI() {
     try {
         PresetManager.invalidate();
         const [preset, listInfo] = await Promise.all([PresetManager.load(), PresetManager.listNames()]);
-        if (!preset) { toastr.error('无法加载预设'); closeUI(); return; }
+        if (!preset) {
+            alert('[Zero UI Error] PresetManager.load() returned empty preset');
+            toastr.error('无法加载预设');
+            closeUI();
+            return;
+        }
         modal.innerHTML = '';
         buildModal(modal, preset, listInfo);
     } catch (e) {
         console.error('[Zero]', e);
+        alert('[Zero UI Catch] openUI error: ' + e + '\nStack: ' + (e ? e.stack : ''));
         toastr.error('加载预设失败');
         closeUI();
     }

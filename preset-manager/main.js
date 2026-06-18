@@ -927,24 +927,32 @@ function ensurePanel() {
 }
 
 export async function showPanel() {
-    await loadModules();
-    ensurePanel();
-    syncTheme();
-    _presetsLastFetch = 0; // 每次打开面板强制刷新预设列表
-    
-    // Initialize history button states
-    HistoryManager.updateButtonsState();
-    
-    const $panel = $(`#${PANEL_ID}`);
-    $panel.css('display', 'flex');
-    $panel[0].offsetHeight;
-    $panel.css('opacity', '1');
+    try {
+        await loadModules();
+        ensurePanel();
+        syncTheme();
+        _presetsLastFetch = 0; // 每次打开面板强制刷新预设列表
+        
+        // Initialize history button states
+        HistoryManager.updateButtonsState();
+        
+        const $panel = $(`#${PANEL_ID}`);
+        $panel.css('display', 'flex');
+        $panel[0].offsetHeight;
+        $panel.css('opacity', '1');
 
-    // Defer heavy rendering to the next animation frame so the panel open transition starts instantly
-    requestAnimationFrame(() => {
-        const lastTab = localStorage.getItem('zero_last_main_tab') || 'contrast';
-        $(`#${PANEL_ID} .zero-tab-link[data-tab="${lastTab}"]`).click();
-    });
+        // Defer heavy rendering to the next animation frame so the panel open transition starts instantly
+        requestAnimationFrame(() => {
+            try {
+                const lastTab = localStorage.getItem('zero_last_main_tab') || 'contrast';
+                $(`#${PANEL_ID} .zero-tab-link[data-tab="${lastTab}"]`).click();
+            } catch (tabErr) {
+                alert('[Zero Tab Error] showPanel tab click failed: ' + tabErr + '\nStack: ' + (tabErr ? tabErr.stack : ''));
+            }
+        });
+    } catch (err) {
+        alert('[Zero Panel Error] showPanel failed: ' + err + '\nStack: ' + (err ? err.stack : ''));
+    }
 }
 
 export function closePanel() {
@@ -974,7 +982,11 @@ export function injectExtensionButton() {
     const $target = $('#extensionsMenu.options-content');
     if ($target.length) {
         $target.append(btnHtml);
-        $(`#${BTN_ID}`).on('click', () => showPanel());
+        $(`#${BTN_ID}`).on('click', () => {
+            showPanel().catch(err => {
+                alert('[Zero Click Error] showPanel rejected: ' + err + '\nStack: ' + (err ? err.stack : ''));
+            });
+        });
     }
 }
 
