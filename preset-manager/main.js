@@ -38,12 +38,13 @@ export function addPresetToCache(presetName) {
 
 async function loadModules() {
     if (_modulesLoaded) return;
+    const basePath = new URL('.', import.meta.url).href;
     [_contrast, _stitch, _manage, _checker, _editor] = await Promise.all([
-        import('./contrast.js'),
-        import('./stitch.js'),
-        import('./manage.js'),
-        import('./checker.js'),
-        import('./editor.js'),
+        import(`${basePath}contrast.js`),
+        import(`${basePath}stitch.js`),
+        import(`${basePath}manage.js`),
+        import(`${basePath}checker.js`),
+        import(`${basePath}editor.js`),
     ]);
     _modulesLoaded = true;
 }
@@ -760,7 +761,7 @@ function ensurePanel() {
 
         const items = selectedIndexes.map(idx => window.zero_stitch_promptsA[idx]);
         const nameA = $('#stitch-preset-source').val();
-        const { showCollectModal } = await import('./utils.js');
+        const { showCollectModal } = await import(new URL('./utils.js', import.meta.url).href);
         await showCollectModal(items, nameA);
         
         $('.stitch-item-cb').prop('checked', false).trigger('change');
@@ -839,7 +840,7 @@ function ensurePanel() {
         const pA = window.zero_stitch_promptsA ? window.zero_stitch_promptsA[index] : null;
         if (!pA) return;
         const nameA = $('#stitch-preset-source').val();
-        const { showCollectModal } = await import('./utils.js');
+        const { showCollectModal } = await import(new URL('./utils.js', import.meta.url).href);
         await showCollectModal(pA, nameA);
     });
 

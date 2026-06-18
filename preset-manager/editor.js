@@ -368,7 +368,7 @@ export async function openQuickEditor(presetName, itemName) {
             forbid_overrides: $('#edit-prompt-forbid-overrides').is(':checked'),
             content: $('#quick-edit-content').val()
         };
-        const { showCollectModal } = await import('./utils.js');
+        const { showCollectModal } = await import(new URL('./utils.js', import.meta.url).href);
         await showCollectModal(currentItem, presetName);
     });
 
@@ -424,17 +424,17 @@ export async function openQuickEditor(presetName, itemName) {
             if ($('#zero-tab-check').is(':visible')) {
                 Checker.render('check-results-container', presetName);
             } else if ($('#zero-tab-stitch').is(':visible')) {
-                const { renderStitchList } = await import('./stitch.js');
+                const { renderStitchList } = await import(new URL('./stitch.js', import.meta.url).href);
                 await renderStitchList();
             } else if ($('#zero-tab-contrast').is(':visible')) {
                 if ($('#comparison-overlay').is(':visible')) {
                     // Details overlay is open, it will refresh itself via the event listener
                 } else {
-                    const { performAutoMatch } = await import('./contrast.js');
+                    const { performAutoMatch } = await import(new URL('./contrast.js', import.meta.url).href);
                     await performAutoMatch();
                 }
             } else if ($('#zero-tab-manage').is(':visible')) {
-                const { renderManageTab } = await import('./manage.js');
+                const { renderManageTab } = await import(new URL('./manage.js', import.meta.url).href);
                 await renderManageTab();
             }
             

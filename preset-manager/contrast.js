@@ -778,7 +778,7 @@ export async function showComparisonDetail(index, allItems) {
         if (!prompt) return;
 
         const originPreset = isA ? nameA : nameB;
-        const { showCollectModal } = await import("./utils.js"); await showCollectModal(prompt, originPreset);
+        const { showCollectModal } = await import(new URL('./utils.js', import.meta.url).href); await showCollectModal(prompt, originPreset);
     });
 
     $('#comparison-overlay').on('click', '.zero-overwrite-btn', async function() {

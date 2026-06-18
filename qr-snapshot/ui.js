@@ -185,7 +185,7 @@ export async function openUI() {
     if (overlay) return;
 
     // Background preload ext-ui.js to avoid transition lag when entering Preset Manager
-    import('../preset-manager/main.js').catch(() => {});
+    import(new URL('../preset-manager/main.js', import.meta.url).href).catch(() => {});
 
     overlay = document.createElement('div');
     overlay.id = 'zero-overlay';
@@ -270,7 +270,7 @@ function buildModal(modal, preset, listInfo) {
             html: '<i class="fa-solid fa-list-ul"></i>',
             onclick: async () => {
                 closeUI();
-                const { showPanel } = await import('../preset-manager/main.js');
+                const { showPanel } = await import(new URL('../preset-manager/main.js', import.meta.url).href);
                 await showPanel();
             }
         }),
