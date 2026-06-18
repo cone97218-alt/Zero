@@ -38,13 +38,12 @@ export function addPresetToCache(presetName) {
 
 async function loadModules() {
     if (_modulesLoaded) return;
-    const basePath = new URL('.', import.meta.url).href;
     [_contrast, _stitch, _manage, _checker, _editor] = await Promise.all([
-        import(`${basePath}contrast.js`),
-        import(`${basePath}stitch.js`),
-        import(`${basePath}manage.js`),
-        import(`${basePath}checker.js`),
-        import(`${basePath}editor.js`),
+        import('./contrast.js'),
+        import('./stitch.js'),
+        import('./manage.js'),
+        import('./checker.js'),
+        import('./editor.js'),
     ]);
     _modulesLoaded = true;
 }
@@ -928,8 +927,20 @@ function ensurePanel() {
 }
 
 export async function showPanel() {
-    await loadModules();
-    ensurePanel();
+    try {
+        await loadModules();
+    } catch (e) {
+        console.error('[Zero] loadModules failed:', e);
+        toastr.error('预设管理模块加载失败，请查看控制台: ' + (e && e.message ? e.message : String(e)));
+        return;
+    }
+    try {
+        ensurePanel();
+    } catch (e) {
+        console.error('[Zero] ensurePanel failed:', e);
+        toastr.error('预设管理面板初始化失败: ' + (e && e.message ? e.message : String(e)));
+        return;
+    }
     syncTheme();
     _presetsLastFetch = 0; // 每次打开面板强制刷新预设列表
     
