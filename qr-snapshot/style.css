@@ -1102,3 +1102,28 @@
     color: var(--SmartThemeBodyColor, #ddd);
     font-weight: 600;
 }
+
+/* ===== Snapshot Action Animations ===== */
+@keyframes zeroApplySuccess {
+    0% { transform: scale(1); color: inherit; }
+    30% { transform: scale(1.4); color: var(--SmartThemeQuoteColor, #7b8cde); }
+    70% { transform: scale(1.4); color: var(--SmartThemeQuoteColor, #7b8cde); }
+    100% { transform: scale(1); color: inherit; }
+}
+
+.zero-anim-apply {
+    display: inline-block;
+    animation: zeroApplySuccess 0.8s ease-in-out;
+}
+
+@keyframes zeroOverwriteSpin {
+    0% { transform: rotate(0deg); color: inherit; }
+    50% { transform: rotate(180deg); color: var(--SmartThemeQuoteColor, #7b8cde); }
+    100% { transform: rotate(360deg); color: inherit; }
+}
+
+.zero-anim-overwrite {
+    display: inline-block;
+    animation: zeroOverwriteSpin 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+}
+

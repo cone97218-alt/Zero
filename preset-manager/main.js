@@ -418,6 +418,17 @@ function ensurePanel() {
                                     <span class="zero-slider"></span>
                                 </label>
                             </div>
+                            <!-- 快照二次确认 -->
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px;">
+                                <div style="flex: 1;">
+                                    <strong style="display: block; font-size: 13px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">快照二次确认</strong>
+                                    <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">应用或覆盖快照时，显示二次确认弹窗。</span>
+                                </div>
+                                <label class="zero-switch">
+                                    <input type="checkbox" id="zero-setting-confirm-snapshot" class="interactable">
+                                    <span class="zero-slider"></span>
+                                </label>
+                            </div>
                         </div>
                     </div>
 
@@ -669,6 +680,12 @@ function ensurePanel() {
         const checked = $(this).is(':checked');
         UiStateManager.save({ toastOnPresetStitch: checked });
         toastr.success(checked ? '已开启预设缝合提示' : '已关闭预设缝合提示');
+    });
+
+    $('body').off('change', '#zero-setting-confirm-snapshot').on('change', '#zero-setting-confirm-snapshot', function() {
+        const checked = $(this).is(':checked');
+        UiStateManager.save({ confirmOnSnapshot: checked });
+        toastr.success(checked ? '已开启快照二次确认' : '已关闭快照二次确认');
     });
 
     // 解耦模式单选卡片点击
@@ -1197,6 +1214,7 @@ export function renderSettingsTab() {
     $('#zero-setting-toast-switch').prop('checked', state.toastOnSnapshotSwitch === true);
     $('#zero-setting-toast-overwrite').prop('checked', state.toastOnSnapshotOverwrite === true);
     $('#zero-setting-toast-stitch').prop('checked', state.toastOnPresetStitch === true);
+    $('#zero-setting-confirm-snapshot').prop('checked', state.confirmOnSnapshot === true);
 }
 
 export async function refreshActiveTab() {

@@ -56,9 +56,34 @@ async function flushToggles() {
     catch (e) { console.error('[Zero] batch toggle failed:', e); toastr.error('切换失败'); }
 }
 
-function showConfirm(modal, msg, onYes) {
-    onYes();
+function showConfirm(modal, msg, onYes, requiresSetting = false) {
+    if (requiresSetting && UiStateManager.get().confirmOnSnapshot !== true) {
+        onYes();
+        return;
+    }
+    const box = h('div', { class: 'zero-confirm' },
+        h('div', { class: 'zero-confirm-box' },
+            h('div', { class: 'zero-confirm-msg', html: msg.replace(/\n/g, '<br>') }),
+            h('div', { class: 'zero-confirm-btns', style: 'margin-top:12px' },
+                h('button', { class: 'zero-btn', text: '取消', onclick: () => box.remove() }),
+                h('button', { class: 'zero-btn primary', text: '确认', onclick: () => { box.remove(); onYes(); } })
+            )
+        )
+    );
+    modal.appendChild(box);
 }
+
+function triggerIconAnimation(iconEl, className) {
+    if (!iconEl) return;
+    iconEl.classList.remove(className);
+    void iconEl.offsetWidth; // trigger reflow to restart animation
+    iconEl.classList.add(className);
+    iconEl.addEventListener('animationend', function handler() {
+        iconEl.classList.remove(className);
+        iconEl.removeEventListener('animationend', handler);
+    });
+}
+
 
 function showPrompt(modal, msg, defaultVal, onOk) {
     const input = h('input', { class: 'zero-input', type: 'text', value: defaultVal || '' });
@@ -1466,42 +1491,53 @@ function buildSnapCard(snap, preset, panel, modal, viewMode) {
     });
 
     const isOther = snap.presetName !== preset.name;
+    const applyIcon = h('i', { class: 'fa-solid fa-check' });
+    const overwriteIcon = h('i', { class: 'fa-solid fa-sync' });
+
     const btnRow = h('div', { class: 'zero-snap-actions' },
-        h('button', { class: 'zero-btn', title: '应用', html: '<i class="fa-solid fa-check"></i>', onclick: () => {
+        h('button', { class: 'zero-btn', title: '应用', onclick: () => {
             if (isOther) {
                 showConfirm(modal, `该快照属于预设「${snap.presetName}」。\n是否切换到该预设并应用快照？`, () => {
-                    const contentEl = modal.querySelector('.zero-content');
-                    if (contentEl) contentEl.innerHTML = '<div class="zero-loading" style="padding:20px;text-align:center;color:var(--SmartThemeBodyColor)"><i class="fa-solid fa-spinner fa-spin"></i><div>切换并应用中...</div></div>';
-                    requestAnimationFrame(() => {
-                        setTimeout(async () => {
-                            try {
-                                await PresetManager.switchPreset(snap.presetName);
-                                await new Promise(r => requestAnimationFrame(r));
-                                const nextPreset = await PresetManager.load();
-                                await SnapshotManager.apply(snap, nextPreset);
-                                if (UiStateManager.get().toastOnSnapshotSwitch === true) {
-                                    toastr.success(`已应用快照「${snap.name}」`);
-                                }
-                                const newList = await PresetManager.listNames();
-                                modal.innerHTML = '';
-                                buildModal(modal, nextPreset, newList);
-                            } catch (e) { toastr.error('切换应用失败'); console.error(e); }
-                        }, 10);
-                    });
-                });
+                    triggerIconAnimation(applyIcon, 'zero-anim-apply');
+                    setTimeout(() => {
+                        const contentEl = modal.querySelector('.zero-content');
+                        if (contentEl) contentEl.innerHTML = '<div class="zero-loading" style="padding:20px;text-align:center;color:var(--SmartThemeBodyColor)"><i class="fa-solid fa-spinner fa-spin"></i><div>切换并应用中...</div></div>';
+                        requestAnimationFrame(() => {
+                            setTimeout(async () => {
+                                try {
+                                    await PresetManager.switchPreset(snap.presetName);
+                                    await new Promise(r => requestAnimationFrame(r));
+                                    const nextPreset = await PresetManager.load();
+                                    await SnapshotManager.apply(snap, nextPreset);
+                                    if (UiStateManager.get().toastOnSnapshotSwitch === true) {
+                                        toastr.success(`已应用快照「${snap.name}」`);
+                                    }
+                                    const newList = await PresetManager.listNames();
+                                    modal.innerHTML = '';
+                                    buildModal(modal, nextPreset, newList);
+                                } catch (e) { toastr.error('切换应用失败'); console.error(e); }
+                            }, 10);
+                        });
+                    }, 400);
+                }, true);
             } else {
                 showConfirm(modal, `应用快照「${snap.name}」?\n将切换条目开关状态`, async () => {
                     try {
+                        triggerIconAnimation(applyIcon, 'zero-anim-apply');
+                        const startTime = Date.now();
                         await SnapshotManager.apply(snap, preset);
                         if (UiStateManager.get().toastOnSnapshotSwitch === true) {
                             toastr.success(`已应用快照「${snap.name}」`);
                         }
                         const p = await PresetManager.load();
+                        const elapsed = Date.now() - startTime;
+                        const delay = Math.max(0, 600 - elapsed);
+                        if (delay > 0) await new Promise(r => setTimeout(r, delay));
                         renderSnapshots(panel, p || preset, modal, viewMode);
                     } catch (e) { toastr.error('应用失败'); console.error(e); }
-                });
+                }, true);
             }
-        }}),
+        } }, applyIcon),
         !isOther ? h('button', { class: 'zero-btn', title: '分组', html: '<i class="fa-solid fa-folder-open"></i>', onclick: () => showSnapshotGroupAssignMenu(modal, panel, preset, snap) }) : null,
         h('button', { class: 'zero-btn', title: '重命名', html: '<i class="fa-solid fa-pen"></i>', onclick: () => {
             showPrompt(modal, '新名称', snap.name, (n) => {
@@ -1511,15 +1547,22 @@ function buildSnapCard(snap, preset, panel, modal, viewMode) {
         }})
     );
     if (!isOther) {
-        btnRow.appendChild(h('button', { class: 'zero-btn', title: '覆盖', html: '<i class="fa-solid fa-sync"></i>', onclick: () => {
+        btnRow.appendChild(h('button', { class: 'zero-btn', title: '覆盖', onclick: () => {
             showConfirm(modal, `用当前状态覆盖快照「${snap.name}」?`, async () => {
-                await SnapshotManager.overwrite(snap.id, preset);
-                if (UiStateManager.get().toastOnSnapshotOverwrite === true) {
-                    toastr.success(`快照「${snap.name}」已覆盖`);
-                }
-                renderSnapshots(panel, preset, modal, viewMode);
-            });
-        }}));
+                try {
+                    triggerIconAnimation(overwriteIcon, 'zero-anim-overwrite');
+                    const startTime = Date.now();
+                    await SnapshotManager.overwrite(snap.id, preset);
+                    if (UiStateManager.get().toastOnSnapshotOverwrite === true) {
+                        toastr.success(`快照「${snap.name}」已覆盖`);
+                    }
+                    const elapsed = Date.now() - startTime;
+                    const delay = Math.max(0, 600 - elapsed);
+                    if (delay > 0) await new Promise(r => setTimeout(r, delay));
+                    renderSnapshots(panel, preset, modal, viewMode);
+                } catch (e) { toastr.error('覆盖失败'); console.error(e); }
+            }, true);
+        } }, overwriteIcon));
     }
     btnRow.appendChild(h('button', { class: 'zero-btn', title: '删除', html: '<i class="fa-solid fa-trash"></i>', onclick: () => {
         showConfirm(modal, `删除快照「${snap.name}」?`, () => {
