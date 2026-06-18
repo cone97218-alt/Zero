@@ -191,7 +191,7 @@ export async function openUI() {
     overlay.id = 'zero-overlay';
     Object.assign(overlay.style, {
         position: 'fixed', top: '0', left: '0', width: '100vw', height: '100vh',
-        zIndex: '10001', background: 'rgba(0,0,0,0.55)',
+        zIndex: '9999999', background: 'rgba(0,0,0,0.55)',
         display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden'
     });
     overlay.addEventListener('click', (e) => { if (e.target === overlay) closeUI(); });

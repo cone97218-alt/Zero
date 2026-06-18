@@ -135,7 +135,7 @@ function ensurePanel() {
             height: 100vh;
             background: var(--SmartThemeBlurTintColor, #171717);
             color: var(--SmartThemeBodyColor, #dcdcd2);
-            z-index: 9999;
+            z-index: 9999999;
             padding-top: 0;
             flex-direction: column;
             overflow: hidden;
