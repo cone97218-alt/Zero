@@ -191,7 +191,7 @@ export async function openUI() {
     overlay.id = 'zero-overlay';
     Object.assign(overlay.style, {
         position: 'fixed', top: '0', left: '0', width: '100vw', height: '100vh',
-        zIndex: '9999999', background: 'rgba(0,0,0,0.55)',
+        zIndex: '10001', background: 'rgba(0,0,0,0.55)',
         display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden'
     });
     overlay.addEventListener('click', (e) => { if (e.target === overlay) closeUI(); });
@@ -205,17 +205,11 @@ export async function openUI() {
     try {
         PresetManager.invalidate();
         const [preset, listInfo] = await Promise.all([PresetManager.load(), PresetManager.listNames()]);
-        if (!preset) {
-            alert('[Zero UI Error] PresetManager.load() returned empty preset');
-            toastr.error('无法加载预设');
-            closeUI();
-            return;
-        }
+        if (!preset) { toastr.error('无法加载预设'); closeUI(); return; }
         modal.innerHTML = '';
         buildModal(modal, preset, listInfo);
     } catch (e) {
         console.error('[Zero]', e);
-        alert('[Zero UI Catch] openUI error: ' + e + '\nStack: ' + (e ? e.stack : ''));
         toastr.error('加载预设失败');
         closeUI();
     }

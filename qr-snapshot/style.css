@@ -39,7 +39,7 @@
     bottom: 0;
     width: 100%;
     height: 100%;
-    z-index: 9999999;
+    z-index: 10000;
     background: rgba(0,0,0,0.55);
     display: flex;
     align-items: flex-end;
@@ -951,8 +951,14 @@
         bottom: 0 !important;
         left: 0 !important;
         right: 0 !important;
-        width: 100% !important;
-        height: auto !important;
+        width: 100vw !important;
+        height: 100vh !important;
+    }
+
+    /* 3.1. Ensure main panels override SillyTavern mobile drawers (z-index 10000+) */
+    #zero-preset-manager-panel,
+    .zero-overlay {
+        z-index: 19990 !important;
     }
 
     /* 4. Force hardware acceleration to stabilize rendering */
