@@ -422,14 +422,14 @@ async function saveToFavoritePreset(presetName, prompts, isNewPreset = false, or
 
         if (isNewPreset) {
             try {
-                const { addPresetToCache } = await import(new URL('./main.js', import.meta.url).href);
+                const { addPresetToCache } = await import('./main.js');
                 addPresetToCache(presetName);
             } catch (e) {
                 console.warn('[Zero] Failed to add preset to cache:', e);
             }
         }
 
-        const { populatePresetSelects } = await import(new URL('./main.js', import.meta.url).href);
+        const { populatePresetSelects } = await import('./main.js');
         await populatePresetSelects();
     } catch (e) {
         console.error('[Zero] saveToFavoritePreset failed:', e);
