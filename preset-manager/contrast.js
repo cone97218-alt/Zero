@@ -433,7 +433,7 @@ export async function showComparisonDetail(index, allItems) {
         <div id="comparison-overlay" style="
             position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
             background: var(--SmartThemeBlurTintColor, #171717);
-            z-index: 10000; display: flex; flex-direction: column;
+            z-index: 20000; display: flex; flex-direction: column;
             padding-top: env(safe-area-inset-top);
         ">
             <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--SmartThemeBorderColor);">

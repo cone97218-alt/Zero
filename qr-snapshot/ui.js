@@ -76,66 +76,7 @@ function showPrompt(modal, msg, defaultVal, onOk) {
     setTimeout(() => input.focus(), 50);
 }
 
-function showSettingsModal(modal, onSave) {
-    const currentDecouple = UiStateManager.get().decoupleJailbreak === true;
 
-    const optionDecouple = h('label', { style: 'display: flex; align-items: flex-start; gap: 8px; margin-bottom: 12px; cursor: pointer; text-align: left;' },
-        h('input', {
-            type: 'radio',
-            name: 'zero-decouple-mode',
-            value: 'true',
-            checked: currentDecouple,
-            style: 'margin-top: 3px; accent-color: var(--SmartThemeQuoteColor, #7b8cde); width: 14px; height: 14px;'
-        }),
-        h('div', {},
-            h('strong', { text: '完全解耦模式', style: 'display: block; color: var(--SmartThemeBodyTextColor); font-size: 13px; font-weight: 600;' }),
-            h('span', {
-                text: '快照部分仅管理日常条目，不控制或保存破限条目、采样参数 and 附加参数。破限相关的条目与参数独立交由「模型方案」进行专属管理。',
-                style: 'display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); margin-top: 2px; line-height: 1.4;'
-            })
-        )
-    );
-
-    const optionNoDecouple = h('label', { style: 'display: flex; align-items: flex-start; gap: 8px; margin-bottom: 16px; cursor: pointer; text-align: left;' },
-        h('input', {
-            type: 'radio',
-            name: 'zero-decouple-mode',
-            value: 'false',
-            checked: !currentDecouple,
-            style: 'margin-top: 3px; accent-color: var(--SmartThemeQuoteColor, #7b8cde); width: 14px; height: 14px;'
-        }),
-        h('div', {},
-            h('strong', { text: '不解耦模式 (默认)', style: 'display: block; color: var(--SmartThemeBodyTextColor); font-size: 13px; font-weight: 600;' }),
-            h('span', {
-                text: '快照部分统一管理日常和破限条目。创建或应用快照时，会一并记录和恢复所有条目的开关状态，并保存与还原当前预设的采样参数及附加参数。',
-                style: 'display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); margin-top: 2px; line-height: 1.4;'
-            })
-        )
-    );
-
-    const box = h('div', { class: 'zero-confirm' },
-        h('div', { class: 'zero-confirm-box', style: 'max-width: 380px; width: 90%; padding: 18px;' },
-            h('div', { class: 'zero-confirm-msg', text: '快照与模型方案设置', style: 'font-weight: bold; font-size: 15px; margin-bottom: 16px; text-align: left; border-bottom: 1px solid var(--SmartThemeBorderColor); padding-bottom: 8px;' }),
-            optionDecouple,
-            optionNoDecouple,
-            h('div', { class: 'zero-confirm-btns', style: 'margin-top: 16px; justify-content: flex-end; gap: 8px;' },
-                h('button', { class: 'zero-btn', text: '取消', onclick: () => box.remove() }),
-                h('button', {
-                    class: 'zero-btn primary',
-                    text: '确定',
-                    onclick: () => {
-                        const selectedVal = box.querySelector('input[name="zero-decouple-mode"]:checked').value === 'true';
-                        UiStateManager.save({ decoupleJailbreak: selectedVal });
-                        toastr.success(selectedVal ? '已开启完全解耦模式' : '已关闭完全解耦模式（快照将管理全部参数）');
-                        box.remove();
-                        if (onSave) onSave();
-                    }
-                })
-            )
-        )
-    );
-    modal.appendChild(box);
-}
 
 
 // ═══════════════════════════════════════
@@ -1391,30 +1332,17 @@ function renderSnapshots(panel, preset, modal, viewMode = 'local') {
     _currentPreset = preset;
     _currentModal = modal;
     panel.innerHTML = '';
-    // Sub-tab bar: 快照 | 方案 + ⚙️设置
-    const subTabBar = h('div', { class: 'zero-sub-tabs', style: 'display:flex; gap:6px; margin-bottom:12px; justify-content: space-between; align-items: center;' },
-        h('div', { style: 'display:flex; gap:6px;' },
-            h('button', { class: 'zero-chip' + (viewMode !== 'profiles' ? ' active' : ''), text: '快照', onclick: () => {
-                const nextMode = viewMode !== 'profiles' ? viewMode : 'local';
-                UiStateManager.save({ snapshotViewMode: nextMode });
-                renderSnapshots(panel, preset, modal, nextMode);
-            } }),
-            h('button', { class: 'zero-chip' + (viewMode === 'profiles' ? ' active' : ''), text: '模型方案', onclick: () => {
-                UiStateManager.save({ snapshotViewMode: 'profiles' });
-                renderSnapshots(panel, preset, modal, 'profiles');
-            } })
-        ),
-        h('button', {
-            class: 'zero-icon-btn',
-            title: '快照与方案设置',
-            style: 'opacity: 0.8; font-size: 14px; padding: 4px 8px; display: flex; align-items: center; justify-content: center;',
-            html: '<i class="fa-solid fa-gear"></i>',
-            onclick: () => {
-                showSettingsModal(modal, () => {
-                    renderSnapshots(panel, preset, modal, viewMode);
-                });
-            }
-        })
+    // Sub-tab bar: 快照 | 方案
+    const subTabBar = h('div', { class: 'zero-sub-tabs', style: 'display:flex; gap:6px; margin-bottom:12px; align-items: center;' },
+        h('button', { class: 'zero-chip' + (viewMode !== 'profiles' ? ' active' : ''), text: '快照', onclick: () => {
+            const nextMode = viewMode !== 'profiles' ? viewMode : 'local';
+            UiStateManager.save({ snapshotViewMode: nextMode });
+            renderSnapshots(panel, preset, modal, nextMode);
+        } }),
+        h('button', { class: 'zero-chip' + (viewMode === 'profiles' ? ' active' : ''), text: '模型方案', onclick: () => {
+            UiStateManager.save({ snapshotViewMode: 'profiles' });
+            renderSnapshots(panel, preset, modal, 'profiles');
+        } })
     );
     panel.appendChild(subTabBar);
 
@@ -1551,6 +1479,9 @@ function buildSnapCard(snap, preset, panel, modal, viewMode) {
                                 await new Promise(r => requestAnimationFrame(r));
                                 const nextPreset = await PresetManager.load();
                                 await SnapshotManager.apply(snap, nextPreset);
+                                if (UiStateManager.get().toastOnSnapshotSwitch === true) {
+                                    toastr.success(`已应用快照「${snap.name}」`);
+                                }
                                 const newList = await PresetManager.listNames();
                                 modal.innerHTML = '';
                                 buildModal(modal, nextPreset, newList);
@@ -1562,6 +1493,9 @@ function buildSnapCard(snap, preset, panel, modal, viewMode) {
                 showConfirm(modal, `应用快照「${snap.name}」?\n将切换条目开关状态`, async () => {
                     try {
                         await SnapshotManager.apply(snap, preset);
+                        if (UiStateManager.get().toastOnSnapshotSwitch === true) {
+                            toastr.success(`已应用快照「${snap.name}」`);
+                        }
                         const p = await PresetManager.load();
                         renderSnapshots(panel, p || preset, modal, viewMode);
                     } catch (e) { toastr.error('应用失败'); console.error(e); }
@@ -1580,6 +1514,9 @@ function buildSnapCard(snap, preset, panel, modal, viewMode) {
         btnRow.appendChild(h('button', { class: 'zero-btn', title: '覆盖', html: '<i class="fa-solid fa-sync"></i>', onclick: () => {
             showConfirm(modal, `用当前状态覆盖快照「${snap.name}」?`, async () => {
                 await SnapshotManager.overwrite(snap.id, preset);
+                if (UiStateManager.get().toastOnSnapshotOverwrite === true) {
+                    toastr.success(`快照「${snap.name}」已覆盖`);
+                }
                 renderSnapshots(panel, preset, modal, viewMode);
             });
         }}));

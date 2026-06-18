@@ -1,5 +1,5 @@
 import { getPresetPrompts, escapeHtml, debounce } from './utils.js';
-import { HistoryManager } from '../qr-snapshot/state.js';
+import { HistoryManager, UiStateManager } from '../qr-snapshot/state.js';
 
 export let stitch_batch_mode = false;
 let _cachedStitchPrompts = null;
@@ -345,6 +345,9 @@ export async function performStitch(itemsA, targetName, position) {
 
         const isActive = pm.getSelectedPresetName() === targetName;
         await pm.savePreset(targetName, targetPreset, { skipUpdate: !isActive });
+        if (UiStateManager.get().toastOnPresetStitch === true) {
+            toastr.success(`成功缝合至预设「${targetName}」`);
+        }
     } catch (err) {
         console.error('[Zero] Perform stitch failed:', err);
         toastr.error('缝合失败');

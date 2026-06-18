@@ -5,7 +5,7 @@
  * 子模块采用懒加载策略：仅在用户首次打开面板时并行加载，之后缓存复用。
  */
 
-import { PresetManager, HistoryManager } from '../qr-snapshot/state.js';
+import { PresetManager, HistoryManager, UiStateManager } from '../qr-snapshot/state.js';
 import { syncTheme } from './utils.js';
 
 // ── 懒加载缓存 ──────────────────────────────────────────────────────────────
@@ -26,15 +26,6 @@ window.addEventListener('zero-presets-list-changed', () => { _presetsLastFetch =
 
 /** 供外部模块主动失效缓存（如批量导入/删除后） */
 export function invalidatePresetsCache() { _presetsLastFetch = 0; }
-
-export function addPresetToCache(presetName) {
-    if (_presetsListCache && Array.isArray(_presetsListCache.names)) {
-        if (!_presetsListCache.names.includes(presetName)) {
-            _presetsListCache.names.push(presetName);
-            _presetsListCache.names.sort();
-        }
-    }
-}
 
 async function loadModules() {
     if (_modulesLoaded) return;
@@ -135,7 +126,7 @@ function ensurePanel() {
             height: 100vh;
             background: var(--SmartThemeBlurTintColor, #171717);
             color: var(--SmartThemeBodyColor, #dcdcd2);
-            z-index: 19990;
+            z-index: 9999;
             padding-top: 0;
             flex-direction: column;
             overflow: hidden;
@@ -159,6 +150,7 @@ function ensurePanel() {
                     <div class="zero-tab-link" data-tab="stitch" style="padding: 10px 12px; font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent;">缝合</div>
                     <div class="zero-tab-link" data-tab="check" style="padding: 10px 12px; font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent;">自查</div>
                     <div class="zero-tab-link" data-tab="manage" style="padding: 10px 12px; font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent;">管理</div>
+                    <div class="zero-tab-link" data-tab="settings" style="padding: 10px 12px; font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent;">设置</div>
                 </div>
                 <div style="display: flex; align-items: center; gap: 4px; margin-right: 8px;">
                     <button id="zero-history-undo" class="interactable zero-icon-btn" title="撤回上一个操作" style="background: none; border: none; color: inherit; padding: 8px; cursor: pointer; opacity: 0.4; font-size: 14px; display: flex; align-items: center; justify-content: center;" disabled>
@@ -362,6 +354,121 @@ function ensurePanel() {
                     <div id="manage-preset-list" style="display: flex; flex-direction: column; gap: 6px; flex: 1; overflow-y: auto;"></div>
                     <input type="file" id="manage-import-input" multiple accept=".json" style="display: none;">
                 </div>
+
+                <!-- Settings Tab -->
+                <div id="zero-tab-settings" class="zero-tab-content" style="padding: 12px; display: none; flex-direction: column; gap: 12px; flex: 1; overflow-y: auto !important; -webkit-overflow-scrolling: touch; height: 100%;">
+                    <!-- 1. 通知设置 (折叠) -->
+                    <div class="zero-settings-section" style="
+                        display: flex;
+                        flex-direction: column;
+                        background: rgba(255, 255, 255, 0.03);
+                        border: 1px solid var(--SmartThemeBorderColor, #444);
+                        border-radius: 10px;
+                        overflow: hidden;
+                    ">
+                        <div class="zero-settings-header interactable" id="zero-settings-toast-toggle" style="
+                            display: flex;
+                            align-items: center;
+                            justify-content: space-between;
+                            padding: 14px;
+                            cursor: pointer;
+                            user-select: none;
+                        ">
+                            <div style="font-weight: bold; font-size: 14px; display: flex; align-items: center; gap: 6px;">
+                                <i class="fa-solid fa-bell" style="color: var(--SmartThemeQuoteColor);"></i> 通知
+                            </div>
+                            <i class="fa-solid fa-chevron-right zero-settings-chevron" style="transition: transform 0.15s; font-size: 12px; opacity: 0.7;"></i>
+                        </div>
+                        <div class="zero-settings-body" id="zero-settings-toast-body" style="
+                            display: none;
+                            flex-direction: column;
+                            gap: 14px;
+                            padding: 0 14px 14px 14px;
+                        ">
+                            <!-- 快照切换 -->
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px;">
+                                <div style="flex: 1;">
+                                    <strong style="display: block; font-size: 13px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">快照切换</strong>
+                                    <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">应用或切换快照成功时，显示 Toast 提示信息。</span>
+                                </div>
+                                <label class="zero-switch">
+                                    <input type="checkbox" id="zero-setting-toast-switch" class="interactable">
+                                    <span class="zero-slider"></span>
+                                </label>
+                            </div>
+                            <!-- 快照覆盖 -->
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px;">
+                                <div style="flex: 1;">
+                                    <strong style="display: block; font-size: 13px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">快照覆盖</strong>
+                                    <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">使用当前状态覆盖已有快照成功时，显示 Toast 提示信息。</span>
+                                </div>
+                                <label class="zero-switch">
+                                    <input type="checkbox" id="zero-setting-toast-overwrite" class="interactable">
+                                    <span class="zero-slider"></span>
+                                </label>
+                            </div>
+                            <!-- 预设缝合 -->
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px;">
+                                <div style="flex: 1;">
+                                    <strong style="display: block; font-size: 13px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">预设缝合</strong>
+                                    <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">条目缝合至目标预设成功时，显示 Toast 提示信息。</span>
+                                </div>
+                                <label class="zero-switch">
+                                    <input type="checkbox" id="zero-setting-toast-stitch" class="interactable">
+                                    <span class="zero-slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 2. 快照与模型方案 (折叠) -->
+                    <div class="zero-settings-section" style="
+                        display: flex;
+                        flex-direction: column;
+                        background: rgba(255, 255, 255, 0.03);
+                        border: 1px solid var(--SmartThemeBorderColor, #444);
+                        border-radius: 10px;
+                        overflow: hidden;
+                    ">
+                        <div class="zero-settings-header interactable" id="zero-settings-decouple-toggle" style="
+                            display: flex;
+                            align-items: center;
+                            justify-content: space-between;
+                            padding: 14px;
+                            cursor: pointer;
+                            user-select: none;
+                        ">
+                            <div style="font-weight: bold; font-size: 14px; display: flex; align-items: center; gap: 6px;">
+                                <i class="fa-solid fa-camera" style="color: var(--SmartThemeQuoteColor);"></i> 快照与模型方案
+                            </div>
+                            <i class="fa-solid fa-chevron-right zero-settings-chevron" style="transition: transform 0.15s; font-size: 12px; opacity: 0.7;"></i>
+                        </div>
+                        
+                        <div class="zero-settings-body" id="zero-settings-decouple-body" style="
+                            display: none;
+                            flex-direction: column;
+                            gap: 12px;
+                            padding: 0 14px 14px 14px;
+                        ">
+                            <!-- Decouple Option -->
+                            <div class="zero-settings-option-card interactable" data-val="true">
+                                <input type="radio" name="zero-setting-decouple" value="true" class="interactable" style="margin-top: 3px; accent-color: var(--SmartThemeQuoteColor); width: 15px; height: 15px; cursor: pointer;">
+                                <div style="flex: 1;">
+                                    <strong style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 3px; color: var(--SmartThemeBodyColor);">完全解耦模式</strong>
+                                    <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">快照部分仅管理日常条目，不控制或保存破限条目、采样参数及附加参数。破限相关的条目与参数独立交由「模型方案」进行专属管理。</span>
+                                </div>
+                            </div>
+                            <!-- No Decouple Option -->
+                            <div class="zero-settings-option-card interactable" data-val="false">
+                                <input type="radio" name="zero-setting-decouple" value="false" class="interactable" style="margin-top: 3px; accent-color: var(--SmartThemeQuoteColor); width: 15px; height: 15px; cursor: pointer;">
+                                <div style="flex: 1;">
+                                    <strong style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 3px; color: var(--SmartThemeBodyColor);">不解耦模式 (默认)</strong>
+                                    <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">快照部分统一管理日常和破限条目。创建或应用快照时，会一并记录和恢复所有条目的开关状态，并保存与还原当前预设的采样参数及附加参数。</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     `;
@@ -425,6 +532,27 @@ function ensurePanel() {
                     opacity: 1 !important;
                     color: var(--SmartThemeQuoteColor, #7b8cde);
                 }
+                .zero-settings-option-card {
+                     display: flex;
+                     align-items: flex-start;
+                     gap: 12px;
+                     padding: 12px;
+                     background: rgba(255, 255, 255, 0.02);
+                     border: 1px solid transparent;
+                     border-radius: 8px;
+                     cursor: pointer;
+                     transition: all 0.15s ease-out;
+                 }
+                 .zero-settings-option-card:hover {
+                     background: rgba(255, 255, 255, 0.05) !important;
+                 }
+                 .zero-settings-option-card.active {
+                     border-color: var(--SmartThemeQuoteColor, #7b8cde) !important;
+                     background: rgba(255, 255, 255, 0.05) !important;
+                 }
+                 .zero-settings-chevron.expanded {
+                     transform: rotate(90deg);
+                 }
             </style>
         `);
     }
@@ -457,6 +585,9 @@ function ensurePanel() {
         else if (tab === 'check') populatePresetSelects().then(() => {
             _checker.Checker.render('check-results-container', $('#check-preset-select').val());
         });
+        else if (tab === 'settings') {
+            renderSettingsTab();
+        }
     });
 
     $(`#zero-panel-close`).on('click', () => closePanel());
@@ -492,6 +623,67 @@ function ensurePanel() {
     $(window).off('zero-history-changed.zero').on('zero-history-changed.zero', async () => {
         _presetsLastFetch = 0; // Force cache invalidation so fresh preset list renders
         await refreshActiveTab();
+    });
+
+    // 折叠切换监听
+    $('body').off('click', '#zero-settings-toast-toggle').on('click', '#zero-settings-toast-toggle', function() {
+        const $body = $('#zero-settings-toast-body');
+        const $chevron = $(this).find('.zero-settings-chevron');
+        $body.slideToggle(150, function() {
+            if ($body.is(':visible')) {
+                $body.css('display', 'flex');
+                $chevron.addClass('expanded');
+            } else {
+                $chevron.removeClass('expanded');
+            }
+        });
+    });
+
+    $('body').off('click', '#zero-settings-decouple-toggle').on('click', '#zero-settings-decouple-toggle', function() {
+        const $body = $('#zero-settings-decouple-body');
+        const $chevron = $(this).find('.zero-settings-chevron');
+        $body.slideToggle(150, function() {
+            if ($body.is(':visible')) {
+                $body.css('display', 'flex');
+                $chevron.addClass('expanded');
+            } else {
+                $chevron.removeClass('expanded');
+            }
+        });
+    });
+
+    // 通知开关监听
+    $('body').off('change', '#zero-setting-toast-switch').on('change', '#zero-setting-toast-switch', function() {
+        const checked = $(this).is(':checked');
+        UiStateManager.save({ toastOnSnapshotSwitch: checked });
+        toastr.success(checked ? '已开启快照切换提示' : '已关闭快照切换提示');
+    });
+
+    $('body').off('change', '#zero-setting-toast-overwrite').on('change', '#zero-setting-toast-overwrite', function() {
+        const checked = $(this).is(':checked');
+        UiStateManager.save({ toastOnSnapshotOverwrite: checked });
+        toastr.success(checked ? '已开启快照覆盖提示' : '已关闭快照覆盖提示');
+    });
+
+    $('body').off('change', '#zero-setting-toast-stitch').on('change', '#zero-setting-toast-stitch', function() {
+        const checked = $(this).is(':checked');
+        UiStateManager.save({ toastOnPresetStitch: checked });
+        toastr.success(checked ? '已开启预设缝合提示' : '已关闭预设缝合提示');
+    });
+
+    // 解耦模式单选卡片点击
+    $('body').off('click', '.zero-settings-option-card').on('click', '.zero-settings-option-card', function() {
+        const val = $(this).data('val') === true;
+        $(`input[name="zero-setting-decouple"][value="${val}"]`).prop('checked', true);
+        $('.zero-settings-option-card').removeClass('active');
+        $(this).addClass('active');
+
+        // Save
+        const currentVal = UiStateManager.get().decoupleJailbreak === true;
+        if (currentVal !== val) {
+            UiStateManager.save({ decoupleJailbreak: val });
+            toastr.success(val ? '已开启完全解耦模式' : '已关闭完全解耦模式（快照将管理全部参数）');
+        }
     });
 
     $('#contrast-auto-match').on('click', () => _contrast.performAutoMatch());
@@ -994,6 +1186,19 @@ export function init() {
     observer.observe(document.body, { childList: true, subtree: true });
 }
 
+export function renderSettingsTab() {
+    const isDecouple = UiStateManager.get().decoupleJailbreak === true;
+    $(`input[name="zero-setting-decouple"][value="${isDecouple}"]`).prop('checked', true);
+    $('.zero-settings-option-card').removeClass('active');
+    $(`.zero-settings-option-card[data-val="${isDecouple}"]`).addClass('active');
+
+    // Toast switches
+    const state = UiStateManager.get();
+    $('#zero-setting-toast-switch').prop('checked', state.toastOnSnapshotSwitch === true);
+    $('#zero-setting-toast-overwrite').prop('checked', state.toastOnSnapshotOverwrite === true);
+    $('#zero-setting-toast-stitch').prop('checked', state.toastOnPresetStitch === true);
+}
+
 export async function refreshActiveTab() {
     const tab = $(`#${PANEL_ID} .zero-tab-link.active`).data('tab');
     if (tab === 'manage') {
@@ -1015,5 +1220,7 @@ export async function refreshActiveTab() {
         if (_checker && _checker.Checker && typeof _checker.Checker.render === 'function') {
             _checker.Checker.render('check-results-container', $('#check-preset-select').val());
         }
+    } else if (tab === 'settings') {
+        renderSettingsTab();
     }
 }

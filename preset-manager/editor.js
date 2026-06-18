@@ -133,8 +133,8 @@ export async function openQuickEditor(presetName, itemName) {
 
             <!-- Save Action Button -->
             <div style="margin-top: 15px; display: flex; gap: 12px; flex-shrink: 0;">
-                <button id="save-quick-edit" class="interactable" style="flex: 3; padding: 14px; background: var(--SmartThemeQuoteColor); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.3);">保存并刷新</button>
-                <button id="fav-quick-edit" class="interactable" style="flex: 1; padding: 14px; background: rgba(255, 255, 255, 0.05); color: var(--SmartThemeQuoteColor); border: 1px solid var(--SmartThemeQuoteColor); border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; gap: 6px;"><i class="fa-solid fa-star"></i> 收藏</button>
+                <button id="save-quick-edit" class="interactable" style="flex: 3; padding: 10px; background: var(--SmartThemeQuoteColor); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 13px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">保存并刷新</button>
+                <button id="fav-quick-edit" class="interactable" style="flex: 1; padding: 10px; background: rgba(255, 255, 255, 0.05); color: var(--SmartThemeQuoteColor); border: 1px solid var(--SmartThemeQuoteColor); border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 6px;"><i class="fa-solid fa-star"></i> 收藏</button>
             </div>
         </div>
     `;
