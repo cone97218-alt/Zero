@@ -5,6 +5,7 @@
 
 import { PresetManager } from '../qr-snapshot/state.js';
 import { getPresetPrompts, escapeHtml } from './utils.js';
+import { matchSimple, highlightMatchSnippet } from '../qr-snapshot/search-util.js';
 
 export const Checker = {
     /**
@@ -253,8 +254,13 @@ export const Checker = {
             </div>
 
             <div id="check-sub-all-entries" class="check-sub-content" style="display: none;">
-                <div style="margin-bottom: 10px;">
+                <div style="margin-bottom: 10px; display: flex; flex-direction: column; gap: 6px;">
                     <input type="text" id="check-entry-search" placeholder="搜索条目名称或内容..." style="width: 100%; padding: 8px; background: rgba(0,0,0,0.2); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 6px; font-size: 12px;">
+                    <div style="display: flex; gap: 6px; align-items: center; padding-left: 2px;">
+                        <span style="font-size: 11px; opacity: 0.6; margin-right: 4px;">筛选范围:</span>
+                        <span class="check-search-filter-badge interactable active" data-filter="name" style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background: var(--SmartThemeQuoteColor); color: white; cursor: pointer; user-select: none; transition: all 0.15s ease;">名称</span>
+                        <span class="check-search-filter-badge interactable active" data-filter="content" style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background: var(--SmartThemeQuoteColor); color: white; cursor: pointer; user-select: none; transition: all 0.15s ease;">内容</span>
+                    </div>
                 </div>
                 <div id="check-entry-list"></div>
             </div>
@@ -338,14 +344,21 @@ export const Checker = {
             $entryList.empty();
             const lowerFilter = filter.toLowerCase();
 
+            const activeFilters = [];
+            $('.check-search-filter-badge.active').each(function() {
+                activeFilters.push($(this).data('filter'));
+            });
+
             results.prompts.forEach((p, idx) => {
                 const name = p.name || p.identifier || `Entry ${idx + 1}`;
                 const content = p.content || '';
 
-                const nameMatch = name.toLowerCase().includes(lowerFilter);
-                const contentMatch = content.toLowerCase().includes(lowerFilter);
+                const matchesName = activeFilters.includes('name') && name.toLowerCase().includes(lowerFilter);
+                const matchesContent = activeFilters.includes('content') && content.toLowerCase().includes(lowerFilter);
 
-                if (filter && !nameMatch && !contentMatch) return;
+                if (filter && !matchesName && !matchesContent) return;
+
+                const contentMatch = filter && matchesContent;
 
                 const row = $(`
                     <div class="check-entry-row" style="display: flex; flex-direction: column; gap: 4px; padding: 10px; background: rgba(255,255,255,0.03); border-radius: 8px; margin-bottom: 6px; font-size: 13px;">
@@ -353,9 +366,9 @@ export const Checker = {
                             <span style="font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">${escapeHtml(name)}</span>
                             <button class="entry-edit-btn interactable" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; color: inherit; cursor: pointer; padding: 4px 8px; font-size: 11px;"><i class="fa-solid fa-pencil"></i> 修改</button>
                         </div>
-                        ${filter && contentMatch ? `
+                        ${contentMatch ? `
                             <div style="font-size: 11px; opacity: 0.6; padding: 6px; background: rgba(0,0,0,0.2); border-radius: 4px; border-left: 2px solid var(--SmartThemeQuoteColor);">
-                                ...${this.highlightMatch(content, filter)}...
+                                ...${highlightMatchSnippet(content, filter)}...
                             </div>
                         ` : ''}
                     </div>
@@ -368,6 +381,19 @@ export const Checker = {
         renderEntries();
         $('#check-entry-search').on('input', function () {
             renderEntries($(this).val());
+        });
+
+        $('body').off('click', '.check-search-filter-badge').on('click', '.check-search-filter-badge', function () {
+            const activeCount = $('.check-search-filter-badge.active').length;
+            if ($(this).hasClass('active') && activeCount === 1) return;
+
+            $(this).toggleClass('active');
+            if ($(this).hasClass('active')) {
+                $(this).css('background', 'var(--SmartThemeQuoteColor)').css('color', 'white').css('opacity', '1');
+            } else {
+                $(this).css('background', 'rgba(255,255,255,0.08)').css('color', 'inherit').css('opacity', '0.5');
+            }
+            renderEntries($('#check-entry-search').val());
         });
 
         // Event listeners for sub-tabs
@@ -498,22 +524,5 @@ export const Checker = {
             detail: { presetName, itemName }
         });
         window.dispatchEvent(event);
-    },
-
-    highlightMatch(text, filter) {
-        const idx = text.toLowerCase().indexOf(filter.toLowerCase());
-        if (idx === -1) return escapeHtml(text.substring(0, 50));
-
-        const start = Math.max(0, idx - 20);
-        const end = Math.min(text.length, idx + filter.length + 30);
-        const snippet = text.substring(start, end);
-
-        const escaped = escapeHtml(snippet);
-        const regex = new RegExp(`(${this.escapeRegExp(filter)})`, 'gi');
-        return escaped.replace(regex, '<span style="color: var(--SmartThemeQuoteColor); font-weight: bold;">$1</span>');
-    },
-
-    escapeRegExp(string) {
-        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
 };

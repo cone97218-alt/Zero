@@ -1,5 +1,6 @@
 import { getPresetPrompts, escapeHtml, debounce } from './utils.js';
 import { HistoryManager, UiStateManager } from '../qr-snapshot/state.js';
+import { matchStitch, highlightText as highlightTextUtil } from '../qr-snapshot/search-util.js';
 
 export let stitch_batch_mode = false;
 let _cachedStitchPrompts = null;
@@ -82,6 +83,18 @@ export async function renderStitchList(forceRefresh = true) {
     const effectiveName = nameA || nameB;
     if (!effectiveName) return;
 
+    // Show/hide note and origin filter badges based on whether preset starts with ★
+    const isFav = effectiveName.startsWith('★');
+    const $noteBadge = $('.stitch-search-filter-badge[data-filter="note"]');
+    const $originBadge = $('.stitch-search-filter-badge[data-filter="origin"]');
+    if (isFav) {
+        $noteBadge.show();
+        $originBadge.show();
+    } else {
+        $noteBadge.hide().removeClass('active').css('background', 'rgba(255,255,255,0.08)').css('color', 'inherit').css('opacity', '0.5');
+        $originBadge.hide().removeClass('active').css('background', 'rgba(255,255,255,0.08)').css('color', 'inherit').css('opacity', '0.5');
+    }
+
     const $list = $('#stitch-list');
     
     if (forceRefresh || _cachedStitchName !== nameA) {
@@ -103,24 +116,11 @@ export async function renderStitchList(forceRefresh = true) {
         });
 
         const highlightText = (text, filterName) => {
-            const safeText = escapeHtml(text || '');
-            if (!query || !activeFilters.includes(filterName)) return safeText;
-            const escapedQuery = query.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-            const regex = new RegExp(`(${escapedQuery})`, 'gi');
-            return safeText.replace(regex, '<mark style="background: var(--SmartThemeQuoteColor); color: white; border-radius: 2px; padding: 0 2px; font-weight: bold;">$1</mark>');
+            return highlightTextUtil(text, query, activeFilters.includes(filterName));
         };
 
         if (queryLower) {
-            promptsA = promptsA.filter(p => {
-                const name = activeFilters.includes('name') ? (p.name || p.identifier || '').toLowerCase() : '';
-                const content = activeFilters.includes('content') ? (p.content || '').toLowerCase() : '';
-                const note = activeFilters.includes('note') ? (p.fav_note || '').toLowerCase() : '';
-                const origin = activeFilters.includes('origin') ? (p.fav_origin_preset || '').toLowerCase() : '';
-                return (name && name.includes(queryLower)) || 
-                       (content && content.includes(queryLower)) || 
-                       (note && note.includes(queryLower)) || 
-                       (origin && origin.includes(queryLower));
-            });
+            promptsA = promptsA.filter(p => matchStitch(p, queryLower, activeFilters));
         }
         
         const pm = SillyTavern.getContext().getPresetManager('openai');
@@ -631,6 +631,19 @@ export async function renderTargetBPeek() {
     }
 
     $drawer.css('display', 'flex');
+
+    // Show/hide note and origin filter badges based on whether preset B starts with ★
+    const isFavB = nameB.startsWith('★');
+    const $noteBadgeB = $('.stitch-peek-search-filter-badge[data-filter="note"]');
+    const $originBadgeB = $('.stitch-peek-search-filter-badge[data-filter="origin"]');
+    if (isFavB) {
+        $noteBadgeB.show();
+        $originBadgeB.show();
+    } else {
+        $noteBadgeB.hide().removeClass('active').css('background', 'rgba(255,255,255,0.08)').css('color', 'inherit').css('opacity', '0.5');
+        $originBadgeB.hide().removeClass('active').css('background', 'rgba(255,255,255,0.08)').css('color', 'inherit').css('opacity', '0.5');
+    }
+
     $list.html('<p style="text-align: center; padding: 10px; font-size: 11px; opacity: 0.6;"><i class="fa-solid fa-spinner fa-spin"></i> 加载中...</p>');
 
     try {
@@ -643,24 +656,11 @@ export async function renderTargetBPeek() {
         });
 
         const highlightText = (text, filterName) => {
-            const safeText = escapeHtml(text || '');
-            if (!query || !activeFilters.includes(filterName)) return safeText;
-            const escapedQuery = query.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-            const regex = new RegExp(`(${escapedQuery})`, 'gi');
-            return safeText.replace(regex, '<mark style="background: var(--SmartThemeQuoteColor); color: white; border-radius: 2px; padding: 0 2px; font-weight: bold;">$1</mark>');
+            return highlightTextUtil(text, query, activeFilters.includes(filterName));
         };
 
         if (queryLower) {
-            promptsB = promptsB.filter(p => {
-                const name = activeFilters.includes('name') ? (p.name || p.identifier || '').toLowerCase() : '';
-                const content = activeFilters.includes('content') ? (p.content || '').toLowerCase() : '';
-                const note = activeFilters.includes('note') ? (p.fav_note || '').toLowerCase() : '';
-                const origin = activeFilters.includes('origin') ? (p.fav_origin_preset || '').toLowerCase() : '';
-                return (name && name.includes(queryLower)) || 
-                       (content && content.includes(queryLower)) || 
-                       (note && note.includes(queryLower)) || 
-                       (origin && origin.includes(queryLower));
-            });
+            promptsB = promptsB.filter(p => matchStitch(p, queryLower, activeFilters));
         }
 
         $list.empty();

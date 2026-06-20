@@ -3,11 +3,16 @@
  * Performance-optimized v2: innerHTML templates, event delegation, lazy rendering.
  */
 import { PresetManager, SnapshotManager, GroupManager, HiddenManager, UiStateManager, LinkageManager, zeroTranslate, HistoryManager, ModelProfileManager, SamplingParamsHelper, SnapshotGroupManager } from './state.js';
+import { matchPrompt } from './search-util.js';
 
 let overlay = null;
 let pendingToggles = new Map();
 let toggleTimer = null;
 let _scrollSaveTimer = null;
+let searchQuery = '';
+let searchDebounceTimer = null;
+let searchScopeName = true;
+let searchScopeContent = true;
 
 // ─── Multi-select state ───
 let msActive = false;
@@ -150,6 +155,14 @@ export async function openUI() {
     if (overlay && !document.body.contains(overlay)) overlay = null;
     if (overlay) return;
 
+    searchQuery = '';
+    searchScopeName = true;
+    searchScopeContent = true;
+    if (searchDebounceTimer) {
+        clearTimeout(searchDebounceTimer);
+        searchDebounceTimer = null;
+    }
+
     // Background preload ext-ui.js to avoid transition lag when entering Preset Manager
     import('../preset-manager/main.js').catch(() => {});
 
@@ -183,6 +196,7 @@ export async function openUI() {
 
 export function closeUI() {
     flushToggles();
+    if (msActive) exitMultiSelect();
     if (overlay) {
         // Save scroll position before closing
         const content = overlay.querySelector('.zero-content');
@@ -205,6 +219,15 @@ export function closeUI() {
 //  Build Modal Structure
 // ═══════════════════════════════════════
 function buildModal(modal, preset, listInfo) {
+    if (msActive) exitMultiSelect();
+    searchQuery = '';
+    searchScopeName = true;
+    searchScopeContent = true;
+    if (searchDebounceTimer) {
+        clearTimeout(searchDebounceTimer);
+        searchDebounceTimer = null;
+    }
+
     const select = h('select', { class: 'zero-preset-select' });
     const filteredNames = (listInfo.names || []).filter(n => !n.startsWith('★'));
     filteredNames.forEach(n => {
@@ -225,6 +248,125 @@ function buildModal(modal, preset, listInfo) {
                 if (newPreset) { modal.innerHTML = ''; buildModal(modal, newPreset, listInfo); }
             }, 10);
         });
+    });
+
+    // Search wrap setup
+    const searchWrap = h('div', { class: 'zero-search-wrap' });
+    const searchRow1 = h('div', { class: 'zero-search-row1' });
+    const searchBtn = h('button', {
+        class: 'zero-search-btn',
+        title: '搜索',
+        html: '<i class="fa-solid fa-magnifying-glass"></i>',
+        onclick: (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const isExpanded = searchWrap.classList.contains('expanded');
+            if (isExpanded) {
+                collapseSearch();
+            } else {
+                expandSearch();
+            }
+        }
+    });
+    const searchInput = h('input', {
+        type: 'text',
+        class: 'zero-search-input',
+        placeholder: '搜索条目/内容/快照...',
+        value: searchQuery
+    });
+    const searchClear = h('button', {
+        class: 'zero-search-clear',
+        title: '清除',
+        html: '<i class="fa-solid fa-xmark"></i>',
+        onclick: (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            searchInput.value = '';
+            searchInput.focus();
+            triggerSearch('');
+        }
+    });
+
+    searchRow1.appendChild(searchBtn);
+    searchRow1.appendChild(searchInput);
+    searchRow1.appendChild(searchClear);
+
+    const searchRow2 = h('div', { class: 'zero-search-row2' },
+        h('span', { class: 'zero-search-opt-label', text: '筛选范围:' }),
+        h('button', {
+            class: 'zero-chip zero-search-opt-btn name-btn' + (searchScopeName ? ' active' : ''),
+            text: '名称',
+            onclick: (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (searchScopeName && !searchScopeContent) return;
+                searchScopeName = !searchScopeName;
+                updateOptionButtons();
+                triggerSearch(searchInput.value);
+            }
+        }),
+        h('button', {
+            class: 'zero-chip zero-search-opt-btn content-btn' + (searchScopeContent ? ' active' : ''),
+            text: '内容',
+            onclick: (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (searchScopeContent && !searchScopeName) return;
+                searchScopeContent = !searchScopeContent;
+                updateOptionButtons();
+                triggerSearch(searchInput.value);
+            }
+        })
+    );
+
+    searchWrap.appendChild(searchRow1);
+    searchWrap.appendChild(searchRow2);
+
+    function updateOptionButtons() {
+        const nameBtn = searchRow2.querySelector('.name-btn');
+        const contentBtn = searchRow2.querySelector('.content-btn');
+        if (nameBtn) nameBtn.classList.toggle('active', searchScopeName);
+        if (contentBtn) contentBtn.classList.toggle('active', searchScopeContent);
+    }
+
+    function expandSearch() {
+        searchWrap.classList.add('expanded');
+        const header = modal.querySelector('.zero-header');
+        if (header) header.classList.add('searching');
+        searchBtn.innerHTML = '<i class="fa-solid fa-arrow-left"></i>';
+        searchBtn.title = '返回';
+        setTimeout(() => searchInput.focus(), 50);
+    }
+
+    function collapseSearch() {
+        searchWrap.classList.remove('expanded');
+        const header = modal.querySelector('.zero-header');
+        if (header) header.classList.remove('searching');
+        searchBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i>';
+        searchBtn.title = '搜索';
+        searchInput.value = '';
+        triggerSearch('');
+    }
+
+    function triggerSearch(val) {
+        searchQuery = val;
+        const activeTabId = UiStateManager.get().activeTab || 'entries';
+        const activePanel = panels[activeTabId];
+        const freshPreset = PresetManager.cached() || preset;
+        renderTab(activeTabId, activePanel, freshPreset, modal);
+    }
+
+    searchInput.addEventListener('input', () => {
+        clearTimeout(searchDebounceTimer);
+        searchDebounceTimer = setTimeout(() => {
+            triggerSearch(searchInput.value);
+        }, 1000); // 1s debounce
+    });
+
+    searchInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            collapseSearch();
+        }
     });
 
     modal.appendChild(h('div', { class: 'zero-header' },
@@ -266,6 +408,7 @@ function buildModal(modal, preset, listInfo) {
                 }
             }
         }),
+        searchWrap,
         h('button', { class: 'zero-close-btn', html: '<i class="fa-solid fa-xmark"></i>', onclick: closeUI })
     ));
 
@@ -347,6 +490,10 @@ function buildModal(modal, preset, listInfo) {
 
 function renderTab(id, panel, preset, modal) {
     panel.innerHTML = '';
+    const searchWrap = modal.querySelector('.zero-search-wrap');
+    if (searchWrap) {
+        searchWrap.classList.toggle('hide-options', id === 'snapshots');
+    }
     if (id === 'entries') renderEntries(panel, preset, modal);
     else if (id === 'snapshots') {
         const viewMode = UiStateManager.get().snapshotViewMode || 'local';
@@ -382,19 +529,35 @@ function renderEntries(panel, preset, modal) {
         h('button', { class: 'zero-btn', html: '<i class="fa-solid fa-link"></i> 联动', onclick: () => showLinkageManager(panel, preset, modal) })
     ));
 
+    const query = searchQuery ? searchQuery.trim().toLowerCase() : '';
+
     // Build all groups as one HTML string
     let html = '';
     groups.forEach(g => {
         const membersInGroup = new Set(g.ids);
-        const members = preset.prompts.filter(p => membersInGroup.has(p.identifier) && !hidden.has(p.identifier));
+        let members = preset.prompts.filter(p => membersInGroup.has(p.identifier) && !hidden.has(p.identifier));
+        if (query) {
+            members = members.filter(p => matchPrompt(p, searchQuery, searchScopeName, searchScopeContent));
+        }
         _groupMemberMap.set(g.id, members);
-        html += groupSectionHTML(g, members, false);
+        if (!query || members.length > 0) {
+            html += groupSectionHTML(g, members, false);
+        }
     });
 
-    if (ungrouped.length > 0) {
+    let filteredUngrouped = ungrouped;
+    if (query) {
+        filteredUngrouped = ungrouped.filter(p => matchPrompt(p, searchQuery, searchScopeName, searchScopeContent));
+    }
+
+    if (filteredUngrouped.length > 0) {
         const ugId = '__ungrouped';
-        _groupMemberMap.set(ugId, ungrouped);
-        html += groupSectionHTML({ id: ugId, name: '未分组', col: UiStateManager.get().ungroupedCol }, ungrouped, true);
+        _groupMemberMap.set(ugId, filteredUngrouped);
+        html += groupSectionHTML({ id: ugId, name: '未分组', col: UiStateManager.get().ungroupedCol }, filteredUngrouped, true);
+    }
+
+    if (!html.trim()) {
+        html = '<div class="zero-empty" style="text-align:center;padding:20px;color:var(--SmartThemeEmColor)">没有匹配的条目</div>';
     }
 
     const listEl = document.createElement('div');
@@ -560,7 +723,20 @@ function setupEntriesDelegation(panel) {
 
     // Context menu
     panel.addEventListener('contextmenu', (e) => {
-        if (e.target.closest('.zero-entry')) e.preventDefault();
+        const entry = e.target.closest('.zero-entry');
+        if (entry) {
+            if (e.target.closest('.zero-switch') || e.target.closest('.zero-inline-action')) return;
+            e.preventDefault();
+            const id = entry.dataset.id;
+            if (!msActive) {
+                enterMultiSelect(panel, _currentPreset, _currentModal, id);
+                entry.classList.add('selected');
+                const ic = entry.querySelector('.zero-sel-check');
+                if (ic) ic.innerHTML = '<i class="fa-solid fa-circle-check"></i>';
+            } else {
+                toggleEntrySelection(id, entry, entry.querySelector('.zero-sel-check'));
+            }
+        }
     });
 
     // Long-press for multi-select
@@ -1399,9 +1575,13 @@ function renderSnapshots(panel, preset, modal, viewMode = 'local') {
     );
     panel.appendChild(headerRow);
 
-    const snaps = viewMode === 'local' ? SnapshotManager.list(preset.name) : SnapshotManager.list().filter(s => s.presetName !== preset.name);
+    const query = searchQuery ? searchQuery.trim().toLowerCase() : '';
+    let snaps = viewMode === 'local' ? SnapshotManager.list(preset.name) : SnapshotManager.list().filter(s => s.presetName !== preset.name);
+    if (query) {
+        snaps = snaps.filter(s => (s.name || '').toLowerCase().includes(query));
+    }
     if (snaps.length === 0) {
-        panel.appendChild(h('div', { class: 'zero-empty', text: viewMode === 'local' ? '当前预设暂无快照，点击上方按钮创建' : '没有来自其他预设的快照' }));
+        panel.appendChild(h('div', { class: 'zero-empty', text: query ? '没有匹配的快照' : (viewMode === 'local' ? '当前预设暂无快照，点击上方按钮创建' : '没有来自其他预设的快照') }));
         return;
     }
 
@@ -1414,6 +1594,7 @@ function renderSnapshots(panel, preset, modal, viewMode = 'local') {
 
         sGroups.forEach(g => {
             const groupSnaps = snaps.filter(s => g.sids.includes(s.id));
+            if (query && groupSnaps.length === 0) return;
             const collapsed = g.col;
 
             const groupEl = h('div', { class: 'zero-group zero-snapshot-group', 'data-sgid': g.id },
@@ -1848,9 +2029,13 @@ function renderModelProfiles(panel, preset, modal) {
     );
     panel.appendChild(headerRow);
 
-    const profiles = ModelProfileManager.list(pName);
+    const query = searchQuery ? searchQuery.trim().toLowerCase() : '';
+    let profiles = ModelProfileManager.list(pName);
+    if (query) {
+        profiles = profiles.filter(profile => (profile.name || '').toLowerCase().includes(query));
+    }
     if (profiles.length === 0) {
-        panel.appendChild(h('div', { class: 'zero-empty', text: '暂无模型方案，点击右上方按钮创建' }));
+        panel.appendChild(h('div', { class: 'zero-empty', text: query ? '没有匹配的方案' : '暂无模型方案，点击右上方按钮创建' }));
         return;
     }
     const frag = document.createDocumentFragment();
@@ -2126,12 +2311,16 @@ function renderEditor(panel, preset, modal) {
         }
         panel.appendChild(filters);
 
+        const query = searchQuery ? searchQuery.trim().toLowerCase() : '';
         let entries = preset.prompts;
         if (filter === 'enabled') entries = entries.filter(p => p.enabled);
         else if (filter === 'disabled') entries = entries.filter(p => !p.enabled);
         if (groupFilter !== 'all') {
             const g = groups.find(x => x.id === groupFilter);
             if (g) entries = entries.filter(p => g.ids.includes(p.identifier));
+        }
+        if (query) {
+            entries = entries.filter(p => matchPrompt(p, searchQuery, searchScopeName, searchScopeContent));
         }
 
         if (entries.length === 0) {

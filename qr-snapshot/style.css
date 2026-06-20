@@ -197,6 +197,118 @@
     opacity: 1;
 }
 
+/* ===== Search Bar ===== */
+.zero-search-btn {
+    padding: 6px 10px;
+    font-size: 18px;
+    color: var(--SmartThemeBodyColor, #ccc);
+    opacity: 0.7;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    touch-action: manipulation;
+    background: none;
+    border: none;
+    cursor: pointer;
+}
+.zero-search-btn:hover,
+.zero-search-btn:active {
+    opacity: 1;
+    background: rgba(255,255,255,0.05);
+}
+.zero-search-btn:active {
+    transform: scale(0.9);
+}
+.zero-search-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.zero-search-wrap.expanded {
+    flex: 1;
+    min-width: 0;
+}
+.zero-search-row1 {
+    display: flex;
+    align-items: center;
+    position: relative;
+    width: 100%;
+}
+.zero-search-input {
+    width: 0;
+    padding: 0;
+    border: none;
+    opacity: 0;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    background: var(--SmartThemeChatTintColor, rgba(30,30,40,0.7));
+    color: var(--SmartThemeBodyColor, #eee);
+    border-radius: 6px;
+    outline: none;
+    font-size: 13px;
+}
+.zero-search-wrap.expanded .zero-search-input {
+    width: 100%;
+    flex: 1;
+    padding: 5px 30px 5px 8px;
+    border: 1px solid var(--SmartThemeBorderColor, #555);
+    opacity: 1;
+    margin-left: 6px;
+}
+.zero-search-input:focus {
+    border-color: var(--SmartThemeEmColor, #888) !important;
+}
+.zero-search-clear {
+    position: absolute;
+    right: 8px;
+    background: none;
+    border: none;
+    color: var(--SmartThemeBodyColor, #ccc);
+    cursor: pointer;
+    opacity: 0.5;
+    display: none;
+    font-size: 14px;
+    padding: 4px;
+    align-items: center;
+    justify-content: center;
+}
+.zero-search-clear:hover {
+    opacity: 1;
+}
+.zero-search-wrap.expanded .zero-search-clear {
+    display: flex;
+}
+.zero-search-row2 {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    padding-left: 36px;
+    margin-top: 4px;
+}
+.zero-search-wrap.expanded .zero-search-row2 {
+    display: flex;
+}
+.zero-search-wrap.hide-options .zero-search-row2 {
+    display: none !important;
+}
+.zero-search-opt-label {
+    font-size: 11px;
+    color: var(--SmartThemeEmColor, #999);
+}
+.zero-search-opt-btn {
+    border-radius: 10px !important;
+    padding: 2px 8px !important;
+    font-size: 11px !important;
+}
+.zero-header.searching .zero-header-label,
+.zero-header.searching .zero-preset-select,
+.zero-header.searching .zero-manage-btn,
+.zero-header.searching .zero-save-btn {
+    display: none !important;
+}
+
 /* ===== Tab Bar ===== */
 .zero-tabs {
     display: flex;
