@@ -214,7 +214,7 @@ function ensurePanel() {
                             <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
                                 <span style="font-size: 11px; opacity: 0.7; width: 60px; flex-shrink: 0;">搜索条目:</span>
                                 <div style="position: relative; flex: 1; display: flex; align-items: center;">
-                                    <input type="text" id="stitch-search-input" class="interactable" placeholder="输入关键字搜索..." style="width: 100%; padding: 4px 24px 4px 8px; background: var(--SmartThemeChatTintColor); color: inherit; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; font-size: 12px;">
+                                    <input type="text" id="stitch-search-input" class="interactable" placeholder="输入关键字搜索..." style="width: 100%; padding: 0 24px 0 8px; height: 28px !important; box-sizing: border-box !important; line-height: 1.2 !important; background: var(--SmartThemeChatTintColor); color: inherit; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; font-size: inherit !important;">
                                     <i id="stitch-search-clear" class="fa-solid fa-circle-xmark interactable" title="清空搜索" style="position: absolute; right: 8px; cursor: pointer; opacity: 0.5; display: none; font-size: 12px;"></i>
                                 </div>
                             </div>
@@ -309,7 +309,7 @@ function ensurePanel() {
                                 <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
                                     <span style="font-size: 11px; opacity: 0.7; width: 60px; flex-shrink: 0;">搜索条目:</span>
                                     <div style="position: relative; flex: 1; display: flex; align-items: center;">
-                                        <input type="text" id="stitch-peek-search-input" class="interactable" placeholder="输入关键字搜索..." style="width: 100%; padding: 4px 24px 4px 8px; background: var(--SmartThemeChatTintColor); color: inherit; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; font-size: 12px;">
+                                        <input type="text" id="stitch-peek-search-input" class="interactable" placeholder="输入关键字搜索..." style="width: 100%; padding: 0 24px 0 8px; height: 28px !important; box-sizing: border-box !important; line-height: 1.2 !important; background: var(--SmartThemeChatTintColor); color: inherit; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; font-size: inherit !important;">
                                         <i id="stitch-peek-search-clear" class="fa-solid fa-circle-xmark interactable" title="清空搜索" style="position: absolute; right: 8px; cursor: pointer; opacity: 0.5; display: none; font-size: 12px;"></i>
                                     </div>
                                 </div>
@@ -476,6 +476,49 @@ function ensurePanel() {
                                     <strong style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 3px; color: var(--SmartThemeBodyColor);">不解耦模式 (默认)</strong>
                                     <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">快照部分统一管理日常和破限条目。创建或应用快照时，会一并记录和恢复所有条目的开关状态，并保存与还原当前预设的采样参数及附加参数。</span>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 3. UI 设置 (折叠) -->
+                    <div class="zero-settings-section" style="
+                        display: flex;
+                        flex-direction: column;
+                        background: rgba(255, 255, 255, 0.03);
+                        border: 1px solid var(--SmartThemeBorderColor, #444);
+                        border-radius: 10px;
+                        overflow: hidden;
+                    ">
+                        <div class="zero-settings-header interactable" id="zero-settings-ui-toggle" style="
+                            display: flex;
+                            align-items: center;
+                            justify-content: space-between;
+                            padding: 14px;
+                            cursor: pointer;
+                            user-select: none;
+                        ">
+                            <div style="font-weight: bold; font-size: 14px; display: flex; align-items: center; gap: 6px;">
+                                <i class="fa-solid fa-palette" style="color: var(--SmartThemeQuoteColor);"></i> UI
+                            </div>
+                            <i class="fa-solid fa-chevron-right zero-settings-chevron" style="transition: transform 0.15s; font-size: 12px; opacity: 0.7;"></i>
+                        </div>
+                        
+                        <div class="zero-settings-body" id="zero-settings-ui-body" style="
+                            display: none;
+                            flex-direction: column;
+                            gap: 14px;
+                            padding: 0 14px 14px 14px;
+                        ">
+                            <!-- 搜索框展开动画 -->
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px;">
+                                <div style="flex: 1;">
+                                    <strong style="display: block; font-size: 13px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">搜索框展开动画</strong>
+                                    <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">在相机栏界面，点击搜索图标展开搜索框时显示平滑的过渡动画。</span>
+                                </div>
+                                <label class="zero-switch">
+                                    <input type="checkbox" id="zero-setting-ui-search-anim" class="interactable">
+                                    <span class="zero-slider"></span>
+                                </label>
                             </div>
                         </div>
                     </div>
@@ -663,6 +706,19 @@ function ensurePanel() {
         });
     });
 
+    $('body').off('click', '#zero-settings-ui-toggle').on('click', '#zero-settings-ui-toggle', function() {
+        const $body = $('#zero-settings-ui-body');
+        const $chevron = $(this).find('.zero-settings-chevron');
+        $body.slideToggle(150, function() {
+            if ($body.is(':visible')) {
+                $body.css('display', 'flex');
+                $chevron.addClass('expanded');
+            } else {
+                $chevron.removeClass('expanded');
+            }
+        });
+    });
+
     // 通知开关监听
     $('body').off('change', '#zero-setting-toast-switch').on('change', '#zero-setting-toast-switch', function() {
         const checked = $(this).is(':checked');
@@ -686,6 +742,12 @@ function ensurePanel() {
         const checked = $(this).is(':checked');
         UiStateManager.save({ confirmOnSnapshot: checked });
         toastr.success(checked ? '已开启快照二次确认' : '已关闭快照二次确认');
+    });
+
+    $('body').off('change', '#zero-setting-ui-search-anim').on('change', '#zero-setting-ui-search-anim', function() {
+        const checked = $(this).is(':checked');
+        UiStateManager.save({ searchBarAnimation: checked });
+        toastr.success(checked ? '已开启搜索框展开动画' : '已关闭搜索框展开动画');
     });
 
     // 解耦模式单选卡片点击
@@ -1215,6 +1277,9 @@ export function renderSettingsTab() {
     $('#zero-setting-toast-overwrite').prop('checked', state.toastOnSnapshotOverwrite === true);
     $('#zero-setting-toast-stitch').prop('checked', state.toastOnPresetStitch === true);
     $('#zero-setting-confirm-snapshot').prop('checked', state.confirmOnSnapshot === true);
+
+    // UI switches
+    $('#zero-setting-ui-search-anim').prop('checked', state.searchBarAnimation !== false);
 }
 
 export async function refreshActiveTab() {

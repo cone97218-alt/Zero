@@ -251,7 +251,8 @@ function buildModal(modal, preset, listInfo) {
     });
 
     // Search wrap setup
-    const searchWrap = h('div', { class: 'zero-search-wrap' });
+    const enableAnim = UiStateManager.get().searchBarAnimation !== false;
+    const searchWrap = h('div', { class: 'zero-search-wrap' + (enableAnim ? '' : ' no-animation') });
     const searchRow1 = h('div', { class: 'zero-search-row1' });
     const searchBtn = h('button', {
         class: 'zero-search-btn',
@@ -272,7 +273,8 @@ function buildModal(modal, preset, listInfo) {
         type: 'text',
         class: 'zero-search-input',
         placeholder: '搜索条目/内容/快照...',
-        value: searchQuery
+        value: searchQuery,
+        style: 'font-size: inherit !important;'
     });
     const searchClear = h('button', {
         class: 'zero-search-clear',

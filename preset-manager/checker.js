@@ -236,7 +236,7 @@ export const Checker = {
                     <div id="xml-exemptions-panel" style="display: none; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 8px; margin-top: 4px;">
                         <div style="font-size: 10px; opacity: 0.5; margin-bottom: 6px;">豁免标签 (逗号分隔):</div>
                         <div style="display: flex; gap: 8px;">
-                            <input type="text" id="check-xml-exemptions" placeholder="user, char, ..." style="flex: 1; padding: 6px; background: rgba(0,0,0,0.2); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 4px; font-size: 11px;">
+                            <input type="text" id="check-xml-exemptions" placeholder="user, char, ..." style="flex: 1; padding: 4px 8px; background: rgba(0,0,0,0.2); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 4px; font-size: inherit !important;">
                             <button id="save-xml-exemptions" class="interactable" style="padding: 4px 10px; background: var(--SmartThemeQuoteColor); border: none; border-radius: 4px; color: white; cursor: pointer; font-size: 11px;">保存</button>
                         </div>
                     </div>
@@ -255,7 +255,7 @@ export const Checker = {
 
             <div id="check-sub-all-entries" class="check-sub-content" style="display: none;">
                 <div style="margin-bottom: 10px; display: flex; flex-direction: column; gap: 6px;">
-                    <input type="text" id="check-entry-search" placeholder="搜索条目名称或内容..." style="width: 100%; padding: 8px; background: rgba(0,0,0,0.2); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 6px; font-size: 12px;">
+                    <input type="text" id="check-entry-search" placeholder="搜索条目名称或内容..." style="width: 100%; padding: 4px 8px; background: rgba(0,0,0,0.2); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 4px; font-size: inherit !important;">
                     <div style="display: flex; gap: 6px; align-items: center; padding-left: 2px;">
                         <span style="font-size: 11px; opacity: 0.6; margin-right: 4px;">筛选范围:</span>
                         <span class="check-search-filter-badge interactable active" data-filter="name" style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background: var(--SmartThemeQuoteColor); color: white; cursor: pointer; user-select: none; transition: all 0.15s ease;">名称</span>
@@ -464,7 +464,7 @@ export const Checker = {
                     ${occHtml}
                 </div>
                 <div class="var-inject-panel" style="display: none; margin-top: 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.1);">
-                    <input type="text" class="var-inject-search" placeholder="搜索条目名称或内容以注入变量..." style="width: 100%; padding: 6px; background: rgba(0,0,0,0.2); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 4px; font-size: 11px; margin-bottom: 6px;">
+                    <input type="text" class="var-inject-search" placeholder="搜索条目名称或内容以注入变量..." style="width: 100%; padding: 4px 8px; background: rgba(0,0,0,0.2); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 4px; font-size: inherit !important; margin-bottom: 6px;">
                     <div class="var-inject-results" style="max-height: 150px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px;"></div>
                 </div>
             </div>
