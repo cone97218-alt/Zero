@@ -5,6 +5,7 @@
 import { openUI } from './qr-snapshot/ui.js';
 import { preloadOpenai } from './qr-snapshot/state.js';
 import { init as initPresetManager } from './preset-manager/main.js';
+import { initPresetPerformanceOptimizer } from './qr-snapshot/performance.js';
 
 const MODULE_NAME = 'zero';
 const BTN_ID = 'zero-preset-btn';
@@ -77,6 +78,7 @@ eventSource.on(event_types.APP_READY, () => {
     preloadOpenai();
     injectWithRetry();
     initPresetManager();
+    initPresetPerformanceOptimizer(eventSource, event_types);
     // Watch body for DOM rebuilds containing QR bar
     observer.observe(document.body, { childList: true, subtree: true });
 });
