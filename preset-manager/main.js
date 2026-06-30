@@ -477,6 +477,17 @@ function ensurePanel() {
                                     <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">快照部分统一管理日常和破限条目。创建或应用快照时，会一并记录和恢复所有条目的开关状态，并保存与还原当前预设的采样参数及附加参数。</span>
                                 </div>
                             </div>
+                            <!-- Content Comparison Switch -->
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 12px; margin-top: 4px;">
+                                <div style="flex: 1;">
+                                    <strong style="display: block; font-size: 13px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">预设迁移时内容对比</strong>
+                                    <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">在导入与迁移快照时，开启对未成功匹配的条目进行内容文本相似度比对。关闭此项可极大提升导入面板的加载速度。</span>
+                                </div>
+                                <label class="zero-switch">
+                                    <input type="checkbox" id="zero-setting-migrate-compare" class="interactable">
+                                    <span class="zero-slider"></span>
+                                </label>
+                            </div>
                         </div>
                     </div>
                     
@@ -748,6 +759,12 @@ function ensurePanel() {
         const checked = $(this).is(':checked');
         UiStateManager.save({ searchBarAnimation: checked });
         toastr.success(checked ? '已开启搜索框展开动画' : '已关闭搜索框展开动画');
+    });
+
+    $('body').off('change', '#zero-setting-migrate-compare').on('change', '#zero-setting-migrate-compare', function() {
+        const checked = $(this).is(':checked');
+        UiStateManager.save({ migrateContentCompare: checked });
+        toastr.success(checked ? '已开启预设迁移内容对比' : '已关闭预设迁移内容对比（加载将更快速）');
     });
 
     // 解耦模式单选卡片点击
@@ -1280,6 +1297,7 @@ export function renderSettingsTab() {
 
     // UI switches
     $('#zero-setting-ui-search-anim').prop('checked', state.searchBarAnimation !== false);
+    $('#zero-setting-migrate-compare').prop('checked', state.migrateContentCompare !== false);
 }
 
 export async function refreshActiveTab() {

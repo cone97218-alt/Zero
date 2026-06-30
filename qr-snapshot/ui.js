@@ -2780,6 +2780,9 @@ async function showSnapshotMigrationModal(preset, preselectedSourceOrSnap = null
     );
     contentBox.appendChild(btnRow);
 
+    menuBox.appendChild(contentBox);
+    targetModal.appendChild(menuBox);
+
     let currentSourcePreset = '';
     let selectedSnapshotObj = null;
     let mappingResult = null;
@@ -3531,7 +3534,4 @@ async function showSnapshotMigrationModal(preset, preselectedSourceOrSnap = null
 
     applyBtn.addEventListener('click', () => executeImport(true));
     importOnlyBtn.addEventListener('click', () => executeImport(false));
-
-    menuBox.appendChild(contentBox);
-    targetModal.appendChild(menuBox);
 }

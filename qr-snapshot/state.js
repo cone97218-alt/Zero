@@ -585,85 +585,130 @@ export const SnapshotManager = {
         const matched = [];
         const missing = [];
         const unmatchedTargetPrompts = new Set(currentPrompts);
+        const matchedSourceIds = new Set();
+
+        // Build lookup maps for performance
+        const currentPromptsMap = new Map(currentPrompts.map(p => [p.identifier, p]));
+        const sourcePromptsMap = new Map(sourcePrompts.map(p => [p.identifier, p]));
 
         // 1. Match by exact ID
         snapEntries.forEach(se => {
-            const tgt = currentPrompts.find(p => p.identifier === se.id);
+            const tgt = currentPromptsMap.get(se.id);
             if (tgt) {
                 matched.push({ snapEntry: se, targetPrompt: tgt, type: 'id' });
+                matchedSourceIds.add(se.id);
                 unmatchedTargetPrompts.delete(tgt);
             }
         });
 
         // 2. Match by manual linkages
         snapEntries.forEach(se => {
-            if (matched.some(m => m.snapEntry.id === se.id)) return;
+            if (matchedSourceIds.has(se.id)) return;
             const targetId = manualLinks[se.id];
             if (targetId) {
-                const tgt = currentPrompts.find(p => p.identifier === targetId);
-                if (tgt) {
+                const tgt = currentPromptsMap.get(targetId);
+                if (tgt && unmatchedTargetPrompts.has(tgt)) {
                     matched.push({ snapEntry: se, targetPrompt: tgt, type: 'manual_link' });
+                    matchedSourceIds.add(se.id);
                     unmatchedTargetPrompts.delete(tgt);
                 }
             }
         });
 
         // 3. Match by Name (case-insensitive, trimmed)
-        snapEntries.forEach(se => {
-            if (matched.some(m => m.snapEntry.id === se.id)) return;
-            const cleanName = (se.n || '').trim().toLowerCase();
-            if (!cleanName) return;
-
-            const tgt = Array.from(unmatchedTargetPrompts).find(p => (p.name || '').trim().toLowerCase() === cleanName);
-            if (tgt) {
-                matched.push({ snapEntry: se, targetPrompt: tgt, type: 'name' });
-                unmatchedTargetPrompts.delete(tgt);
+        const unmatchedTargetByName = new Map();
+        unmatchedTargetPrompts.forEach(p => {
+            const cleanName = (p.name || '').trim().toLowerCase();
+            if (cleanName && !unmatchedTargetByName.has(cleanName)) {
+                unmatchedTargetByName.set(cleanName, p);
             }
         });
 
-        // 4. Match by content similarity (if sourcePrompts are available and threshold > 0)
-        if (Array.isArray(sourcePrompts) && sourcePrompts.length > 0 && similarityThreshold > 0) {
+        snapEntries.forEach(se => {
+            if (matchedSourceIds.has(se.id)) return;
+            const cleanName = (se.n || '').trim().toLowerCase();
+            if (!cleanName) return;
+
+            const tgt = unmatchedTargetByName.get(cleanName);
+            if (tgt && unmatchedTargetPrompts.has(tgt)) {
+                matched.push({ snapEntry: se, targetPrompt: tgt, type: 'name' });
+                matchedSourceIds.add(se.id);
+                unmatchedTargetPrompts.delete(tgt);
+                unmatchedTargetByName.delete(cleanName);
+            }
+        });
+
+        // 4. Match by content similarity (if sourcePrompts are available and threshold > 0, and setting is enabled)
+        const compareEnabled = UiStateManager.get().migrateContentCompare !== false;
+        if (compareEnabled && Array.isArray(sourcePrompts) && sourcePrompts.length > 0 && similarityThreshold > 0) {
+            // Pre-calculate bigrams for unmatched source and target prompts once
+            const sourceInfos = new Map();
+            for (const se of snapEntries) {
+                if (matchedSourceIds.has(se.id)) continue;
+                const sourceP = sourcePromptsMap.get(se.id);
+                if (sourceP && typeof sourceP.content === 'string' && sourceP.content.trim()) {
+                    sourceInfos.set(se.id, getBigrams(sourceP.content));
+                }
+            }
+
+            const targetInfos = new Map();
+            for (const p of unmatchedTargetPrompts) {
+                if (typeof p.content === 'string' && p.content.trim()) {
+                    targetInfos.set(p.identifier, getBigrams(p.content));
+                }
+            }
+
             let comparisonsCount = 0;
             for (const se of snapEntries) {
-                if (matched.some(m => m.snapEntry.id === se.id)) continue;
-                const sourceP = sourcePrompts.find(p => p.identifier === se.id);
-                if (sourceP && typeof sourceP.content === 'string' && sourceP.content.trim()) {
-                    let bestMatch = null;
-                    let highestScore = -1;
+                if (matchedSourceIds.has(se.id)) continue;
+                const info1 = sourceInfos.get(se.id);
+                if (!info1) continue;
 
-                    for (const p of unmatchedTargetPrompts) {
-                        if (typeof p.content !== 'string') continue;
-                        
-                        const score = getStringSimilarity(sourceP.content, p.content);
-                        comparisonsCount++;
+                let bestMatch = null;
+                let highestScore = -1;
 
-                        // Yield to the event loop every 300 comparisons to prevent UI thread blocking
-                        if (comparisonsCount % 300 === 0) {
-                            await new Promise(resolve => setTimeout(resolve, 0));
-                        }
+                for (const p of unmatchedTargetPrompts) {
+                    const info2 = targetInfos.get(p.identifier);
+                    if (!info2) continue;
 
-                        if (score >= similarityThreshold && score > highestScore) {
-                            highestScore = score;
-                            bestMatch = p;
-                        }
+                    const b1 = info1.cleanStr.length - 1;
+                    const b2 = info2.cleanStr.length - 1;
+                    if (b1 <= 0 || b2 <= 0) continue;
+
+                    // Length-based maximum possible score check
+                    const maxPossible = (2.0 * Math.min(b1, b2)) / (b1 + b2);
+                    if (maxPossible < similarityThreshold || maxPossible <= highestScore) continue;
+
+                    const score = getStringSimilarityFromInfos(info1, info2);
+                    comparisonsCount++;
+
+                    // Yield to the event loop every 300 comparisons to prevent UI thread blocking
+                    if (comparisonsCount % 300 === 0) {
+                        await new Promise(resolve => setTimeout(resolve, 0));
                     }
 
-                    if (bestMatch) {
-                        matched.push({
-                            snapEntry: se,
-                            targetPrompt: bestMatch,
-                            type: 'content',
-                            score: highestScore
-                        });
-                        unmatchedTargetPrompts.delete(bestMatch);
+                    if (score >= similarityThreshold && score > highestScore) {
+                        highestScore = score;
+                        bestMatch = p;
                     }
+                }
+
+                if (bestMatch) {
+                    matched.push({
+                        snapEntry: se,
+                        targetPrompt: bestMatch,
+                        type: 'content',
+                        score: highestScore
+                    });
+                    matchedSourceIds.add(se.id);
+                    unmatchedTargetPrompts.delete(bestMatch);
                 }
             }
         }
 
         // 5. Anything left in snapEntries is missing
         snapEntries.forEach(se => {
-            if (!matched.some(m => m.snapEntry.id === se.id)) {
+            if (!matchedSourceIds.has(se.id)) {
                 missing.push(se);
             }
         });
@@ -1623,6 +1668,33 @@ function getBigrams(str) {
     return result;
 }
 
+export function getStringSimilarityFromInfos(info1, info2) {
+    if (info1.cleanStr === info2.cleanStr) return 1.0;
+    if (info1.cleanStr.length < 2 || info2.cleanStr.length < 2) return 0;
+
+    let intersection = 0;
+    const map1 = info1.bigrams;
+    const map2 = info2.bigrams;
+
+    if (map1.size < map2.size) {
+        for (const [bigram, count1] of map1.entries()) {
+            const count2 = map2.get(bigram);
+            if (count2 > 0) {
+                intersection += count1 < count2 ? count1 : count2;
+            }
+        }
+    } else {
+        for (const [bigram, count2] of map2.entries()) {
+            const count1 = map1.get(bigram);
+            if (count1 > 0) {
+                intersection += count1 < count2 ? count1 : count2;
+            }
+        }
+    }
+
+    return (2.0 * intersection) / (info1.cleanStr.length + info2.cleanStr.length - 2);
+}
+
 export function getStringSimilarity(str1, str2) {
     if (!str1 || !str2) return 0;
     if (str1 === str2) return 1.0;
@@ -1630,22 +1702,7 @@ export function getStringSimilarity(str1, str2) {
     const info1 = getBigrams(str1);
     const info2 = getBigrams(str2);
 
-    if (info1.cleanStr === info2.cleanStr) return 1.0;
-    if (info1.cleanStr.length < 2 || info2.cleanStr.length < 2) return 0;
-
-    const map1 = new Map(info1.bigrams);
-    let intersection = 0;
-    const cleanStr2 = info2.cleanStr;
-
-    for (let i = 0; i < cleanStr2.length - 1; i++) {
-        const bigram = cleanStr2.substr(i, 2);
-        const count = map1.get(bigram) || 0;
-        if (count > 0) {
-            intersection++;
-            map1.set(bigram, count - 1);
-        }
-    }
-
-    return (2.0 * intersection) / (info1.cleanStr.length + info2.cleanStr.length - 2);
+    return getStringSimilarityFromInfos(info1, info2);
 }
+
 
