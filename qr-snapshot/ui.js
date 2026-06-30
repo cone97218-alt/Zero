@@ -2685,32 +2685,35 @@ async function showSnapshotMigrationModal(preset, preselectedSourceOrSnap = null
     formContainer.appendChild(nameRow);
 
     // Similarity Threshold Row
-    const thresholdSelect = h('select', { class: 'zero-preset-select', style: 'width:100%;' });
-    const thresholdOptions = [
-        { value: '1.0', text: '100% 完全一致' },
-        { value: '0.9', text: '90% 高度相似' },
-        { value: '0.8', text: '80% 相似' },
-        { value: '0.7', text: '70% 相似' },
-        { value: '0.0', text: '关闭内容匹配' }
-    ];
     let selectedThreshold = parseFloat(localStorage.getItem('zero_migration_similarity_threshold') || '0.8');
-    thresholdOptions.forEach(opt => {
-        const optionEl = h('option', { value: opt.value, text: opt.text });
-        optionEl.selected = (parseFloat(opt.value) === selectedThreshold);
-        thresholdSelect.appendChild(optionEl);
-    });
+    const compareEnabled = UiStateManager.get().migrateContentCompare !== false;
+    if (compareEnabled) {
+        const thresholdSelect = h('select', { class: 'zero-preset-select', style: 'width:100%;' });
+        const thresholdOptions = [
+            { value: '1.0', text: '100% 完全一致' },
+            { value: '0.9', text: '90% 高度相似' },
+            { value: '0.8', text: '80% 相似' },
+            { value: '0.7', text: '70% 相似' },
+            { value: '0.0', text: '关闭内容匹配' }
+        ];
+        thresholdOptions.forEach(opt => {
+            const optionEl = h('option', { value: opt.value, text: opt.text });
+            optionEl.selected = (parseFloat(opt.value) === selectedThreshold);
+            thresholdSelect.appendChild(optionEl);
+        });
 
-    thresholdSelect.addEventListener('change', () => {
-        selectedThreshold = parseFloat(thresholdSelect.value);
-        localStorage.setItem('zero_migration_similarity_threshold', thresholdSelect.value);
-        renderMappingUI();
-    });
+        thresholdSelect.addEventListener('change', () => {
+            selectedThreshold = parseFloat(thresholdSelect.value);
+            localStorage.setItem('zero_migration_similarity_threshold', thresholdSelect.value);
+            renderMappingUI();
+        });
 
-    const thresholdRow = h('div', { class: 'zero-migration-form-row' },
-        h('label', { text: '内容匹配阈值' }),
-        thresholdSelect
-    );
-    formContainer.appendChild(thresholdRow);
+        const thresholdRow = h('div', { class: 'zero-migration-form-row' },
+            h('label', { text: '内容匹配阈值' }),
+            thresholdSelect
+        );
+        formContainer.appendChild(thresholdRow);
+    }
 
     // Read saved copy preference
     const savedCopyPref = localStorage.getItem('zero_migration_save_copy');
