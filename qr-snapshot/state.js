@@ -266,6 +266,88 @@ export const PresetManager = {
     }
 };
 
+export async function detectPresetRenames() {
+    try {
+        const ctx = SillyTavern.getContext();
+        const pm = ctx.getPresetManager?.('openai');
+        if (!pm) return;
+
+        // 1. Get all available preset names from SillyTavern
+        const activePresets = pm.getCompletionPresetNames?.() || [];
+        if (activePresets.length === 0) return;
+
+        // 2. Identify preset names currently stored in our settings
+        const s = getSettings();
+        const storedPresets = new Set();
+        if (s.snapshots && Array.isArray(s.snapshots)) {
+            s.snapshots.forEach(snap => {
+                if (snap.presetName) storedPresets.add(snap.presetName);
+            });
+        }
+        if (s.groups) Object.keys(s.groups).forEach(name => storedPresets.add(name));
+        if (s.hidden) Object.keys(s.hidden).forEach(name => storedPresets.add(name));
+        if (s.linkages) Object.keys(s.linkages).forEach(name => storedPresets.add(name));
+
+        // 3. Find orphaned presets (in our settings but not active in SillyTavern)
+        const orphaned = Array.from(storedPresets).filter(name => !activePresets.includes(name));
+        if (orphaned.length === 0) return;
+
+        // 4. Find new presets (active in SillyTavern but not in our settings)
+        const brandNew = activePresets.filter(name => !storedPresets.has(name));
+        if (brandNew.length === 0) return;
+
+        // 5. For each brand new preset, see if it matches an orphaned preset
+        for (const newName of brandNew) {
+            const newPrompts = await getPresetPromptsWithEnabled(newName);
+            if (newPrompts.length === 0) continue;
+
+            const newIds = new Set(newPrompts.map(p => p.identifier));
+
+            for (const oldName of orphaned) {
+                // Get prompt identifiers from old preset snapshots
+                const oldSnaps = s.snapshots.filter(snap => snap.presetName === oldName);
+                
+                // Let's also check if we have groups or other structures for this old preset
+                const hasOldData = oldSnaps.length > 0 || (s.groups && s.groups[oldName]);
+                if (!hasOldData) continue;
+
+                // Collect all unique prompt IDs from the old snapshots/groups to compare
+                const oldIds = new Set();
+                oldSnaps.forEach(snap => {
+                    if (snap.entries) snap.entries.forEach(e => oldIds.add(e.id));
+                });
+                
+                // Fallback to prompt groups if no snapshots exist yet
+                if (oldIds.size === 0 && s.groups && s.groups[oldName]) {
+                    s.groups[oldName].forEach(g => {
+                        if (g.pids) g.pids.forEach(id => oldIds.add(id));
+                    });
+                }
+
+                if (oldIds.size === 0) continue;
+
+                // Compare the ID sets: if they are identical or highly similar, it's a rename!
+                let matches = 0;
+                oldIds.forEach(id => {
+                    if (newIds.has(id)) matches++;
+                });
+
+                const similarity = matches / Math.max(oldIds.size, newIds.size);
+                if (similarity >= 0.95) { // 95% or higher ID match
+                    console.log(`[Zero] Detected preset rename from "${oldName}" to "${newName}". Auto-migrating snapshots and settings.`);
+                    PresetManager.renameSettings(oldName, newName);
+                    // Remove oldName from orphaned list so it doesn't match multiple times
+                    const idx = orphaned.indexOf(oldName);
+                    if (idx !== -1) orphaned.splice(idx, 1);
+                    break;
+                }
+            }
+        }
+    } catch (e) {
+        console.error('[Zero] Failed to auto-detect preset renames:', e);
+    }
+}
+
 /** Read prompts and their current toggle (enabled) states from a preset name */
 export async function getPresetPromptsWithEnabled(presetName) {
     try {
@@ -486,7 +568,7 @@ export const SnapshotManager = {
     },
 
     /** Categorizes snapshot entries for mapping to a preset */
-    computeMapping(snapshot, preset, sourcePrompts = [], similarityThreshold = 0.8) {
+    async computeMapping(snapshot, preset, sourcePrompts = [], similarityThreshold = 0.8) {
         const snapEntries = snapshot.entries || [];
         const currentPrompts = preset.prompts || [];
 
@@ -541,21 +623,30 @@ export const SnapshotManager = {
 
         // 4. Match by content similarity (if sourcePrompts are available and threshold > 0)
         if (Array.isArray(sourcePrompts) && sourcePrompts.length > 0 && similarityThreshold > 0) {
-            snapEntries.forEach(se => {
-                if (matched.some(m => m.snapEntry.id === se.id)) return;
+            let comparisonsCount = 0;
+            for (const se of snapEntries) {
+                if (matched.some(m => m.snapEntry.id === se.id)) continue;
                 const sourceP = sourcePrompts.find(p => p.identifier === se.id);
                 if (sourceP && typeof sourceP.content === 'string' && sourceP.content.trim()) {
                     let bestMatch = null;
                     let highestScore = -1;
 
-                    Array.from(unmatchedTargetPrompts).forEach(p => {
-                        if (typeof p.content !== 'string') return;
+                    for (const p of unmatchedTargetPrompts) {
+                        if (typeof p.content !== 'string') continue;
+                        
                         const score = getStringSimilarity(sourceP.content, p.content);
+                        comparisonsCount++;
+
+                        // Yield to the event loop every 300 comparisons to prevent UI thread blocking
+                        if (comparisonsCount % 300 === 0) {
+                            await new Promise(resolve => setTimeout(resolve, 0));
+                        }
+
                         if (score >= similarityThreshold && score > highestScore) {
                             highestScore = score;
                             bestMatch = p;
                         }
-                    });
+                    }
 
                     if (bestMatch) {
                         matched.push({
@@ -567,7 +658,7 @@ export const SnapshotManager = {
                         unmatchedTargetPrompts.delete(bestMatch);
                     }
                 }
-            });
+            }
         }
 
         // 5. Anything left in snapEntries is missing

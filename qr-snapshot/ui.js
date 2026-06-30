@@ -2,7 +2,7 @@
  * Zero Preset Manager - UI
  * Performance-optimized v2: innerHTML templates, event delegation, lazy rendering.
  */
-import { PresetManager, SnapshotManager, GroupManager, HiddenManager, UiStateManager, LinkageManager, zeroTranslate, HistoryManager, ModelProfileManager, SamplingParamsHelper, SnapshotGroupManager, getPresetPromptsWithEnabled, getStringSimilarity } from './state.js';
+import { PresetManager, SnapshotManager, GroupManager, HiddenManager, UiStateManager, LinkageManager, zeroTranslate, HistoryManager, ModelProfileManager, SamplingParamsHelper, SnapshotGroupManager, getPresetPromptsWithEnabled, getStringSimilarity, detectPresetRenames } from './state.js';
 import { matchPrompt } from './search-util.js';
 
 let overlay = null;
@@ -183,6 +183,7 @@ export async function openUI() {
 
     try {
         PresetManager.invalidate();
+        await detectPresetRenames();
         const [preset, listInfo] = await Promise.all([PresetManager.load(), PresetManager.listNames()]);
         if (!preset) { toastr.error('无法加载预设'); closeUI(); return; }
         modal.innerHTML = '';
@@ -2472,7 +2473,7 @@ function findMostSimilarPresetWithSnapshots(currentPresetName) {
 async function showSnapshotMigrationModal(preset, preselectedSourceOrSnap = null, modal = null) {
     const targetModal = overlay || document.getElementById('zero-overlay') || document.body;
     
-    function buildCollapsibleSection(sectionId, titleText, defaultOpen = false) {
+    function buildCollapsibleSection(sectionId, titleText, defaultOpen = false, onExpand = null) {
         const storageKey = `zero_migration_section_${sectionId}`;
         const savedOpen = localStorage.getItem(storageKey);
         // Default to false (collapsed)
@@ -2489,11 +2490,31 @@ async function showSnapshotMigrationModal(preset, preselectedSourceOrSnap = null
             body
         );
         container.setAttribute('data-section-id', sectionId);
+
+        let hasRendered = false;
+        const triggerExpand = () => {
+            if (!hasRendered && typeof onExpand === 'function') {
+                hasRendered = true;
+                onExpand(body);
+            }
+        };
+
+        container.renderLazy = triggerExpand;
+
         header.addEventListener('click', () => {
             const isCollapsed = body.classList.toggle('collapsed');
             chevron.classList.toggle('collapsed', isCollapsed);
             localStorage.setItem(storageKey, (!isCollapsed).toString());
+            if (!isCollapsed) {
+                triggerExpand();
+            }
         });
+
+        // Trigger rendering immediately if section is open initially
+        if (isOpen) {
+            triggerExpand();
+        }
+
         return { container, body, header, chevron };
     }
 
@@ -2580,6 +2601,15 @@ async function showSnapshotMigrationModal(preset, preselectedSourceOrSnap = null
         searchTimeout = setTimeout(() => {
             const q = searchInput.value.toLowerCase().trim();
             const sections = ['matched', 'new', 'missing'];
+
+            if (q) {
+                sections.forEach(secId => {
+                    const secEl = menuBox.querySelector(`.zero-group[data-section-id="${secId}"]`);
+                    if (secEl && typeof secEl.renderLazy === 'function') {
+                        secEl.renderLazy();
+                    }
+                });
+            }
 
             sections.forEach(secId => {
                 const secEl = menuBox.querySelector(`.zero-group[data-section-id="${secId}"]`);
@@ -2759,325 +2789,352 @@ async function showSnapshotMigrationModal(preset, preselectedSourceOrSnap = null
     let newEntriesCustomStates = new Map();
     let sourcePrompts = [];
 
-    function renderMappingUI() {
-        dynamicContainer.innerHTML = '';
+    let currentRenderTicket = 0;
+    async function renderMappingUI() {
+        const ticket = ++currentRenderTicket;
+
+        dynamicContainer.innerHTML = '<div class="zero-loading" style="padding:20px;text-align:center;color:var(--SmartThemeBodyColor);"><i class="fa-solid fa-spinner fa-spin"></i><div>正在计算映射中...</div></div>';
+        applyBtn.disabled = true;
+        importOnlyBtn.disabled = true;
+
         if (!selectedSnapshotObj) {
+            dynamicContainer.innerHTML = '';
             dynamicContainer.appendChild(h('div', { class: 'zero-empty', text: '请先选择快照' }));
             applyBtn.disabled = true;
             importOnlyBtn.disabled = true;
             return;
         }
 
+        const threshold = selectedThreshold;
+        const snapObj = selectedSnapshotObj;
+        const srcPrompts = sourcePrompts;
+
+        const result = await SnapshotManager.computeMapping(snapObj, preset, srcPrompts, threshold);
+        if (ticket !== currentRenderTicket) return;
+
+        mappingResult = result;
+        dynamicContainer.innerHTML = '';
         applyBtn.disabled = false;
         importOnlyBtn.disabled = !copyCheckbox.checked;
 
-        mappingResult = SnapshotManager.computeMapping(selectedSnapshotObj, preset, sourcePrompts, selectedThreshold);
         const { matched, missing, newEntries } = mappingResult;
 
         // Section 2: Matched Entries (Collapsed by default)
         if (matched.length > 0) {
-            const section = buildCollapsibleSection('matched', `正常匹配的条目 (${matched.length})`, false);
-            const inner = h('div', { style: 'padding: 8px 10px 4px;' });
-            matched.forEach(m => {
-                const stateText = m.snapEntry.e ? 'ON' : 'OFF';
-                let matchTypeLabel = '';
-                let nameText = '';
-                if (m.type === 'content') {
-                    const pct = Math.round((m.score || 1.0) * 100);
-                    matchTypeLabel = pct === 100 ? '内容匹配' : `相似度 ${pct}%`;
-                    nameText = `${m.snapEntry.n || m.snapEntry.id} ➔ ${m.targetPrompt.name || m.targetPrompt.identifier}`;
-                } else if (m.type === 'name' || m.type === 'manual_link') {
-                    matchTypeLabel = m.type === 'name' ? '名称匹配' : '联动映射';
-                    nameText = `${m.snapEntry.n || m.snapEntry.id} ➔ ${m.targetPrompt.name || m.targetPrompt.identifier}`;
-                } else {
-                    matchTypeLabel = 'ID 匹配';
-                    nameText = m.targetPrompt.name || m.targetPrompt.identifier;
-                }
+            const section = buildCollapsibleSection('matched', `正常匹配的条目 (${matched.length})`, false, (body) => {
+                const inner = h('div', { style: 'padding: 8px 10px 4px;' });
+                matched.forEach(m => {
+                    const stateText = m.snapEntry.e ? 'ON' : 'OFF';
+                    let matchTypeLabel = '';
+                    let nameText = '';
+                    if (m.type === 'content') {
+                        const pct = Math.round((m.score || 1.0) * 100);
+                        matchTypeLabel = pct === 100 ? '内容匹配' : `相似度 ${pct}%`;
+                        nameText = `${m.snapEntry.n || m.snapEntry.id} ➔ ${m.targetPrompt.name || m.targetPrompt.identifier}`;
+                    } else if (m.type === 'name' || m.type === 'manual_link') {
+                        matchTypeLabel = m.type === 'name' ? '名称匹配' : '联动映射';
+                        nameText = `${m.snapEntry.n || m.snapEntry.id} ➔ ${m.targetPrompt.name || m.targetPrompt.identifier}`;
+                    } else {
+                        matchTypeLabel = 'ID 匹配';
+                        nameText = m.targetPrompt.name || m.targetPrompt.identifier;
+                    }
 
-                const row = h('div', { class: 'zero-migration-item' },
-                    h('div', { style: 'display:flex; flex-direction:column; overflow:hidden; flex:1;' },
-                        h('span', { class: 'zero-migration-item-name', text: nameText }),
-                        h('span', { class: 'zero-migration-item-meta', text: `快照原状态: ${stateText}` })
-                    ),
-                    h('span', { class: 'zero-migration-badge matched', text: matchTypeLabel, style: 'flex-shrink:0;' })
-                );
-                inner.appendChild(row);
+                    const row = h('div', { class: 'zero-migration-item' },
+                        h('div', { style: 'display:flex; flex-direction:column; overflow:hidden; flex:1;' },
+                            h('span', { class: 'zero-migration-item-name', text: nameText }),
+                            h('span', { class: 'zero-migration-item-meta', text: `快照原状态: ${stateText}` })
+                        ),
+                        h('span', { class: 'zero-migration-badge matched', text: matchTypeLabel, style: 'flex-shrink:0;' })
+                    );
+                    inner.appendChild(row);
+                });
+                body.appendChild(inner);
             });
-            section.body.appendChild(inner);
             dynamicContainer.appendChild(section.container);
         }
 
         // Section 3: New Entries (Collapsed by default)
         if (newEntries.length > 0) {
-            const section = buildCollapsibleSection('new', `当前预设新增的条目 (${newEntries.length})`, false);
-            const inner = h('div', { style: 'padding: 8px 10px 4px;' });
+            const section = buildCollapsibleSection('new', `当前预设新增的条目 (${newEntries.length})`, false, (body) => {
+                const inner = h('div', { style: 'padding: 8px 10px 4px;' });
 
-            const optDefault = h('option', { value: 'default', text: '保持预设默认' });
-            optDefault.selected = (newEntriesState === 'default');
-            const optOn = h('option', { value: 'on', text: '全部开启' });
-            optOn.selected = (newEntriesState === 'on');
-            const optOff = h('option', { value: 'off', text: '全部关闭' });
-            optOff.selected = (newEntriesState === 'off');
+                const optDefault = h('option', { value: 'default', text: '保持预设默认' });
+                optDefault.selected = (newEntriesState === 'default');
+                const optOn = h('option', { value: 'on', text: '全部开启' });
+                optOn.selected = (newEntriesState === 'on');
+                const optOff = h('option', { value: 'off', text: '全部关闭' });
+                optOff.selected = (newEntriesState === 'off');
 
-            const globalSelect = h('select', { class: 'zero-preset-select', style: 'font-size: 11px; padding: 2px 6px; height: 24px;' },
-                optDefault, optOn, optOff
-            );
-            globalSelect.addEventListener('change', () => {
-                newEntriesState = globalSelect.value;
-                localStorage.setItem('zero_migration_new_entries_state', newEntriesState);
+                const globalSelect = h('select', { class: 'zero-preset-select', style: 'font-size: 11px; padding: 2px 6px; height: 24px;' },
+                    optDefault, optOn, optOff
+                );
+                globalSelect.addEventListener('change', () => {
+                    newEntriesState = globalSelect.value;
+                    localStorage.setItem('zero_migration_new_entries_state', newEntriesState);
+                    newEntries.forEach(ne => {
+                        if (newEntriesState === 'on') newEntriesCustomStates.set(ne.identifier, true);
+                        else if (newEntriesState === 'off') newEntriesCustomStates.set(ne.identifier, false);
+                        else newEntriesCustomStates.delete(ne.identifier);
+                    });
+                    renderMappingUI();
+                });
+
+                const globalControlRow = h('div', { style: 'display:flex; justify-content:space-between; align-items:center; padding: 4px 8px 8px; border-bottom: 1px dashed rgba(255,255,255,0.06); margin-bottom: 8px;' },
+                    h('span', { text: '新条目全局初始状态:', style: 'font-size:11px; color:var(--SmartThemeEmColor);' }),
+                    globalSelect
+                );
+                inner.appendChild(globalControlRow);
+                inner.appendChild(h('div', { class: 'zero-migration-section-desc', text: '快照中无此条目，请选择这些新增条目的导入状态。' }));
+
                 newEntries.forEach(ne => {
-                    if (newEntriesState === 'on') newEntriesCustomStates.set(ne.identifier, true);
-                    else if (newEntriesState === 'off') newEntriesCustomStates.set(ne.identifier, false);
-                    else newEntriesCustomStates.delete(ne.identifier);
+                    let isChecked = ne.enabled;
+                    if (newEntriesCustomStates.has(ne.identifier)) {
+                        isChecked = newEntriesCustomStates.get(ne.identifier);
+                    } else if (newEntriesState === 'on') {
+                        isChecked = true;
+                    } else if (newEntriesState === 'off') {
+                        isChecked = false;
+                    }
+
+                    const chk = h('input', { type: 'checkbox' });
+                    chk.checked = isChecked;
+                    chk.addEventListener('change', () => {
+                        newEntriesCustomStates.set(ne.identifier, chk.checked);
+                    });
+                    const sw = h('label', { class: 'zero-switch' },
+                        chk,
+                        h('span', { class: 'zero-slider' })
+                    );
+
+                    const row = h('div', { class: 'zero-migration-item' },
+                        h('span', { class: 'zero-migration-item-name', text: ne.name || ne.identifier }),
+                        h('div', { class: 'zero-migration-item-actions' },
+                            h('span', { class: 'zero-migration-badge new', text: '新增' }),
+                            sw
+                        )
+                    );
+                    inner.appendChild(row);
                 });
-                renderMappingUI();
+
+                body.appendChild(inner);
             });
-
-            const globalControlRow = h('div', { style: 'display:flex; justify-content:space-between; align-items:center; padding: 4px 8px 8px; border-bottom: 1px dashed rgba(255,255,255,0.06); margin-bottom: 8px;' },
-                h('span', { text: '新条目全局初始状态:', style: 'font-size:11px; color:var(--SmartThemeEmColor);' }),
-                globalSelect
-            );
-            inner.appendChild(globalControlRow);
-            inner.appendChild(h('div', { class: 'zero-migration-section-desc', text: '快照中无此条目，请选择这些新增条目的导入状态。' }));
-
-            newEntries.forEach(ne => {
-                let isChecked = ne.enabled;
-                if (newEntriesCustomStates.has(ne.identifier)) {
-                    isChecked = newEntriesCustomStates.get(ne.identifier);
-                } else if (newEntriesState === 'on') {
-                    isChecked = true;
-                } else if (newEntriesState === 'off') {
-                    isChecked = false;
-                }
-
-                const chk = h('input', { type: 'checkbox' });
-                chk.checked = isChecked;
-                chk.addEventListener('change', () => {
-                    newEntriesCustomStates.set(ne.identifier, chk.checked);
-                });
-                const sw = h('label', { class: 'zero-switch' },
-                    chk,
-                    h('span', { class: 'zero-slider' })
-                );
-
-                const row = h('div', { class: 'zero-migration-item' },
-                    h('span', { class: 'zero-migration-item-name', text: ne.name || ne.identifier }),
-                    h('div', { class: 'zero-migration-item-actions' },
-                        h('span', { class: 'zero-migration-badge new', text: '新增' }),
-                        sw
-                    )
-                );
-                inner.appendChild(row);
-            });
-
-            section.body.appendChild(inner);
             dynamicContainer.appendChild(section.container);
         }
 
         // Section 4: Missing/Renamed Entries (Collapsed by default)
         if (missing.length > 0) {
-            const section = buildCollapsibleSection('missing', `缺失与改名条目 (${missing.length})`, false);
-            const inner = h('div', { style: 'padding: 8px 10px 4px;' });
-            inner.appendChild(h('div', { class: 'zero-migration-section-desc', text: '可能已改名或被删除。如果已改名，请选择对应的新条目进行关联映射。' }));
+            const section = buildCollapsibleSection('missing', `缺失与改名条目 (${missing.length})`, false, (body) => {
+                const inner = h('div', { style: 'padding: 8px 10px 4px;' });
+                inner.appendChild(h('div', { class: 'zero-migration-section-desc', text: '可能已改名或被删除。如果已改名，请选择对应的新条目进行关联映射。' }));
 
-            // Helper to build a searchable select element (No autofocus on input by default)
-            function createSearchableSelect(options, currentValue, onChange) {
-                const container = h('div', { style: 'position: relative; flex: 1; min-width: 0;' });
-                
-                const selectedOpt = options.find(o => o.value === currentValue);
-                const buttonText = selectedOpt ? selectedOpt.text : '-- 请选择 --';
-                
-                const btn = h('button', {
-                    class: 'zero-preset-select zero-btn sm',
-                    style: 'width: 100%; text-align: left; justify-content: space-between; display: flex; align-items: center; padding: 2px 6px; height: 24px; font-size: 11px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); border-radius: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;',
-                    onclick: (e) => {
-                        e.stopPropagation();
-                        // Close other searchable select dropdowns
-                        menuBox.querySelectorAll('.zero-search-select-dropdown').forEach(d => {
-                            if (d !== dropdown) d.style.display = 'none';
-                        });
-                        const isShown = dropdown.style.display === 'block';
-                        dropdown.style.display = isShown ? 'none' : 'block';
-                        if (!isShown) {
-                            searchInput.value = '';
-                            filterOptions('');
-                        }
-                    }
-                },
-                    h('span', { text: buttonText, style: 'overflow: hidden; text-overflow: ellipsis; white-space: nowrap;' }),
-                    h('i', { class: 'fa-solid fa-chevron-down', style: 'font-size: 9px; margin-left: 4px; opacity: 0.7;' })
-                );
-                
-                const searchInput = h('input', {
-                    class: 'zero-input',
-                    type: 'text',
-                    placeholder: '输入过滤条目...',
-                    style: 'width: 100%; height: 20px; font-size: 10px; padding: 2px 6px; margin-bottom: 4px; box-sizing: border-box; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: #fff !important;'
-                });
-                
-                const listContainer = h('div', {
-                    style: 'max-height: 160px; overflow-y: auto; display: block;'
-                });
-                
-                const dropdown = h('div', {
-                    class: 'zero-search-select-dropdown',
-                    style: 'display: none; position: absolute; left: 0; right: 0; top: 100%; z-index: 100; margin-top: 2px; padding: 4px; background: rgb(from var(--SmartThemeChatTintColor, rgba(40,40,55,1)) r g b / 1) !important; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.5);'
-                },
-                    searchInput,
-                    listContainer
-                );
-                
-                function filterOptions(q) {
-                    listContainer.innerHTML = '';
-                    const query = q.toLowerCase().trim();
+                // Helper to build a searchable select element (No autofocus on input by default)
+                function createSearchableSelect(options, currentValue, onChange) {
+                    const container = h('div', { style: 'position: relative; flex: 1; min-width: 0;' });
                     
-                    options.forEach(opt => {
-                        if (query && !opt.text.toLowerCase().includes(query)) return;
-                        
-                        const isSelected = opt.value === currentValue;
-                        const optEl = h('div', {
-                            style: `display: block; padding: 6px 10px; font-size: 11px; cursor: pointer; border-radius: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 2px; ${isSelected ? 'background: var(--SmartThemeQuoteColor, #7b8cde) !important; color: #fff !important;' : 'color: var(--SmartThemeBodyColor, inherit) !important;'}`
-                        }, opt.text);
-                        
-                        optEl.addEventListener('mouseenter', () => {
-                            if (!isSelected) optEl.style.background = 'rgba(255,255,255,0.06)';
-                        });
-                        optEl.addEventListener('mouseleave', () => {
-                            if (!isSelected) optEl.style.background = '';
-                        });
-                        
-                        optEl.addEventListener('click', (e) => {
+                    const selectedOpt = options.find(o => o.value === currentValue);
+                    const buttonText = selectedOpt ? selectedOpt.text : '-- 请选择 --';
+                    
+                    const btn = h('button', {
+                        class: 'zero-preset-select zero-btn sm',
+                        style: 'width: 100%; text-align: left; justify-content: space-between; display: flex; align-items: center; padding: 2px 6px; height: 24px; font-size: 11px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); border-radius: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;',
+                        onclick: (e) => {
                             e.stopPropagation();
-                            dropdown.style.display = 'none';
-                            onChange(opt.value);
-                        });
-                        
-                        listContainer.appendChild(optEl);
+                            // Close other searchable select dropdowns
+                            menuBox.querySelectorAll('.zero-search-select-dropdown').forEach(d => {
+                                if (d !== dropdown) {
+                                    d.style.display = 'none';
+                                    const lc = d.querySelector('.zero-list-container');
+                                    if (lc) lc.innerHTML = '';
+                                }
+                            });
+                            const isShown = dropdown.style.display === 'block';
+                            dropdown.style.display = isShown ? 'none' : 'block';
+                            if (!isShown) {
+                                searchInput.value = '';
+                                filterOptions('');
+                            } else {
+                                listContainer.innerHTML = '';
+                            }
+                        }
+                    },
+                        h('span', { text: buttonText, style: 'overflow: hidden; text-overflow: ellipsis; white-space: nowrap;' }),
+                        h('i', { class: 'fa-solid fa-chevron-down', style: 'font-size: 9px; margin-left: 4px; opacity: 0.7;' })
+                    );
+                    
+                    const searchInput = h('input', {
+                        class: 'zero-input',
+                        type: 'text',
+                        placeholder: '输入过滤条目...',
+                        style: 'width: 100%; height: 20px; font-size: 10px; padding: 2px 6px; margin-bottom: 4px; box-sizing: border-box; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: #fff !important;'
                     });
                     
-                    if (listContainer.children.length === 0) {
-                        listContainer.appendChild(h('div', {
-                            style: 'padding: 6px; text-align: center; color: var(--SmartThemeEmColor); font-size: 10px; font-style: italic;',
-                            text: '无匹配项'
-                        }));
-                    }
-                }
-                
-                let selectSearchTimeout = null;
-                searchInput.addEventListener('input', () => {
-                    if (selectSearchTimeout) clearTimeout(selectSearchTimeout);
-                    selectSearchTimeout = setTimeout(() => {
-                        filterOptions(searchInput.value);
-                    }, 1000);
-                });
-                
-                document.addEventListener('click', () => {
-                    dropdown.style.display = 'none';
-                });
-                
-                container.appendChild(btn);
-                container.appendChild(dropdown);
-                return container;
-            }
-
-            missing.forEach(se => {
-                const selectOptions = [
-                    { value: '', text: '-- 不导入 (已删除) --' }
-                ];
-                newEntries.forEach(ne => {
-                    selectOptions.push({ value: ne.identifier, text: ne.name || ne.identifier });
-                });
-
-                let selectVal = manualMappings.get(se.id) || '';
-
-                const linkChk = h('input', { type: 'checkbox' });
-                linkChk.checked = saveLinkages.get(se.id) !== false;
-                linkChk.addEventListener('change', () => {
-                    saveLinkages.set(se.id, linkChk.checked);
-                });
-                const linkSw = h('label', { class: 'zero-switch' },
-                    linkChk,
-                    h('span', { class: 'zero-slider' })
-                );
-
-                const compareBtn = h('button', { class: 'zero-btn sm', style: 'display:none; padding:2px 8px; font-size:11px;', text: '对比内容' });
-                const identicalBadge = h('span', { class: 'zero-migration-badge matched', style: 'display:none; font-size:10px; margin-left:4px;', text: '内容一致' });
-
-                compareBtn.addEventListener('click', () => {
-                    if (!selectVal) return;
-                    const targetP = newEntries.find(ne => ne.identifier === selectVal);
-                    const sourceP = sourcePrompts.find(p => p.identifier === se.id);
-                    if (targetP && sourceP) {
-                        showContentCompareModal(sourceP, targetP);
-                    }
-                });
-
-                const updateLinkVisibility = (val) => {
-                    const hasVal = !!val;
-                    linkRow.style.display = hasVal ? 'flex' : 'none';
-                    compareBtn.style.display = hasVal ? 'inline-flex' : 'none';
+                    const listContainer = h('div', {
+                        class: 'zero-list-container',
+                        style: 'max-height: 160px; overflow-y: auto; display: block;'
+                    });
                     
-                    if (hasVal) {
-                        const targetP = newEntries.find(ne => ne.identifier === val);
+                    const dropdown = h('div', {
+                        class: 'zero-search-select-dropdown',
+                        style: 'display: none; position: absolute; left: 0; right: 0; top: 100%; z-index: 100; margin-top: 2px; padding: 4px; background: rgb(from var(--SmartThemeChatTintColor, rgba(40,40,55,1)) r g b / 1) !important; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.5);'
+                    },
+                        searchInput,
+                        listContainer
+                    );
+                    
+                    function filterOptions(q) {
+                        listContainer.innerHTML = '';
+                        const query = q.toLowerCase().trim();
+                        
+                        options.forEach(opt => {
+                            if (query && !opt.text.toLowerCase().includes(query)) return;
+                            
+                            const isSelected = opt.value === currentValue;
+                            const optEl = h('div', {
+                                style: `display: block; padding: 6px 10px; font-size: 11px; cursor: pointer; border-radius: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 2px; ${isSelected ? 'background: var(--SmartThemeQuoteColor, #7b8cde) !important; color: #fff !important;' : 'color: var(--SmartThemeBodyColor, inherit) !important;'}`
+                            }, opt.text);
+                            
+                            optEl.addEventListener('mouseenter', () => {
+                                if (!isSelected) optEl.style.background = 'rgba(255,255,255,0.06)';
+                            });
+                            optEl.addEventListener('mouseleave', () => {
+                                if (!isSelected) optEl.style.background = '';
+                            });
+                            
+                            optEl.addEventListener('click', (e) => {
+                                e.stopPropagation();
+                                dropdown.style.display = 'none';
+                                listContainer.innerHTML = '';
+                                onChange(opt.value);
+                            });
+                            
+                            listContainer.appendChild(optEl);
+                        });
+                        
+                        if (listContainer.children.length === 0) {
+                            listContainer.appendChild(h('div', {
+                                style: 'padding: 6px; text-align: center; color: var(--SmartThemeEmColor); font-size: 10px; font-style: italic;',
+                                text: '无匹配项'
+                            }));
+                        }
+                    }
+                    
+                    let selectSearchTimeout = null;
+                    searchInput.addEventListener('input', () => {
+                        if (selectSearchTimeout) clearTimeout(selectSearchTimeout);
+                        selectSearchTimeout = setTimeout(() => {
+                            filterOptions(searchInput.value);
+                        }, 1000);
+                    });
+                    
+                    document.addEventListener('click', () => {
+                        dropdown.style.display = 'none';
+                        listContainer.innerHTML = '';
+                    });
+                    
+                    container.appendChild(btn);
+                    container.appendChild(dropdown);
+                    return container;
+                }
+
+                missing.forEach(se => {
+                    const selectOptions = [
+                        { value: '', text: '-- 不导入 (已删除) --' }
+                    ];
+                    newEntries.forEach(ne => {
+                        selectOptions.push({ value: ne.identifier, text: ne.name || ne.identifier });
+                    });
+
+                    let selectVal = manualMappings.get(se.id) || '';
+
+                    const linkChk = h('input', { type: 'checkbox' });
+                    linkChk.checked = saveLinkages.get(se.id) !== false;
+                    linkChk.addEventListener('change', () => {
+                        saveLinkages.set(se.id, linkChk.checked);
+                    });
+                    const linkSw = h('label', { class: 'zero-switch' },
+                        linkChk,
+                        h('span', { class: 'zero-slider' })
+                    );
+
+                    const compareBtn = h('button', { class: 'zero-btn sm', style: 'display:none; padding:2px 8px; font-size:11px;', text: '对比内容' });
+                    const identicalBadge = h('span', { class: 'zero-migration-badge matched', style: 'display:none; font-size:10px; margin-left:4px;', text: '内容一致' });
+
+                    compareBtn.addEventListener('click', () => {
+                        if (!selectVal) return;
+                        const targetP = newEntries.find(ne => ne.identifier === selectVal);
                         const sourceP = sourcePrompts.find(p => p.identifier === se.id);
                         if (targetP && sourceP) {
-                            const score = getStringSimilarity(sourceP.content, targetP.content);
-                            const pct = Math.round(score * 100);
-                            identicalBadge.style.display = 'inline-block';
-                            if (pct === 100) {
-                                identicalBadge.textContent = '内容一致';
-                                identicalBadge.className = 'zero-migration-badge matched';
+                            showContentCompareModal(sourceP, targetP);
+                        }
+                    });
+
+                    const updateLinkVisibility = (val) => {
+                        const hasVal = !!val;
+                        linkRow.style.display = hasVal ? 'flex' : 'none';
+                        compareBtn.style.display = hasVal ? 'inline-flex' : 'none';
+                        
+                        if (hasVal) {
+                            const targetP = newEntries.find(ne => ne.identifier === val);
+                            const sourceP = sourcePrompts.find(p => p.identifier === se.id);
+                            if (targetP && sourceP) {
+                                const score = getStringSimilarity(sourceP.content, targetP.content);
+                                const pct = Math.round(score * 100);
+                                identicalBadge.style.display = 'inline-block';
+                                if (pct === 100) {
+                                    identicalBadge.textContent = '内容一致';
+                                    identicalBadge.className = 'zero-migration-badge matched';
+                                } else {
+                                    identicalBadge.textContent = `相似度 ${pct}%`;
+                                    identicalBadge.className = 'zero-migration-badge new';
+                                }
                             } else {
-                                identicalBadge.textContent = `相似度 ${pct}%`;
-                                identicalBadge.className = 'zero-migration-badge new';
+                                identicalBadge.style.display = 'none';
                             }
                         } else {
                             identicalBadge.style.display = 'none';
                         }
-                    } else {
-                        identicalBadge.style.display = 'none';
-                    }
-                };
+                    };
 
-                const select = createSearchableSelect(selectOptions, selectVal, (newVal) => {
-                    selectVal = newVal;
-                    if (newVal) {
-                        manualMappings.set(se.id, newVal);
-                    } else {
-                        manualMappings.delete(se.id);
-                    }
-                    updateLinkVisibility(newVal);
+                    const select = createSearchableSelect(selectOptions, selectVal, (newVal) => {
+                        selectVal = newVal;
+                        if (newVal) {
+                            manualMappings.set(se.id, newVal);
+                        } else {
+                            manualMappings.delete(se.id);
+                        }
+                        updateLinkVisibility(newVal);
+                    });
+
+                    const linkRow = h('div', { style: 'display:none; align-items:center; gap:6px; font-size:10px; color:var(--SmartThemeEmColor); margin-top:4px;' },
+                        linkSw,
+                        h('span', { text: '保存为此两预设的永久条目关联' })
+                    );
+
+                    updateLinkVisibility(selectVal);
+
+                    const row = h('div', { class: 'zero-migration-item', style: 'flex-direction:column; align-items:stretch; gap:4px; padding:8px 10px;' },
+                        h('div', { style: 'display:flex; justify-content:space-between; align-items:center; gap:8px;' },
+                            h('div', { style: 'display:flex; align-items:center; gap:4px; overflow:hidden; flex:1;' },
+                                h('span', { class: 'zero-migration-item-name', text: se.n || se.id, style: 'font-weight:bold; max-width:100%;' }),
+                                identicalBadge
+                            ),
+                            h('span', { class: 'zero-migration-badge missing', text: '缺失/改名', style: 'flex-shrink:0;' })
+                        ),
+                        h('div', { style: 'display:flex; justify-content:space-between; align-items:center; font-size:10px; color:var(--SmartThemeEmColor);' },
+                            h('span', { text: `原状态: ${se.e ? 'ON' : 'OFF'}` })
+                        ),
+                        h('div', { style: 'display:flex; align-items:center; gap:8px; margin-top:4px;' },
+                            h('span', { text: '关联至:', style: 'font-size:11px; color:var(--SmartThemeEmColor); flex-shrink:0;' }),
+                            select,
+                            compareBtn
+                        ),
+                        linkRow
+                    );
+                    inner.appendChild(row);
                 });
 
-                const linkRow = h('div', { style: 'display:none; align-items:center; gap:6px; font-size:10px; color:var(--SmartThemeEmColor); margin-top:4px;' },
-                    linkSw,
-                    h('span', { text: '保存为此两预设的永久条目关联' })
-                );
-
-                updateLinkVisibility(selectVal);
-
-                const row = h('div', { class: 'zero-migration-item', style: 'flex-direction:column; align-items:stretch; gap:4px; padding:8px 10px;' },
-                    h('div', { style: 'display:flex; justify-content:space-between; align-items:center; gap:8px;' },
-                        h('div', { style: 'display:flex; align-items:center; gap:4px; overflow:hidden; flex:1;' },
-                            h('span', { class: 'zero-migration-item-name', text: se.n || se.id, style: 'font-weight:bold; max-width:100%;' }),
-                            identicalBadge
-                        ),
-                        h('span', { class: 'zero-migration-badge missing', text: '缺失/改名', style: 'flex-shrink:0;' })
-                    ),
-                    h('div', { style: 'display:flex; justify-content:space-between; align-items:center; font-size:10px; color:var(--SmartThemeEmColor);' },
-                        h('span', { text: `原状态: ${se.e ? 'ON' : 'OFF'}` })
-                    ),
-                    h('div', { style: 'display:flex; align-items:center; gap:8px; margin-top:4px;' },
-                        h('span', { text: '关联至:', style: 'font-size:11px; color:var(--SmartThemeEmColor); flex-shrink:0;' }),
-                        select,
-                        compareBtn
-                    ),
-                    linkRow
-                );
-                inner.appendChild(row);
+                body.appendChild(inner);
             });
-
-            section.body.appendChild(inner);
             dynamicContainer.appendChild(section.container);
         }
 
