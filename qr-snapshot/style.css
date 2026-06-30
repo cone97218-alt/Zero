@@ -394,20 +394,36 @@
     color: #fff;
     border-color: transparent;
 }
+.zero-btn:disabled,
+.zero-btn[disabled] {
+    opacity: 0.4;
+    cursor: not-allowed;
+    background: rgba(40,40,55,0.3) !important;
+    border-color: rgba(255,255,255,0.05) !important;
+    color: var(--SmartThemeEmColor, #888) !important;
+}
+.zero-btn.primary:disabled,
+.zero-btn.primary[disabled] {
+    background: rgba(123, 140, 222, 0.4) !important;
+    color: rgba(255, 255, 255, 0.5) !important;
+    border-color: transparent !important;
+}
 
 /* ===== Toggle Switch ===== */
 .zero-switch {
     position: relative;
     display: inline-block;
-    width: 36px;
-    height: 20px;
-    flex-shrink: 0;
+    width: 36px !important;
+    height: 20px !important;
+    flex-shrink: 0 !important;
+    flex: none !important;
 }
 .zero-switch input {
     opacity: 0;
-    width: 0;
-    height: 0;
+    width: 0 !important;
+    height: 0 !important;
     position: absolute;
+    flex: none !important;
 }
 .zero-slider {
     position: absolute;
@@ -1244,5 +1260,134 @@
 .zero-anim-overwrite {
     display: inline-block;
     animation: zeroOverwriteSpin 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ===== Snapshot Migration Modal ===== */
+.zero-migration-box {
+    max-width: 620px;
+    height: 90vh;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+}
+.zero-migration-header-desc {
+    font-size: 12px;
+    color: var(--SmartThemeEmColor, #aaa);
+    margin-top: -8px;
+    margin-bottom: 12px;
+    text-align: center;
+}
+.zero-migration-form-row {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 12px;
+    align-items: center;
+}
+.zero-migration-form-row label {
+    font-size: 13px;
+    font-weight: bold;
+    width: 90px;
+    flex-shrink: 0;
+    color: var(--SmartThemeEmColor, #aaa);
+}
+.zero-migration-form-row select,
+.zero-migration-form-row input {
+    flex: 1;
+    min-width: 0;
+}
+.zero-migration-section-title {
+    font-size: 13px;
+    font-weight: bold;
+    color: var(--SmartThemeQuoteColor, #7b8cde);
+    margin: 12px 0 6px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.zero-migration-section-desc {
+    font-size: 11px;
+    color: var(--SmartThemeEmColor, #888);
+    margin-bottom: 6px;
+}
+.zero-migration-scroll {
+    overflow-y: auto;
+    flex: 1;
+    padding-right: 4px;
+    margin-bottom: 12px;
+}
+.zero-migration-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 8px;
+    border-radius: 6px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(255,255,255,0.04);
+    margin-bottom: 6px;
+    font-size: 12px;
+}
+.zero-migration-item-name {
+    font-weight: 500;
+    color: var(--SmartThemeBodyColor, #ddd);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+}
+.zero-migration-item-meta {
+    font-size: 10px;
+    color: var(--SmartThemeEmColor, #888);
+    margin-left: 6px;
+}
+.zero-migration-item-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.zero-migration-item-actions select {
+    font-size: 11px;
+    padding: 2px 6px;
+    height: 24px;
+    max-width: 180px;
+}
+.zero-migration-badge {
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: bold;
+}
+.zero-migration-badge.matched {
+    background: rgba(40,167,69,0.15);
+    color: #28a745;
+}
+.zero-migration-badge.new {
+    background: rgba(0,123,255,0.15);
+    color: #007bff;
+}
+.zero-migration-badge.missing {
+    background: rgba(220,53,69,0.15);
+    color: #dc3545;
+}
+
+/* ===== Recommendation Banner ===== */
+.zero-migration-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    background: rgba(123, 140, 222, 0.08);
+    border: 1px dashed var(--SmartThemeQuoteColor, #7b8cde);
+    border-radius: 8px;
+    margin: 8px 2px 14px;
+    gap: 12px;
+}
+.zero-migration-banner-text {
+    font-size: 12px;
+    color: var(--SmartThemeBodyColor, #ddd);
+    line-height: 1.4;
+    flex: 1;
 }
 

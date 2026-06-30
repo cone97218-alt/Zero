@@ -266,6 +266,51 @@ export const PresetManager = {
     }
 };
 
+/** Read prompts and their current toggle (enabled) states from a preset name */
+export async function getPresetPromptsWithEnabled(presetName) {
+    try {
+        const ctx = SillyTavern.getContext();
+        const pm = ctx.getPresetManager?.('openai');
+        if (!pm) return [];
+        const presetData = pm.getCompletionPresetByName(presetName);
+        if (!presetData || !presetData.prompts) return [];
+
+        let orderList = [];
+        if (Array.isArray(presetData.prompt_order) && presetData.prompt_order.length > 0) {
+            const globalOrder = presetData.prompt_order.find(item => item && String(item.character_id) === '100001');
+            if (globalOrder && Array.isArray(globalOrder.order)) {
+                orderList = globalOrder.order;
+            } else {
+                const first = presetData.prompt_order[0];
+                if (first && Array.isArray(first.order)) {
+                    orderList = first.order;
+                } else {
+                    orderList = presetData.prompt_order.filter(item => item && item.identifier);
+                }
+            }
+        }
+
+        const enabledMap = new Map();
+        orderList.forEach(po => {
+            if (po && po.identifier) {
+                enabledMap.set(po.identifier, po.enabled === true);
+            }
+        });
+
+        return presetData.prompts
+            .filter(p => enabledMap.has(p.identifier))
+            .map(p => ({
+                identifier: p.identifier,
+                name: p.name || p.identifier,
+                enabled: enabledMap.get(p.identifier),
+                content: p.content || ''
+            }));
+    } catch (e) {
+        console.error('[Zero] Failed to read prompts for preset:', presetName, e);
+        return [];
+    }
+}
+
 // ═══════════════════════════════════════
 //  Snapshot Manager
 // ═══════════════════════════════════════
@@ -277,7 +322,7 @@ export const SnapshotManager = {
         return all.filter(s => s.presetName === presetName);
     },
 
-    async create(name, preset) {
+    async create(name, preset, overrideParams = null) {
         HistoryManager.record();
         const decouple = UiStateManager.get().decoupleJailbreak === true;
 
@@ -294,14 +339,19 @@ export const SnapshotManager = {
                 .map(p => ({ id: p.identifier, n: p.name, e: p.enabled }));
         } else {
             snapEntries = preset.prompts.map(p => ({ id: p.identifier, n: p.name, e: p.enabled }));
-            try {
-                const params = await SamplingParamsHelper.read();
-                if (params) {
-                    samplingParams = params.sampling;
-                    additionalParams = params.additional;
+            if (overrideParams) {
+                samplingParams = overrideParams.samplingParams;
+                additionalParams = overrideParams.additionalParams;
+            } else {
+                try {
+                    const params = await SamplingParamsHelper.read();
+                    if (params) {
+                        samplingParams = params.sampling;
+                        additionalParams = params.additional;
+                    }
+                } catch (e) {
+                    console.warn('[Zero] Failed to read sampling params for snapshot:', e);
                 }
-            } catch (e) {
-                console.warn('[Zero] Failed to read sampling params for snapshot:', e);
             }
         }
 
@@ -433,6 +483,127 @@ export const SnapshotManager = {
         if (!decouple && snapshot.samplingParams) {
             await SamplingParamsHelper.apply(snapshot.samplingParams, snapshot.additionalParams);
         }
+    },
+
+    /** Categorizes snapshot entries for mapping to a preset */
+    computeMapping(snapshot, preset, sourcePrompts = [], similarityThreshold = 0.8) {
+        const snapEntries = snapshot.entries || [];
+        const currentPrompts = preset.prompts || [];
+
+        // Read manual linkages from local storage
+        let manualLinks = {};
+        try {
+            const links = JSON.parse(localStorage.getItem('zero_manual_links') || '{}');
+            const keyPair = `${snapshot.presetName}::${preset.name}`;
+            manualLinks = links[keyPair] || {};
+        } catch (e) {
+            console.error('[Zero] Failed to read zero_manual_links:', e);
+        }
+
+        const matched = [];
+        const missing = [];
+        const unmatchedTargetPrompts = new Set(currentPrompts);
+
+        // 1. Match by exact ID
+        snapEntries.forEach(se => {
+            const tgt = currentPrompts.find(p => p.identifier === se.id);
+            if (tgt) {
+                matched.push({ snapEntry: se, targetPrompt: tgt, type: 'id' });
+                unmatchedTargetPrompts.delete(tgt);
+            }
+        });
+
+        // 2. Match by manual linkages
+        snapEntries.forEach(se => {
+            if (matched.some(m => m.snapEntry.id === se.id)) return;
+            const targetId = manualLinks[se.id];
+            if (targetId) {
+                const tgt = currentPrompts.find(p => p.identifier === targetId);
+                if (tgt) {
+                    matched.push({ snapEntry: se, targetPrompt: tgt, type: 'manual_link' });
+                    unmatchedTargetPrompts.delete(tgt);
+                }
+            }
+        });
+
+        // 3. Match by Name (case-insensitive, trimmed)
+        snapEntries.forEach(se => {
+            if (matched.some(m => m.snapEntry.id === se.id)) return;
+            const cleanName = (se.n || '').trim().toLowerCase();
+            if (!cleanName) return;
+
+            const tgt = Array.from(unmatchedTargetPrompts).find(p => (p.name || '').trim().toLowerCase() === cleanName);
+            if (tgt) {
+                matched.push({ snapEntry: se, targetPrompt: tgt, type: 'name' });
+                unmatchedTargetPrompts.delete(tgt);
+            }
+        });
+
+        // 4. Match by content similarity (if sourcePrompts are available and threshold > 0)
+        if (Array.isArray(sourcePrompts) && sourcePrompts.length > 0 && similarityThreshold > 0) {
+            snapEntries.forEach(se => {
+                if (matched.some(m => m.snapEntry.id === se.id)) return;
+                const sourceP = sourcePrompts.find(p => p.identifier === se.id);
+                if (sourceP && typeof sourceP.content === 'string' && sourceP.content.trim()) {
+                    let bestMatch = null;
+                    let highestScore = -1;
+
+                    Array.from(unmatchedTargetPrompts).forEach(p => {
+                        if (typeof p.content !== 'string') return;
+                        const score = getStringSimilarity(sourceP.content, p.content);
+                        if (score >= similarityThreshold && score > highestScore) {
+                            highestScore = score;
+                            bestMatch = p;
+                        }
+                    });
+
+                    if (bestMatch) {
+                        matched.push({
+                            snapEntry: se,
+                            targetPrompt: bestMatch,
+                            type: 'content',
+                            score: highestScore
+                        });
+                        unmatchedTargetPrompts.delete(bestMatch);
+                    }
+                }
+            });
+        }
+
+        // 5. Anything left in snapEntries is missing
+        snapEntries.forEach(se => {
+            if (!matched.some(m => m.snapEntry.id === se.id)) {
+                missing.push(se);
+            }
+        });
+
+        // Anything left in unmatchedTargetPrompts is new
+        const newEntries = Array.from(unmatchedTargetPrompts);
+
+        return { matched, missing, newEntries };
+    },
+
+    async applySmart(snapshot, preset, resolvedToggles, saveAsCopyName = null, keepHistoricalParams = true) {
+        HistoryManager.record();
+
+        // 1. Batch toggle the prompt states
+        await PresetManager.batchToggleMap(resolvedToggles);
+
+        // 2. Apply sampling params if available, decoupleJailbreak is false, and keepHistoricalParams is true
+        const decouple = UiStateManager.get().decoupleJailbreak === true;
+        if (!decouple && keepHistoricalParams && snapshot.samplingParams) {
+            await SamplingParamsHelper.apply(snapshot.samplingParams, snapshot.additionalParams);
+        }
+
+        // 3. Save as copy in the current preset if requested
+        if (saveAsCopyName && preset) {
+            const nextPreset = await PresetManager.load();
+            return await this.create(saveAsCopyName, nextPreset, keepHistoricalParams ? {
+                samplingParams: snapshot.samplingParams,
+                additionalParams: snapshot.additionalParams
+            } : null);
+        }
+        return null;
     }
 };
 
@@ -522,6 +693,34 @@ export const GroupManager = {
         const reordered = orderedIds.map(id => map.get(id)).filter(Boolean);
         groups.forEach(g => { if (!orderedIds.includes(g.id)) reordered.push(g); });
         this._save(presetName, reordered);
+    },
+
+    migrate(sourcePresetName, targetPresetName, promptIdMap) {
+        HistoryManager.record();
+        const sourceGroups = this.get(sourcePresetName);
+        const targetGroups = this.get(targetPresetName);
+        const groupIdMap = new Map();
+
+        sourceGroups.forEach(srcG => {
+            // Find or create group in target
+            let tgtG = targetGroups.find(g => g.name === srcG.name);
+            if (!tgtG) {
+                tgtG = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5), name: srcG.name, ids: [], col: srcG.col || false, type: srcG.type || 'normal', single: srcG.single || false };
+                targetGroups.push(tgtG);
+            }
+            groupIdMap.set(srcG.id, tgtG.id);
+
+            // Map identifiers inside the group
+            srcG.ids.forEach(srcId => {
+                const tgtId = promptIdMap.get(srcId);
+                if (tgtId && !tgtG.ids.includes(tgtId)) {
+                    tgtG.ids.push(tgtId);
+                }
+            });
+        });
+
+        this._save(targetPresetName, targetGroups);
+        return groupIdMap;
     }
 };
 
@@ -559,6 +758,23 @@ export const HiddenManager = {
         const s = getSettings();
         s.hidden[presetName] = [];
         saveSettings();
+    },
+
+    migrate(sourcePresetName, targetPresetName, promptIdMap) {
+        HistoryManager.record();
+        const s = getSettings();
+        if (!s.hidden) s.hidden = {};
+        const sourceHidden = s.hidden[sourcePresetName] || [];
+        const targetHidden = s.hidden[targetPresetName] || [];
+
+        sourceHidden.forEach(srcId => {
+            const tgtId = promptIdMap.get(srcId);
+            if (tgtId && !targetHidden.includes(tgtId)) {
+                targetHidden.push(tgtId);
+            }
+        });
+        s.hidden[targetPresetName] = targetHidden;
+        saveSettings();
     }
 };
 
@@ -589,6 +805,23 @@ export const LinkageManager = {
         HistoryManager.record();
         const list = this.get(presetName).filter(l => !(l.source === source && l.target === target));
         this._save(presetName, list);
+    },
+
+    migrate(sourcePresetName, targetPresetName, promptIdMap) {
+        HistoryManager.record();
+        const sourceLinks = this.get(sourcePresetName);
+        const targetLinks = this.get(targetPresetName);
+
+        sourceLinks.forEach(link => {
+            const tgtSource = promptIdMap.get(link.source);
+            const tgtTarget = promptIdMap.get(link.target);
+            if (tgtSource && tgtTarget) {
+                if (!targetLinks.some(l => l.source === tgtSource && l.target === tgtTarget)) {
+                    targetLinks.push({ source: tgtSource, target: tgtTarget });
+                }
+            }
+        });
+        this._save(targetPresetName, targetLinks);
     }
 };
 
@@ -765,6 +998,45 @@ export const ModelProfileManager = {
             s.modelProfiles[newName].forEach(p => { p.presetName = newName; });
         }
         saveSettings();
+    },
+
+    migrate(sourcePresetName, targetPresetName, promptIdMap, groupIdMap) {
+        HistoryManager.record();
+        const sourceProfiles = this.list(sourcePresetName);
+        const targetProfiles = this.list(targetPresetName);
+
+        sourceProfiles.forEach(srcP => {
+            const tgtSelectedGroupIds = (srcP.selectedGroupIds || []).map(gid => groupIdMap.get(gid)).filter(Boolean);
+            const tgtGroupEntryStates = {};
+            if (srcP.groupEntryStates) {
+                for (const [gid, states] of Object.entries(srcP.groupEntryStates)) {
+                    const tgtGid = groupIdMap.get(gid);
+                    if (tgtGid) {
+                        tgtGroupEntryStates[tgtGid] = states.map(st => {
+                            const tgtId = promptIdMap.get(st.id);
+                            return tgtId ? { id: tgtId, e: st.e } : null;
+                        }).filter(Boolean);
+                    }
+                }
+            }
+
+            const tgtP = {
+                id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+                name: srcP.name,
+                presetName: targetPresetName,
+                ts: Date.now(),
+                selectedGroupIds: tgtSelectedGroupIds,
+                groupEntryStates: tgtGroupEntryStates,
+                samplingParams: srcP.samplingParams ? { ...srcP.samplingParams } : null,
+                additionalParams: srcP.additionalParams ? { ...srcP.additionalParams } : null
+            };
+            
+            if (!targetProfiles.some(p => p.name === tgtP.name)) {
+                targetProfiles.push(tgtP);
+            }
+        });
+
+        this._save(targetPresetName, targetProfiles);
     }
 };
 
@@ -852,6 +1124,43 @@ export const SnapshotGroupManager = {
             delete s.snapshotGroups[oldName];
         }
         saveSettings();
+    },
+
+    migrate(sourcePresetName, targetPresetName, snapshotIdMap) {
+        HistoryManager.record();
+        const sourceGroups = this.get(sourcePresetName);
+        const targetGroups = this.get(targetPresetName);
+
+        const finalMap = new Map(snapshotIdMap || []);
+        if (finalMap.size === 0) {
+            const sourceSnaps = SnapshotManager.list(sourcePresetName) || [];
+            const targetSnaps = SnapshotManager.list(targetPresetName) || [];
+            sourceSnaps.forEach(srcS => {
+                const matchedTgt = targetSnaps.find(tgtS => tgtS.name === srcS.name);
+                if (matchedTgt) {
+                    finalMap.set(srcS.id, matchedTgt.id);
+                }
+            });
+        }
+
+        sourceGroups.forEach(srcG => {
+            // Find or create group in target
+            let tgtG = targetGroups.find(g => g.name === srcG.name);
+            if (!tgtG) {
+                tgtG = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5), name: srcG.name, sids: [], col: srcG.col || false };
+                targetGroups.push(tgtG);
+            }
+
+            // Map snapshot IDs inside the group
+            srcG.sids.forEach(srcSid => {
+                const tgtSid = finalMap.get(srcSid);
+                if (tgtSid && !tgtG.sids.includes(tgtSid)) {
+                    tgtG.sids.push(tgtSid);
+                }
+            });
+        });
+
+        this._save(targetPresetName, targetGroups);
     }
 };
 
@@ -1202,4 +1511,30 @@ export const HistoryManager = {
         }
     }
 };
+
+export function getStringSimilarity(str1, str2) {
+    if (!str1 || !str2) return 0;
+    str1 = str1.replace(/\s+/g, '');
+    str2 = str2.replace(/\s+/g, '');
+    if (str1 === str2) return 1.0;
+    if (str1.length < 2 || str2.length < 2) return 0;
+
+    const bigrams1 = new Map();
+    for (let i = 0; i < str1.length - 1; i++) {
+        const bigram = str1.substr(i, 2);
+        bigrams1.set(bigram, (bigrams1.get(bigram) || 0) + 1);
+    }
+
+    let intersection = 0;
+    for (let i = 0; i < str2.length - 1; i++) {
+        const bigram = str2.substr(i, 2);
+        const count = bigrams1.get(bigram) || 0;
+        if (count > 0) {
+            intersection++;
+            bigrams1.set(bigram, count - 1);
+        }
+    }
+
+    return (2.0 * intersection) / (str1.length + str2.length - 2);
+}
 

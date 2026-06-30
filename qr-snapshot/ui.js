@@ -2,7 +2,7 @@
  * Zero Preset Manager - UI
  * Performance-optimized v2: innerHTML templates, event delegation, lazy rendering.
  */
-import { PresetManager, SnapshotManager, GroupManager, HiddenManager, UiStateManager, LinkageManager, zeroTranslate, HistoryManager, ModelProfileManager, SamplingParamsHelper, SnapshotGroupManager } from './state.js';
+import { PresetManager, SnapshotManager, GroupManager, HiddenManager, UiStateManager, LinkageManager, zeroTranslate, HistoryManager, ModelProfileManager, SamplingParamsHelper, SnapshotGroupManager, getPresetPromptsWithEnabled, getStringSimilarity } from './state.js';
 import { matchPrompt } from './search-util.js';
 
 let overlay = null;
@@ -1566,8 +1566,9 @@ function renderSnapshots(panel, preset, modal, viewMode = 'local') {
             } })
         ),
         h('div', { style: 'display: flex; gap: 6px; align-items: center;' },
-            viewMode === 'local' ? h('button', { class: 'zero-btn', html: '<i class="fa-solid fa-folder"></i> 分组', onclick: () => showSnapshotGroupManager(panel, preset, modal) }) : null,
-            h('button', { class: 'zero-btn primary', html: '<i class="fa-solid fa-plus"></i> 新建', onclick: () => {
+            viewMode === 'local' ? h('button', { class: 'zero-btn', title: '快照分组', html: '<i class="fa-solid fa-folder"></i>', onclick: () => showSnapshotGroupManager(panel, preset, modal) }) : null,
+            h('button', { class: 'zero-btn', title: '迁移导入', html: '<i class="fa-solid fa-file-import"></i>', onclick: () => showSnapshotMigrationModal(preset, null, modal) }),
+            h('button', { class: 'zero-btn primary', title: '新建快照', html: '<i class="fa-solid fa-plus"></i>', onclick: () => {
                 showPrompt(modal, '快照名称', `快照 ${formatDate(Date.now())}`, async (name) => {
                     await SnapshotManager.create(name, preset);
                     renderSnapshots(panel, preset, modal, viewMode);
@@ -1583,7 +1584,31 @@ function renderSnapshots(panel, preset, modal, viewMode = 'local') {
         snaps = snaps.filter(s => (s.name || '').toLowerCase().includes(query));
     }
     if (snaps.length === 0) {
-        panel.appendChild(h('div', { class: 'zero-empty', text: query ? '没有匹配的快照' : (viewMode === 'local' ? '当前预设暂无快照，点击上方按钮创建' : '没有来自其他预设的快照') }));
+        if (viewMode === 'local' && !query) {
+            const emptyEl = h('div', { class: 'zero-empty', text: '当前预设暂无快照，点击右上方按钮创建。' });
+            panel.appendChild(emptyEl);
+            
+            // Add recommendation banner
+            const similarPresetName = findMostSimilarPresetWithSnapshots(preset.name);
+            if (similarPresetName) {
+                const banner = h('div', { class: 'zero-migration-banner' },
+                    h('div', { class: 'zero-migration-banner-text' },
+                        h('i', { class: 'fa-solid fa-lightbulb', style: 'color: var(--SmartThemeEmColor); margin-right: 6px;' }),
+                        `当前预设暂无快照。建议从相似预设「${similarPresetName}」导入/迁移快照配置。`
+                    ),
+                    h('button', {
+                        class: 'zero-btn primary sm',
+                        text: '立即迁移导入',
+                        onclick: () => {
+                            showSnapshotMigrationModal(preset, similarPresetName, modal);
+                        }
+                    })
+                );
+                panel.appendChild(banner);
+            }
+        } else {
+            panel.appendChild(h('div', { class: 'zero-empty', text: query ? '没有匹配的快照' : '没有来自其他预设的快照' }));
+        }
         return;
     }
 
@@ -1722,6 +1747,7 @@ function buildSnapCard(snap, preset, panel, modal, viewMode) {
             }
         } }, applyIcon),
         !isOther ? h('button', { class: 'zero-btn', title: '分组', html: '<i class="fa-solid fa-folder-open"></i>', onclick: () => showSnapshotGroupAssignMenu(modal, panel, preset, snap) }) : null,
+        isOther ? h('button', { class: 'zero-btn', title: '导入与迁移到当前预设', html: '<i class="fa-solid fa-file-import"></i>', onclick: () => showSnapshotMigrationModal(preset, snap, modal) }) : null,
         h('button', { class: 'zero-btn', title: '重命名', html: '<i class="fa-solid fa-pen"></i>', onclick: () => {
             showPrompt(modal, '新名称', snap.name, (n) => {
                 SnapshotManager.rename(snap.id, n);
@@ -2405,4 +2431,1050 @@ async function openNativeEditor(identifier) {
         toastr.error('无法打开编辑器');
         if (overlay) overlay.style.display = 'flex';
     }
+}
+
+function findMostSimilarPresetWithSnapshots(currentPresetName) {
+    const allSnaps = SnapshotManager.list();
+    const otherPresetNames = Array.from(new Set(allSnaps.map(s => s.presetName)))
+        .filter(name => name !== currentPresetName);
+    if (otherPresetNames.length === 0) return null;
+
+    let bestName = null;
+    let maxScore = -1;
+
+    otherPresetNames.forEach(name => {
+        let score = 0;
+        const w1 = currentPresetName.split(/[\s-_vV\d.]+/)[0];
+        const w2 = name.split(/[\s-_vV\d.]+/)[0];
+        if (w1 && w2 && w1.toLowerCase() === w2.toLowerCase()) {
+            score += 15;
+        }
+        let commonPrefixLen = 0;
+        const minLen = Math.min(currentPresetName.length, name.length);
+        for (let i = 0; i < minLen; i++) {
+            if (currentPresetName[i].toLowerCase() === name[i].toLowerCase()) {
+                commonPrefixLen++;
+            } else {
+                break;
+            }
+        }
+        score += commonPrefixLen;
+
+        if (score > maxScore) {
+            maxScore = score;
+            bestName = name;
+        }
+    });
+
+    return maxScore > 2 ? bestName : otherPresetNames[0];
+}
+
+async function showSnapshotMigrationModal(preset, preselectedSourceOrSnap = null, modal = null) {
+    const targetModal = overlay || document.getElementById('zero-overlay') || document.body;
+    
+    function buildCollapsibleSection(sectionId, titleText, defaultOpen = false) {
+        const storageKey = `zero_migration_section_${sectionId}`;
+        const savedOpen = localStorage.getItem(storageKey);
+        // Default to false (collapsed)
+        const isOpen = savedOpen === null ? defaultOpen : savedOpen === 'true';
+
+        const chevron = h('i', { class: 'fa-solid fa-chevron-down chevron' + (isOpen ? '' : ' collapsed') });
+        const header = h('div', { class: 'zero-group-header', style: 'padding: 8px 10px; background: rgba(255,255,255,0.03); cursor: pointer;' },
+            chevron,
+            h('span', { class: 'zero-group-title', text: titleText })
+        );
+        const body = h('div', { class: 'zero-group-body' + (isOpen ? '' : ' collapsed') });
+        const container = h('div', { class: 'zero-group', style: 'margin-bottom: 8px;' },
+            header,
+            body
+        );
+        container.setAttribute('data-section-id', sectionId);
+        header.addEventListener('click', () => {
+            const isCollapsed = body.classList.toggle('collapsed');
+            chevron.classList.toggle('collapsed', isCollapsed);
+            localStorage.setItem(storageKey, (!isCollapsed).toString());
+        });
+        return { container, body, header, chevron };
+    }
+
+    function showContentCompareModal(sourceP, targetP) {
+        const compareBox = h('div', { class: 'zero-confirm', style: 'z-index: 20500;' });
+        const content = h('div', { class: 'zero-confirm-box', style: 'max-width: 680px; width: 90%; height: 80vh; max-height: 80vh; display: flex; flex-direction: column;' },
+            h('div', { class: 'zero-confirm-msg', text: '对比条目内容' }),
+            h('div', { style: 'display: flex; flex-direction: column; gap: 12px; flex: 1; overflow: hidden; margin-bottom: 12px;' },
+                h('div', { style: 'flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden;' },
+                    h('div', { style: 'font-weight: bold; margin-bottom: 4px; font-size:12px; color: var(--SmartThemeEmColor);', text: `来源 (原预设): ${sourceP.name || sourceP.identifier}` }),
+                    h('textarea', { readonly: true, class: 'zero-input', style: 'flex: 1; resize: none; font-family: monospace; font-size: 10px; padding: 8px; background: rgba(0,0,0,0.15); border: 1px solid rgba(255,255,255,0.06); border-radius: 4px;', text: sourceP.content || '' })
+                ),
+                h('div', { style: 'flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden;' },
+                    h('div', { style: 'font-weight: bold; margin-bottom: 4px; font-size:12px; color: var(--SmartThemeEmColor);', text: `目标 (当前预设): ${targetP.name || targetP.identifier}` }),
+                    h('textarea', { readonly: true, class: 'zero-input', style: 'flex: 1; resize: none; font-family: monospace; font-size: 10px; padding: 8px; background: rgba(0,0,0,0.15); border: 1px solid rgba(255,255,255,0.06); border-radius: 4px;', text: targetP.content || '' })
+                )
+            ),
+            h('div', { class: 'zero-confirm-btns', style: 'display:flex; justify-content:flex-end;' },
+                h('button', { class: 'zero-btn primary', text: '关闭', onclick: () => compareBox.remove() })
+            )
+        );
+        compareBox.appendChild(content);
+        targetModal.appendChild(compareBox);
+    }
+
+    const listInfo = await PresetManager.listNames();
+    const allPresets = listInfo.names || [];
+    const filteredSourcePresets = allPresets.filter(n => !n.startsWith('★') && n !== preset.name);
+
+    const menuBox = h('div', { class: 'zero-confirm' });
+    const contentBox = h('div', { class: 'zero-confirm-box zero-migration-box' },
+        h('div', { class: 'zero-confirm-msg', text: '快照导入与迁移' }),
+        h('div', { class: 'zero-migration-header-desc', text: '将其他预设的快照（或当前开关配置）智能转换并导入到当前预设' })
+    );
+
+    const scrollContainer = h('div', { class: 'zero-migration-scroll' });
+    contentBox.appendChild(scrollContainer);
+
+    // Section 1: Basic Settings (Static, collapsed by default unless saved otherwise)
+    const settingsSection = buildCollapsibleSection('settings', '基础设置', false);
+    scrollContainer.appendChild(settingsSection.container);
+
+    // Collapsible Search Box
+    const searchInput = h('input', {
+        class: 'zero-input',
+        type: 'text',
+        placeholder: '搜索条目名称...',
+        style: 'display: none; height: 22px; padding: 2px 8px; font-size: 11px; border-radius: 4px; box-sizing: border-box; width: 150px; border: 1px solid rgba(255,255,255,0.08); background: rgba(0,0,0,0.2);'
+    });
+
+    const closeSearchBtn = h('button', {
+        class: 'zero-btn sm',
+        style: 'display: none; padding: 2px 6px; height: 22px; margin-left: 4px; border-radius: 4px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); align-items: center; justify-content: center;',
+        onclick: (e) => {
+            e.stopPropagation();
+            searchInput.value = '';
+            searchInput.dispatchEvent(new Event('input'));
+            searchInput.style.display = 'none';
+            closeSearchBtn.style.display = 'none';
+            searchBtn.style.display = 'inline-flex';
+        }
+    }, h('i', { class: 'fa-solid fa-xmark', style: 'font-size: 10px;' }));
+
+    const searchBtn = h('button', {
+        class: 'zero-btn sm',
+        style: 'padding: 2px 8px; height: 22px; display: inline-flex; align-items: center; justify-content: center; gap: 4px; font-size: 11px; border-radius: 4px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08);',
+        onclick: (e) => {
+            e.stopPropagation();
+            searchBtn.style.display = 'none';
+            searchInput.style.display = 'inline-block';
+            closeSearchBtn.style.display = 'inline-flex';
+            searchInput.focus();
+        }
+    }, h('i', { class: 'fa-solid fa-magnifying-glass', style: 'font-size: 10px;' }), h('span', { text: '搜索条目' }));
+
+    const searchContainer = h('div', {
+        style: 'display: flex; justify-content: flex-end; align-items: center; margin: 4px 10px 8px; height: 24px;'
+    }, searchBtn, searchInput, closeSearchBtn);
+    scrollContainer.appendChild(searchContainer);
+
+    let searchTimeout = null;
+    searchInput.addEventListener('input', () => {
+        if (searchTimeout) clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => {
+            const q = searchInput.value.toLowerCase().trim();
+            const sections = ['matched', 'new', 'missing'];
+
+            sections.forEach(secId => {
+                const secEl = menuBox.querySelector(`.zero-group[data-section-id="${secId}"]`);
+                if (!secEl) return;
+
+                const cards = secEl.querySelectorAll('.zero-migration-item');
+                let visibleCount = 0;
+
+                cards.forEach(card => {
+                    const nameEl = card.querySelector('.zero-migration-item-name');
+                    const nameText = nameEl ? nameEl.textContent.toLowerCase() : '';
+                    if (nameText.includes(q)) {
+                        card.style.display = '';
+                        visibleCount++;
+                    } else {
+                        card.style.display = 'none';
+                    }
+                });
+
+                const headerTextEl = secEl.querySelector('.zero-group-title');
+                if (headerTextEl) {
+                    const totalCount = cards.length;
+                    let baseTitle = '';
+                    if (secId === 'matched') baseTitle = '正常匹配的条目';
+                    else if (secId === 'new') baseTitle = '当前预设新增的条目';
+                    else if (secId === 'missing') baseTitle = '缺失与改名条目';
+
+                    if (q) {
+                        headerTextEl.textContent = `${baseTitle} (显示 ${visibleCount}/${totalCount})`;
+                    } else {
+                        headerTextEl.textContent = `${baseTitle} (${totalCount})`;
+                    }
+                }
+
+                if (q && visibleCount > 0) {
+                    const body = secEl.querySelector('.zero-group-body');
+                    const chevron = secEl.querySelector('.zero-group-header i');
+                    if (body && body.classList.contains('collapsed')) {
+                        body.classList.remove('collapsed');
+                        if (chevron) chevron.classList.remove('collapsed');
+                    }
+                }
+            });
+        }, 1000);
+    });
+
+    const formContainer = h('div', { style: 'padding: 8px 10px;' });
+    settingsSection.body.appendChild(formContainer);
+
+    const sourceSelect = h('select', { class: 'zero-preset-select', style: 'width:100%;' });
+    filteredSourcePresets.forEach(name => {
+        sourceSelect.appendChild(h('option', { value: name, text: name }));
+    });
+
+    const sourceRow = h('div', { class: 'zero-migration-form-row' },
+        h('label', { text: '来源预设' }),
+        sourceSelect
+    );
+    formContainer.appendChild(sourceRow);
+
+    const snapSelect = h('select', { class: 'zero-preset-select', style: 'width:100%;' });
+    const snapRow = h('div', { class: 'zero-migration-form-row' },
+        h('label', { text: '选择快照' }),
+        snapSelect
+    );
+    formContainer.appendChild(snapRow);
+
+    const nameInput = h('input', { class: 'zero-input', type: 'text', placeholder: '新快照名称', style: 'font-size:inherit !important;' });
+    const nameRow = h('div', { class: 'zero-migration-form-row' },
+        h('label', { text: '保存名称' }),
+        nameInput
+    );
+    formContainer.appendChild(nameRow);
+
+    // Similarity Threshold Row
+    const thresholdSelect = h('select', { class: 'zero-preset-select', style: 'width:100%;' });
+    const thresholdOptions = [
+        { value: '1.0', text: '100% 完全一致' },
+        { value: '0.9', text: '90% 高度相似' },
+        { value: '0.8', text: '80% 相似' },
+        { value: '0.7', text: '70% 相似' },
+        { value: '0.0', text: '关闭内容匹配' }
+    ];
+    let selectedThreshold = parseFloat(localStorage.getItem('zero_migration_similarity_threshold') || '0.8');
+    thresholdOptions.forEach(opt => {
+        const optionEl = h('option', { value: opt.value, text: opt.text });
+        optionEl.selected = (parseFloat(opt.value) === selectedThreshold);
+        thresholdSelect.appendChild(optionEl);
+    });
+
+    thresholdSelect.addEventListener('change', () => {
+        selectedThreshold = parseFloat(thresholdSelect.value);
+        localStorage.setItem('zero_migration_similarity_threshold', thresholdSelect.value);
+        renderMappingUI();
+    });
+
+    const thresholdRow = h('div', { class: 'zero-migration-form-row' },
+        h('label', { text: '内容匹配阈值' }),
+        thresholdSelect
+    );
+    formContainer.appendChild(thresholdRow);
+
+    // Read saved copy preference
+    const savedCopyPref = localStorage.getItem('zero_migration_save_copy');
+    const isCopyChecked = savedCopyPref === null ? true : savedCopyPref === 'true';
+
+    const copyCheckbox = h('input', { type: 'checkbox' });
+    copyCheckbox.checked = isCopyChecked;
+    const copySwitch = h('label', { class: 'zero-switch' },
+        copyCheckbox,
+        h('span', { class: 'zero-slider' })
+    );
+    const copyRow = h('div', { class: 'zero-migration-form-row', style: 'margin-bottom: 8px;' },
+        h('label', { text: '保存快照副本', style: 'width: 110px;' }),
+        h('div', { style: 'display:flex; align-items:center; gap:6px; flex:1;' },
+            copySwitch,
+            h('span', { text: '在当前预设下保存一份转换后的快照', style: 'font-size: 11px; color: var(--SmartThemeEmColor);' })
+        )
+    );
+    formContainer.appendChild(copyRow);
+
+    // Read saved keep historical params preference
+    const savedKeepParamsPref = localStorage.getItem('zero_migration_keep_historical_params');
+    const isKeepParamsChecked = savedKeepParamsPref === null ? true : savedKeepParamsPref === 'true';
+
+    const keepParamsCheckbox = h('input', { type: 'checkbox' });
+    keepParamsCheckbox.checked = isKeepParamsChecked;
+    const keepParamsSwitch = h('label', { class: 'zero-switch' },
+        keepParamsCheckbox,
+        h('span', { class: 'zero-slider' })
+    );
+    keepParamsCheckbox.addEventListener('change', () => {
+        localStorage.setItem('zero_migration_keep_historical_params', keepParamsCheckbox.checked.toString());
+    });
+
+    const decouple = UiStateManager.get().decoupleJailbreak === true;
+    const paramsRow = h('div', { class: 'zero-migration-form-row', style: `margin-bottom: 8px; display: ${decouple ? 'none' : 'flex'};` },
+        h('label', { text: '保留历史模型参数', style: 'width: 110px;' }),
+        h('div', { style: 'display:flex; align-items:center; gap:6px; flex:1;' },
+            keepParamsSwitch,
+            h('span', { text: '导入时保留快照当时记录的模型参数', style: 'font-size: 11px; color: var(--SmartThemeEmColor);' })
+        )
+    );
+    formContainer.appendChild(paramsRow);
+
+
+
+    // Dynamic Container for sections 2, 3, and 4
+    const dynamicContainer = h('div');
+    scrollContainer.appendChild(dynamicContainer);
+
+    const applyBtn = h('button', { class: 'zero-btn primary', text: '导入并应用', style: 'flex:1; justify-content:center;' });
+    const importOnlyBtn = h('button', { class: 'zero-btn', text: '仅导入', style: 'flex:1; justify-content:center;' });
+    const cancelBtn = h('button', { class: 'zero-btn', text: '取消', style: 'flex:1; justify-content:center;', onclick: () => menuBox.remove() });
+
+    // Set initial disabled state based on checkbox
+    importOnlyBtn.disabled = !isCopyChecked;
+
+    copyCheckbox.addEventListener('change', () => {
+        importOnlyBtn.disabled = !copyCheckbox.checked;
+        localStorage.setItem('zero_migration_save_copy', copyCheckbox.checked.toString());
+    });
+
+    const btnRow = h('div', { class: 'zero-confirm-btns', style: 'margin-top:12px; display:flex; gap:8px;' },
+        cancelBtn,
+        importOnlyBtn,
+        applyBtn
+    );
+    contentBox.appendChild(btnRow);
+
+    let currentSourcePreset = '';
+    let selectedSnapshotObj = null;
+    let mappingResult = null;
+    let manualMappings = new Map();
+    let saveLinkages = new Map();
+    let newEntriesState = localStorage.getItem('zero_migration_new_entries_state') || 'default';
+    let newEntriesCustomStates = new Map();
+    let sourcePrompts = [];
+
+    function renderMappingUI() {
+        dynamicContainer.innerHTML = '';
+        if (!selectedSnapshotObj) {
+            dynamicContainer.appendChild(h('div', { class: 'zero-empty', text: '请先选择快照' }));
+            applyBtn.disabled = true;
+            importOnlyBtn.disabled = true;
+            return;
+        }
+
+        applyBtn.disabled = false;
+        importOnlyBtn.disabled = !copyCheckbox.checked;
+
+        mappingResult = SnapshotManager.computeMapping(selectedSnapshotObj, preset, sourcePrompts, selectedThreshold);
+        const { matched, missing, newEntries } = mappingResult;
+
+        // Section 2: Matched Entries (Collapsed by default)
+        if (matched.length > 0) {
+            const section = buildCollapsibleSection('matched', `正常匹配的条目 (${matched.length})`, false);
+            const inner = h('div', { style: 'padding: 8px 10px 4px;' });
+            matched.forEach(m => {
+                const stateText = m.snapEntry.e ? 'ON' : 'OFF';
+                let matchTypeLabel = '';
+                let nameText = '';
+                if (m.type === 'content') {
+                    const pct = Math.round((m.score || 1.0) * 100);
+                    matchTypeLabel = pct === 100 ? '内容匹配' : `相似度 ${pct}%`;
+                    nameText = `${m.snapEntry.n || m.snapEntry.id} ➔ ${m.targetPrompt.name || m.targetPrompt.identifier}`;
+                } else if (m.type === 'name' || m.type === 'manual_link') {
+                    matchTypeLabel = m.type === 'name' ? '名称匹配' : '联动映射';
+                    nameText = `${m.snapEntry.n || m.snapEntry.id} ➔ ${m.targetPrompt.name || m.targetPrompt.identifier}`;
+                } else {
+                    matchTypeLabel = 'ID 匹配';
+                    nameText = m.targetPrompt.name || m.targetPrompt.identifier;
+                }
+
+                const row = h('div', { class: 'zero-migration-item' },
+                    h('div', { style: 'display:flex; flex-direction:column; overflow:hidden; flex:1;' },
+                        h('span', { class: 'zero-migration-item-name', text: nameText }),
+                        h('span', { class: 'zero-migration-item-meta', text: `快照原状态: ${stateText}` })
+                    ),
+                    h('span', { class: 'zero-migration-badge matched', text: matchTypeLabel, style: 'flex-shrink:0;' })
+                );
+                inner.appendChild(row);
+            });
+            section.body.appendChild(inner);
+            dynamicContainer.appendChild(section.container);
+        }
+
+        // Section 3: New Entries (Collapsed by default)
+        if (newEntries.length > 0) {
+            const section = buildCollapsibleSection('new', `当前预设新增的条目 (${newEntries.length})`, false);
+            const inner = h('div', { style: 'padding: 8px 10px 4px;' });
+
+            const optDefault = h('option', { value: 'default', text: '保持预设默认' });
+            optDefault.selected = (newEntriesState === 'default');
+            const optOn = h('option', { value: 'on', text: '全部开启' });
+            optOn.selected = (newEntriesState === 'on');
+            const optOff = h('option', { value: 'off', text: '全部关闭' });
+            optOff.selected = (newEntriesState === 'off');
+
+            const globalSelect = h('select', { class: 'zero-preset-select', style: 'font-size: 11px; padding: 2px 6px; height: 24px;' },
+                optDefault, optOn, optOff
+            );
+            globalSelect.addEventListener('change', () => {
+                newEntriesState = globalSelect.value;
+                localStorage.setItem('zero_migration_new_entries_state', newEntriesState);
+                newEntries.forEach(ne => {
+                    if (newEntriesState === 'on') newEntriesCustomStates.set(ne.identifier, true);
+                    else if (newEntriesState === 'off') newEntriesCustomStates.set(ne.identifier, false);
+                    else newEntriesCustomStates.delete(ne.identifier);
+                });
+                renderMappingUI();
+            });
+
+            const globalControlRow = h('div', { style: 'display:flex; justify-content:space-between; align-items:center; padding: 4px 8px 8px; border-bottom: 1px dashed rgba(255,255,255,0.06); margin-bottom: 8px;' },
+                h('span', { text: '新条目全局初始状态:', style: 'font-size:11px; color:var(--SmartThemeEmColor);' }),
+                globalSelect
+            );
+            inner.appendChild(globalControlRow);
+            inner.appendChild(h('div', { class: 'zero-migration-section-desc', text: '快照中无此条目，请选择这些新增条目的导入状态。' }));
+
+            newEntries.forEach(ne => {
+                let isChecked = ne.enabled;
+                if (newEntriesCustomStates.has(ne.identifier)) {
+                    isChecked = newEntriesCustomStates.get(ne.identifier);
+                } else if (newEntriesState === 'on') {
+                    isChecked = true;
+                } else if (newEntriesState === 'off') {
+                    isChecked = false;
+                }
+
+                const chk = h('input', { type: 'checkbox' });
+                chk.checked = isChecked;
+                chk.addEventListener('change', () => {
+                    newEntriesCustomStates.set(ne.identifier, chk.checked);
+                });
+                const sw = h('label', { class: 'zero-switch' },
+                    chk,
+                    h('span', { class: 'zero-slider' })
+                );
+
+                const row = h('div', { class: 'zero-migration-item' },
+                    h('span', { class: 'zero-migration-item-name', text: ne.name || ne.identifier }),
+                    h('div', { class: 'zero-migration-item-actions' },
+                        h('span', { class: 'zero-migration-badge new', text: '新增' }),
+                        sw
+                    )
+                );
+                inner.appendChild(row);
+            });
+
+            section.body.appendChild(inner);
+            dynamicContainer.appendChild(section.container);
+        }
+
+        // Section 4: Missing/Renamed Entries (Collapsed by default)
+        if (missing.length > 0) {
+            const section = buildCollapsibleSection('missing', `缺失与改名条目 (${missing.length})`, false);
+            const inner = h('div', { style: 'padding: 8px 10px 4px;' });
+            inner.appendChild(h('div', { class: 'zero-migration-section-desc', text: '可能已改名或被删除。如果已改名，请选择对应的新条目进行关联映射。' }));
+
+            // Helper to build a searchable select element (No autofocus on input by default)
+            function createSearchableSelect(options, currentValue, onChange) {
+                const container = h('div', { style: 'position: relative; flex: 1; min-width: 0;' });
+                
+                const selectedOpt = options.find(o => o.value === currentValue);
+                const buttonText = selectedOpt ? selectedOpt.text : '-- 请选择 --';
+                
+                const btn = h('button', {
+                    class: 'zero-preset-select zero-btn sm',
+                    style: 'width: 100%; text-align: left; justify-content: space-between; display: flex; align-items: center; padding: 2px 6px; height: 24px; font-size: 11px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); border-radius: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;',
+                    onclick: (e) => {
+                        e.stopPropagation();
+                        // Close other searchable select dropdowns
+                        menuBox.querySelectorAll('.zero-search-select-dropdown').forEach(d => {
+                            if (d !== dropdown) d.style.display = 'none';
+                        });
+                        const isShown = dropdown.style.display === 'block';
+                        dropdown.style.display = isShown ? 'none' : 'block';
+                        if (!isShown) {
+                            searchInput.value = '';
+                            filterOptions('');
+                        }
+                    }
+                },
+                    h('span', { text: buttonText, style: 'overflow: hidden; text-overflow: ellipsis; white-space: nowrap;' }),
+                    h('i', { class: 'fa-solid fa-chevron-down', style: 'font-size: 9px; margin-left: 4px; opacity: 0.7;' })
+                );
+                
+                const searchInput = h('input', {
+                    class: 'zero-input',
+                    type: 'text',
+                    placeholder: '输入过滤条目...',
+                    style: 'width: 100%; height: 20px; font-size: 10px; padding: 2px 6px; margin-bottom: 4px; box-sizing: border-box; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: #fff !important;'
+                });
+                
+                const listContainer = h('div', {
+                    style: 'max-height: 160px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px;'
+                });
+                
+                const dropdown = h('div', {
+                    class: 'zero-search-select-dropdown',
+                    style: 'display: none; position: absolute; left: 0; right: 0; top: 100%; z-index: 100; margin-top: 2px; padding: 4px; background: rgb(from var(--SmartThemeChatTintColor, rgba(40,40,55,1)) r g b / 1) !important; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.5);'
+                },
+                    searchInput,
+                    listContainer
+                );
+                
+                function filterOptions(q) {
+                    listContainer.innerHTML = '';
+                    const query = q.toLowerCase().trim();
+                    
+                    options.forEach(opt => {
+                        if (query && !opt.text.toLowerCase().includes(query)) return;
+                        
+                        const isSelected = opt.value === currentValue;
+                        const optEl = h('div', {
+                            style: `padding: 4px 8px; font-size: 11px; cursor: pointer; border-radius: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; ${isSelected ? 'background: var(--SmartThemeQuoteColor, #7b8cde) !important; color: #fff !important;' : 'color: var(--SmartThemeBodyColor, #ddd) !important;'}`
+                        }, opt.text);
+                        
+                        optEl.addEventListener('mouseenter', () => {
+                            if (!isSelected) optEl.style.background = 'rgba(255,255,255,0.06)';
+                        });
+                        optEl.addEventListener('mouseleave', () => {
+                            if (!isSelected) optEl.style.background = '';
+                        });
+                        
+                        optEl.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            dropdown.style.display = 'none';
+                            onChange(opt.value);
+                        });
+                        
+                        listContainer.appendChild(optEl);
+                    });
+                    
+                    if (listContainer.children.length === 0) {
+                        listContainer.appendChild(h('div', {
+                            style: 'padding: 6px; text-align: center; color: var(--SmartThemeEmColor); font-size: 10px; font-style: italic;',
+                            text: '无匹配项'
+                        }));
+                    }
+                }
+                
+                let selectSearchTimeout = null;
+                searchInput.addEventListener('input', () => {
+                    if (selectSearchTimeout) clearTimeout(selectSearchTimeout);
+                    selectSearchTimeout = setTimeout(() => {
+                        filterOptions(searchInput.value);
+                    }, 1000);
+                });
+                
+                document.addEventListener('click', () => {
+                    dropdown.style.display = 'none';
+                });
+                
+                container.appendChild(btn);
+                container.appendChild(dropdown);
+                return container;
+            }
+
+            missing.forEach(se => {
+                const selectOptions = [
+                    { value: '', text: '-- 不导入 (已删除) --' }
+                ];
+                newEntries.forEach(ne => {
+                    selectOptions.push({ value: ne.identifier, text: ne.name || ne.identifier });
+                });
+
+                let selectVal = manualMappings.get(se.id) || '';
+
+                const linkChk = h('input', { type: 'checkbox' });
+                linkChk.checked = saveLinkages.get(se.id) !== false;
+                linkChk.addEventListener('change', () => {
+                    saveLinkages.set(se.id, linkChk.checked);
+                });
+                const linkSw = h('label', { class: 'zero-switch' },
+                    linkChk,
+                    h('span', { class: 'zero-slider' })
+                );
+
+                const compareBtn = h('button', { class: 'zero-btn sm', style: 'display:none; padding:2px 8px; font-size:11px;', text: '对比内容' });
+                const identicalBadge = h('span', { class: 'zero-migration-badge matched', style: 'display:none; font-size:10px; margin-left:4px;', text: '内容一致' });
+
+                compareBtn.addEventListener('click', () => {
+                    if (!selectVal) return;
+                    const targetP = newEntries.find(ne => ne.identifier === selectVal);
+                    const sourceP = sourcePrompts.find(p => p.identifier === se.id);
+                    if (targetP && sourceP) {
+                        showContentCompareModal(sourceP, targetP);
+                    }
+                });
+
+                const updateLinkVisibility = (val) => {
+                    const hasVal = !!val;
+                    linkRow.style.display = hasVal ? 'flex' : 'none';
+                    compareBtn.style.display = hasVal ? 'inline-flex' : 'none';
+                    
+                    if (hasVal) {
+                        const targetP = newEntries.find(ne => ne.identifier === val);
+                        const sourceP = sourcePrompts.find(p => p.identifier === se.id);
+                        if (targetP && sourceP) {
+                            const score = getStringSimilarity(sourceP.content, targetP.content);
+                            const pct = Math.round(score * 100);
+                            identicalBadge.style.display = 'inline-block';
+                            if (pct === 100) {
+                                identicalBadge.textContent = '内容一致';
+                                identicalBadge.className = 'zero-migration-badge matched';
+                            } else {
+                                identicalBadge.textContent = `相似度 ${pct}%`;
+                                identicalBadge.className = 'zero-migration-badge new';
+                            }
+                        } else {
+                            identicalBadge.style.display = 'none';
+                        }
+                    } else {
+                        identicalBadge.style.display = 'none';
+                    }
+                };
+
+                const select = createSearchableSelect(selectOptions, selectVal, (newVal) => {
+                    selectVal = newVal;
+                    if (newVal) {
+                        manualMappings.set(se.id, newVal);
+                    } else {
+                        manualMappings.delete(se.id);
+                    }
+                    updateLinkVisibility(newVal);
+                });
+
+                const linkRow = h('div', { style: 'display:none; align-items:center; gap:6px; font-size:10px; color:var(--SmartThemeEmColor); margin-top:4px;' },
+                    linkSw,
+                    h('span', { text: '保存为此两预设的永久条目关联' })
+                );
+
+                updateLinkVisibility(selectVal);
+
+                const row = h('div', { class: 'zero-migration-item', style: 'flex-direction:column; align-items:stretch; gap:4px; padding:8px 10px;' },
+                    h('div', { style: 'display:flex; justify-content:space-between; align-items:center; gap:8px;' },
+                        h('div', { style: 'display:flex; align-items:center; gap:4px; overflow:hidden; flex:1;' },
+                            h('span', { class: 'zero-migration-item-name', text: se.n || se.id, style: 'font-weight:bold; max-width:100%;' }),
+                            identicalBadge
+                        ),
+                        h('span', { class: 'zero-migration-badge missing', text: '缺失/改名', style: 'flex-shrink:0;' })
+                    ),
+                    h('div', { style: 'display:flex; justify-content:space-between; align-items:center; font-size:10px; color:var(--SmartThemeEmColor);' },
+                        h('span', { text: `原状态: ${se.e ? 'ON' : 'OFF'}` })
+                    ),
+                    h('div', { style: 'display:flex; align-items:center; gap:8px; margin-top:4px;' },
+                        h('span', { text: '关联至:', style: 'font-size:11px; color:var(--SmartThemeEmColor); flex-shrink:0;' }),
+                        select,
+                        compareBtn
+                    ),
+                    linkRow
+                );
+                inner.appendChild(row);
+            });
+
+            section.body.appendChild(inner);
+            dynamicContainer.appendChild(section.container);
+        }
+
+        // Re-apply search filter if there is active search query
+        if (searchInput.value) {
+            searchInput.dispatchEvent(new Event('input'));
+        }
+    }
+
+    async function updateSnapshotsDropdown() {
+        snapSelect.innerHTML = '';
+        currentSourcePreset = sourceSelect.value;
+        if (!currentSourcePreset) return;
+
+        const savedSnaps = SnapshotManager.list(currentSourcePreset);
+        
+        // Add batch options in the dropdown
+        snapSelect.appendChild(h('option', { value: '__all_snaps_and_groups', text: '[完整迁移]' }));
+        snapSelect.appendChild(h('option', { value: '__prompt_groups_only', text: '[迁移条目分组]' }));
+        snapSelect.appendChild(h('option', { value: '__snapshot_groups_only', text: '[迁移快照分组]' }));
+        snapSelect.appendChild(h('option', { value: '__model_profiles_only', text: '[迁移模型方案]' }));
+        snapSelect.appendChild(h('option', { value: '__active_layout', text: '[当前活跃开关]' }));
+
+        savedSnaps.forEach(snap => {
+            snapSelect.appendChild(h('option', { value: snap.id, text: snap.name }));
+        });
+
+        loadSelectedSnapshot();
+    }
+
+    async function loadSelectedSnapshot() {
+        const snapId = snapSelect.value;
+        selectedSnapshotObj = null;
+        sourcePrompts = [];
+
+        if (snapId === '__all_snaps_and_groups') {
+            const prompts = await getPresetPromptsWithEnabled(currentSourcePreset);
+            selectedSnapshotObj = {
+                id: '__all_snaps_and_groups',
+                name: '完整迁移',
+                presetName: currentSourcePreset,
+                ts: Date.now(),
+                entries: prompts.map(p => ({ id: p.identifier, n: p.name || p.identifier, e: p.enabled === true }))
+            };
+            sourcePrompts = prompts;
+            
+            // Hide nameRow & copyRow since it applies to all snaps
+            nameRow.style.display = 'none';
+            copyRow.style.display = 'none';
+            
+            applyBtn.textContent = '导入并应用整套';
+            importOnlyBtn.textContent = '仅导入整套';
+            importOnlyBtn.style.display = 'inline-flex';
+            importOnlyBtn.disabled = false;
+        } else if (snapId === '__prompt_groups_only') {
+            const prompts = await getPresetPromptsWithEnabled(currentSourcePreset);
+            selectedSnapshotObj = {
+                id: '__prompt_groups_only',
+                name: '迁移条目分组',
+                presetName: currentSourcePreset,
+                ts: Date.now(),
+                entries: prompts.map(p => ({ id: p.identifier, n: p.name || p.identifier, e: p.enabled === true }))
+            };
+            sourcePrompts = prompts;
+            
+            // Hide configuration rows and show only import groups button
+            nameRow.style.display = 'none';
+            copyRow.style.display = 'none';
+            
+            applyBtn.textContent = '导入条目分组';
+            importOnlyBtn.style.display = 'none';
+        } else if (snapId === '__snapshot_groups_only') {
+            const prompts = await getPresetPromptsWithEnabled(currentSourcePreset);
+            selectedSnapshotObj = {
+                id: '__snapshot_groups_only',
+                name: '迁移快照分组',
+                presetName: currentSourcePreset,
+                ts: Date.now(),
+                entries: prompts.map(p => ({ id: p.identifier, n: p.name || p.identifier, e: p.enabled === true }))
+            };
+            sourcePrompts = prompts;
+            
+            // Hide configuration rows and show only import groups button
+            nameRow.style.display = 'none';
+            copyRow.style.display = 'none';
+            
+            applyBtn.textContent = '导入快照分组';
+            importOnlyBtn.style.display = 'none';
+        } else if (snapId === '__model_profiles_only') {
+            const prompts = await getPresetPromptsWithEnabled(currentSourcePreset);
+            selectedSnapshotObj = {
+                id: '__model_profiles_only',
+                name: '迁移模型方案',
+                presetName: currentSourcePreset,
+                ts: Date.now(),
+                entries: prompts.map(p => ({ id: p.identifier, n: p.name || p.identifier, e: p.enabled === true }))
+            };
+            sourcePrompts = prompts;
+
+            // Hide configuration rows
+            nameRow.style.display = 'none';
+            copyRow.style.display = 'none';
+
+            applyBtn.textContent = '导入模型方案';
+            importOnlyBtn.style.display = 'none';
+        } else if (snapId === '__active_layout') {
+            const prompts = await getPresetPromptsWithEnabled(currentSourcePreset);
+            selectedSnapshotObj = {
+                id: '__active_layout',
+                name: '当前活跃开关',
+                presetName: currentSourcePreset,
+                ts: Date.now(),
+                entries: prompts.map(p => ({ id: p.identifier, n: p.name || p.identifier, e: p.enabled === true }))
+            };
+            sourcePrompts = prompts;
+            nameInput.value = `${currentSourcePreset} 默认配置`;
+            
+            nameRow.style.display = 'flex';
+            copyRow.style.display = 'flex';
+            copyCheckbox.disabled = false;
+            const savedCopyPref = localStorage.getItem('zero_migration_save_copy');
+            copyCheckbox.checked = savedCopyPref === null ? true : savedCopyPref === 'true';
+            
+            applyBtn.textContent = '导入并应用';
+            importOnlyBtn.textContent = '仅导入';
+            importOnlyBtn.style.display = 'inline-flex';
+            importOnlyBtn.disabled = !copyCheckbox.checked;
+        } else {
+            selectedSnapshotObj = (SnapshotManager.list(currentSourcePreset) || []).find(s => s.id === snapId);
+            if (selectedSnapshotObj) {
+                nameInput.value = selectedSnapshotObj.name;
+                sourcePrompts = await getPresetPromptsWithEnabled(currentSourcePreset);
+            }
+            
+            nameRow.style.display = 'flex';
+            copyRow.style.display = 'flex';
+            copyCheckbox.disabled = false;
+            const savedCopyPref = localStorage.getItem('zero_migration_save_copy');
+            copyCheckbox.checked = savedCopyPref === null ? true : savedCopyPref === 'true';
+            
+            applyBtn.textContent = '导入并应用';
+            importOnlyBtn.textContent = '仅导入';
+            importOnlyBtn.style.display = 'inline-flex';
+            importOnlyBtn.disabled = !copyCheckbox.checked;
+        }
+        const decouple = UiStateManager.get().decoupleJailbreak === true;
+        const showParams = !decouple && (snapId === '__all_snaps_and_groups' || (!snapId.startsWith('__')));
+        paramsRow.style.display = showParams ? 'flex' : 'none';
+
+        manualMappings.clear();
+        saveLinkages.clear();
+        newEntriesCustomStates.clear();
+
+        renderMappingUI();
+    }
+
+    sourceSelect.addEventListener('change', updateSnapshotsDropdown);
+    snapSelect.addEventListener('change', loadSelectedSnapshot);
+
+    if (filteredSourcePresets.length === 0) {
+        scrollContainer.appendChild(h('div', { class: 'zero-empty', text: '没有找到其他预设可供导入。' }));
+        applyBtn.disabled = true;
+        importOnlyBtn.disabled = true;
+    } else {
+        let defaultSource = filteredSourcePresets[0];
+        let preselectedSnapId = null;
+
+        if (preselectedSourceOrSnap) {
+            if (typeof preselectedSourceOrSnap === 'string') {
+                if (filteredSourcePresets.includes(preselectedSourceOrSnap)) {
+                    defaultSource = preselectedSourceOrSnap;
+                }
+            } else if (typeof preselectedSourceOrSnap === 'object' && preselectedSourceOrSnap.presetName) {
+                if (filteredSourcePresets.includes(preselectedSourceOrSnap.presetName)) {
+                    defaultSource = preselectedSourceOrSnap.presetName;
+                    preselectedSnapId = preselectedSourceOrSnap.id;
+                }
+            }
+        }
+
+        sourceSelect.value = defaultSource;
+        await updateSnapshotsDropdown();
+
+        if (preselectedSnapId) {
+            snapSelect.value = preselectedSnapId;
+            await loadSelectedSnapshot();
+        }
+    }
+
+    async function executeImport(applyToggles) {
+        if (!selectedSnapshotObj || !mappingResult) return;
+
+        const { matched, missing, newEntries } = mappingResult;
+        const promptIdMap = new Map();
+
+        matched.forEach(m => {
+            promptIdMap.set(m.snapEntry.id, m.targetPrompt.identifier);
+        });
+
+        for (const [snapEntryId, targetId] of manualMappings.entries()) {
+            if (targetId) {
+                promptIdMap.set(snapEntryId, targetId);
+            }
+        }
+
+        // Save manual links if any
+        const newManualLinks = {};
+        for (const [snapEntryId, targetId] of manualMappings.entries()) {
+            if (targetId && saveLinkages.get(snapEntryId) !== false) {
+                newManualLinks[snapEntryId] = targetId;
+            }
+        }
+        if (Object.keys(newManualLinks).length > 0) {
+            try {
+                const links = JSON.parse(localStorage.getItem('zero_manual_links') || '{}');
+                const keyPair = `${selectedSnapshotObj.presetName}::${preset.name}`;
+                if (!links[keyPair]) links[keyPair] = {};
+                Object.assign(links[keyPair], newManualLinks);
+                localStorage.setItem('zero_manual_links', JSON.stringify(links));
+            } catch (e) {
+                console.error('[Zero] Failed to save zero_manual_links:', e);
+            }
+        }
+
+        menuBox.innerHTML = '<div class="zero-loading" style="padding:40px;text-align:center;color:var(--SmartThemeBodyColor)"><i class="fa-solid fa-spinner fa-spin"></i><div>导入并迁移中...</div></div>';
+
+        requestAnimationFrame(() => {
+            setTimeout(async () => {
+                try {
+                    if (selectedSnapshotObj.id === '__prompt_groups_only') {
+                        // Only migrate prompt groups (One-off structural action)
+                        GroupManager.migrate(currentSourcePreset, preset.name, promptIdMap);
+                        toastr.success(`已成功同步迁移所有条目分组！`);
+                    } else if (selectedSnapshotObj.id === '__snapshot_groups_only') {
+                        // Only migrate snapshot groups (One-off structural action)
+                        SnapshotGroupManager.migrate(currentSourcePreset, preset.name, new Map());
+                        toastr.success(`已成功同步迁移所有快照分组！`);
+                    } else if (selectedSnapshotObj.id === '__model_profiles_only') {
+                        // Only migrate model profiles
+                        const groupIdMap = GroupManager.migrate(currentSourcePreset, preset.name, promptIdMap);
+                        ModelProfileManager.migrate(currentSourcePreset, preset.name, promptIdMap, groupIdMap);
+                        toastr.success(`已成功同步迁移所有模型方案！`);
+                    } else if (selectedSnapshotObj.id === '__all_snaps_and_groups') {
+                        // Batch migration of all snapshots + snapshot groups
+                        const allSourceSnaps = SnapshotManager.list(currentSourcePreset) || [];
+                        const snapshotIdMap = new Map();
+
+                        for (const srcSnap of allSourceSnaps) {
+                            const tempPreset = {
+                                name: preset.name,
+                                prompts: preset.prompts.map(p => {
+                                    let isEnabled = p.enabled;
+                                    const srcId = Array.from(promptIdMap.entries()).find(([s, t]) => t === p.identifier)?.[0];
+                                    const srcEntry = srcId ? srcSnap.entries.find(e => e.id === srcId) : null;
+                                    if (srcEntry) {
+                                        isEnabled = srcEntry.e;
+                                    } else {
+                                        if (newEntriesCustomStates.has(p.identifier)) {
+                                            isEnabled = newEntriesCustomStates.get(p.identifier);
+                                        } else if (newEntriesState === 'on') {
+                                            isEnabled = true;
+                                        } else if (newEntriesState === 'off') {
+                                            isEnabled = false;
+                                        }
+                                    }
+                                    return { ...p, enabled: isEnabled };
+                                })
+                            };
+                            const keepParams = keepParamsCheckbox.checked;
+                            const newSnap = await SnapshotManager.create(srcSnap.name, tempPreset, keepParams ? {
+                                samplingParams: srcSnap.samplingParams,
+                                additionalParams: srcSnap.additionalParams
+                            } : null);
+                            if (newSnap && newSnap.id) {
+                                snapshotIdMap.set(srcSnap.id, newSnap.id);
+                            }
+                        }
+
+                        // Migrate Snapshot Groups
+                        SnapshotGroupManager.migrate(currentSourcePreset, preset.name, snapshotIdMap);
+
+                        // Migrate Prompt Groups, Hidden states, Linkages, and Model Profiles
+                        const groupIdMap = GroupManager.migrate(currentSourcePreset, preset.name, promptIdMap);
+                        HiddenManager.migrate(currentSourcePreset, preset.name, promptIdMap);
+                        LinkageManager.migrate(currentSourcePreset, preset.name, promptIdMap);
+                        ModelProfileManager.migrate(currentSourcePreset, preset.name, promptIdMap, groupIdMap);
+
+                        // Apply toggles of active source preset if applyToggles is true
+                        if (applyToggles) {
+                            const resolvedToggles = new Map();
+                            preset.prompts.forEach(p => {
+                                let isEnabled = p.enabled;
+                                const srcId = Array.from(promptIdMap.entries()).find(([s, t]) => t === p.identifier)?.[0];
+                                const srcP = srcId ? sourcePrompts.find(x => x.identifier === srcId) : null;
+                                if (srcP) {
+                                    isEnabled = srcP.enabled;
+                                } else {
+                                    if (newEntriesCustomStates.has(p.identifier)) {
+                                        isEnabled = newEntriesCustomStates.get(p.identifier);
+                                    } else if (newEntriesState === 'on') {
+                                        isEnabled = true;
+                                    } else if (newEntriesState === 'off') {
+                                        isEnabled = false;
+                                    }
+                                }
+                                resolvedToggles.set(p.identifier, isEnabled);
+                            });
+                            await PresetManager.batchToggleMap(resolvedToggles);
+                        }
+
+                        toastr.success(`已成功一键迁移所有快照与快照分组！`);
+                    } else {
+                        // Single snapshot migration
+                        const resolvedToggles = new Map();
+
+                        matched.forEach(m => {
+                            resolvedToggles.set(m.targetPrompt.identifier, m.snapEntry.e);
+                        });
+
+                        newEntries.forEach(ne => {
+                            let isEnabled = ne.enabled;
+                            if (newEntriesCustomStates.has(ne.identifier)) {
+                                isEnabled = newEntriesCustomStates.get(ne.identifier);
+                            } else if (newEntriesState === 'on') {
+                                isEnabled = true;
+                            } else if (newEntriesState === 'off') {
+                                isEnabled = false;
+                            }
+                            resolvedToggles.set(ne.identifier, isEnabled);
+                        });
+
+                        for (const [snapEntryId, targetId] of manualMappings.entries()) {
+                            const se = missing.find(x => x.id === snapEntryId);
+                            if (se && targetId) {
+                                resolvedToggles.set(targetId, se.e);
+                            }
+                        }
+
+                        const newSnapName = nameInput.value.trim() || selectedSnapshotObj.name;
+                        const copyName = copyCheckbox.checked ? newSnapName : null;
+
+                        let newSnap = null;
+                        const keepParams = keepParamsCheckbox.checked;
+                        if (applyToggles) {
+                            newSnap = await SnapshotManager.applySmart(selectedSnapshotObj, preset, resolvedToggles, copyName, keepParams);
+                            toastr.success(`快照已智能导入并应用！`);
+                        } else if (copyName) {
+                            const tempPreset = {
+                                name: preset.name,
+                                prompts: preset.prompts.map(p => ({
+                                    ...p,
+                                    enabled: resolvedToggles.has(p.identifier) ? resolvedToggles.get(p.identifier) : p.enabled
+                                }))
+                            };
+                            newSnap = await SnapshotManager.create(copyName, tempPreset, keepParams ? {
+                                samplingParams: selectedSnapshotObj.samplingParams,
+                                additionalParams: selectedSnapshotObj.additionalParams
+                            } : null);
+                            toastr.success(`快照副本「${copyName}」已成功导入`);
+                        }
+
+                        // If single snapshot copy created, migrate its group placement
+                        if (newSnap && newSnap.id && syncSnap) {
+                            // Find which group in source preset the source snapshot belongs to
+                            const srcGroups = SnapshotGroupManager.get(currentSourcePreset);
+                            const srcG = srcGroups.find(g => g.sids.includes(selectedSnapshotObj.id));
+                            if (srcG) {
+                                const snapshotIdMap = new Map([[selectedSnapshotObj.id, newSnap.id]]);
+                                SnapshotGroupManager.migrate(currentSourcePreset, preset.name, snapshotIdMap);
+                            }
+                        }
+
+                        // Migrate Prompt Groups
+                        if (syncPrompt) {
+                            GroupManager.migrate(currentSourcePreset, preset.name, promptIdMap);
+                        }
+                    }
+
+                    menuBox.remove();
+                    
+                    const p = await PresetManager.load();
+                    const panel = overlay.querySelector('.zero-panel.active');
+                    if (panel) {
+                        renderSnapshots(panel, p || preset, modal, 'local');
+                    }
+                } catch (e) {
+                    console.error('[Zero] Import failed:', e);
+                    toastr.error('导入失败，请检查控制台。');
+                    menuBox.remove();
+                }
+            }, 50);
+        });
+    }
+
+    applyBtn.addEventListener('click', () => executeImport(true));
+    importOnlyBtn.addEventListener('click', () => executeImport(false));
+
+    menuBox.appendChild(contentBox);
+    targetModal.appendChild(menuBox);
 }
