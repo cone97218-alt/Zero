@@ -2916,7 +2916,7 @@ async function showSnapshotMigrationModal(preset, preselectedSourceOrSnap = null
                 });
                 
                 const listContainer = h('div', {
-                    style: 'max-height: 160px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px;'
+                    style: 'max-height: 160px; overflow-y: auto; display: block;'
                 });
                 
                 const dropdown = h('div', {
@@ -2936,7 +2936,7 @@ async function showSnapshotMigrationModal(preset, preselectedSourceOrSnap = null
                         
                         const isSelected = opt.value === currentValue;
                         const optEl = h('div', {
-                            style: `padding: 4px 8px; font-size: 11px; cursor: pointer; border-radius: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; ${isSelected ? 'background: var(--SmartThemeQuoteColor, #7b8cde) !important; color: #fff !important;' : 'color: var(--SmartThemeBodyColor, #ddd) !important;'}`
+                            style: `display: block; padding: 6px 10px; font-size: 11px; cursor: pointer; border-radius: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 2px; ${isSelected ? 'background: var(--SmartThemeQuoteColor, #7b8cde) !important; color: #fff !important;' : 'color: var(--SmartThemeBodyColor, inherit) !important;'}`
                         }, opt.text);
                         
                         optEl.addEventListener('mouseenter', () => {

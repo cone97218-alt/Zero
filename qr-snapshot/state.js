@@ -1512,29 +1512,49 @@ export const HistoryManager = {
     }
 };
 
+const bigramCache = new Map();
+function getBigrams(str) {
+    let cached = bigramCache.get(str);
+    if (cached) return cached;
+    
+    const cleanStr = str.replace(/\s+/g, '');
+    const bigrams = new Map();
+    for (let i = 0; i < cleanStr.length - 1; i++) {
+        const bigram = cleanStr.substr(i, 2);
+        bigrams.set(bigram, (bigrams.get(bigram) || 0) + 1);
+    }
+    const result = { cleanStr, bigrams };
+    bigramCache.set(str, result);
+    if (bigramCache.size > 2000) {
+        const firstKey = bigramCache.keys().next().value;
+        bigramCache.delete(firstKey);
+    }
+    return result;
+}
+
 export function getStringSimilarity(str1, str2) {
     if (!str1 || !str2) return 0;
-    str1 = str1.replace(/\s+/g, '');
-    str2 = str2.replace(/\s+/g, '');
     if (str1 === str2) return 1.0;
-    if (str1.length < 2 || str2.length < 2) return 0;
 
-    const bigrams1 = new Map();
-    for (let i = 0; i < str1.length - 1; i++) {
-        const bigram = str1.substr(i, 2);
-        bigrams1.set(bigram, (bigrams1.get(bigram) || 0) + 1);
-    }
+    const info1 = getBigrams(str1);
+    const info2 = getBigrams(str2);
 
+    if (info1.cleanStr === info2.cleanStr) return 1.0;
+    if (info1.cleanStr.length < 2 || info2.cleanStr.length < 2) return 0;
+
+    const map1 = new Map(info1.bigrams);
     let intersection = 0;
-    for (let i = 0; i < str2.length - 1; i++) {
-        const bigram = str2.substr(i, 2);
-        const count = bigrams1.get(bigram) || 0;
+    const cleanStr2 = info2.cleanStr;
+
+    for (let i = 0; i < cleanStr2.length - 1; i++) {
+        const bigram = cleanStr2.substr(i, 2);
+        const count = map1.get(bigram) || 0;
         if (count > 0) {
             intersection++;
-            bigrams1.set(bigram, count - 1);
+            map1.set(bigram, count - 1);
         }
     }
 
-    return (2.0 * intersection) / (str1.length + str2.length - 2);
+    return (2.0 * intersection) / (info1.cleanStr.length + info2.cleanStr.length - 2);
 }
 
