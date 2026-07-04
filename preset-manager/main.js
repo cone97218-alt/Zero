@@ -27,6 +27,19 @@ window.addEventListener('zero-presets-list-changed', () => { _presetsLastFetch =
 /** 供外部模块主动失效缓存（如批量导入/删除后） */
 export function invalidatePresetsCache() { _presetsLastFetch = 0; }
 
+export function applyAvoidStatusbar() {
+    try {
+        const avoid = UiStateManager.get().avoidStatusbar === true;
+        if (avoid) {
+            $('body').addClass('zero-avoid-statusbar');
+        } else {
+            $('body').removeClass('zero-avoid-statusbar');
+        }
+    } catch (e) {
+        console.error('[Zero] Failed to apply statusbar avoidance:', e);
+    }
+}
+
 async function loadModules() {
     if (_modulesLoaded) return;
     [_contrast, _stitch, _manage, _checker, _editor] = await Promise.all([
@@ -531,6 +544,18 @@ function ensurePanel() {
                                     <span class="zero-slider"></span>
                                 </label>
                             </div>
+
+                            <!-- 避让顶部状态栏 -->
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 12px; margin-top: 4px;">
+                                <div style="flex: 1;">
+                                    <strong style="display: block; font-size: 13px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">避让顶部状态栏</strong>
+                                    <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">在移动端全屏显示时，为顶部留出安全区域以避让系统状态栏或刘海屏。</span>
+                                </div>
+                                <label class="zero-switch">
+                                    <input type="checkbox" id="zero-setting-ui-avoid-statusbar" class="interactable">
+                                    <span class="zero-slider"></span>
+                                </label>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -759,6 +784,13 @@ function ensurePanel() {
         const checked = $(this).is(':checked');
         UiStateManager.save({ searchBarAnimation: checked });
         toastr.success(checked ? '已开启搜索框展开动画' : '已关闭搜索框展开动画');
+    });
+
+    $('body').off('change', '#zero-setting-ui-avoid-statusbar').on('change', '#zero-setting-ui-avoid-statusbar', function() {
+        const checked = $(this).is(':checked');
+        UiStateManager.save({ avoidStatusbar: checked });
+        applyAvoidStatusbar();
+        toastr.success(checked ? '已开启避让状态栏' : '已关闭避让状态栏');
     });
 
     $('body').off('change', '#zero-setting-migrate-compare').on('change', '#zero-setting-migrate-compare', function() {
@@ -1268,6 +1300,7 @@ export function injectExtensionButton() {
 
 export function init() {
     injectExtensionButton();
+    applyAvoidStatusbar();
     
     // Background preloading of UI modules to eliminate lag on first open
     setTimeout(() => {
@@ -1297,6 +1330,7 @@ export function renderSettingsTab() {
 
     // UI switches
     $('#zero-setting-ui-search-anim').prop('checked', state.searchBarAnimation !== false);
+    $('#zero-setting-ui-avoid-statusbar').prop('checked', state.avoidStatusbar === true);
     $('#zero-setting-migrate-compare').prop('checked', state.migrateContentCompare !== false);
 }
 

@@ -1106,6 +1106,14 @@
         -webkit-backface-visibility: hidden;
         backface-visibility: hidden;
     }
+
+    /* 5. Safe Area / Status Bar Avoidance */
+    body.zero-avoid-statusbar #zero-preset-manager-panel,
+    body.zero-avoid-statusbar #zero-quick-editor,
+    body.zero-avoid-statusbar #comparison-overlay {
+        padding-top: env(safe-area-inset-top, 24px) !important;
+        box-sizing: border-box !important;
+    }
 }
 
 /* ===== Jailbreak Group Type Toggle ===== */
