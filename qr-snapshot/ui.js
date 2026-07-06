@@ -13,6 +13,7 @@ let searchQuery = '';
 let searchDebounceTimer = null;
 let searchScopeName = true;
 let searchScopeContent = true;
+let presetManagerModule = null;
 
 // ─── Multi-select state ───
 let msActive = false;
@@ -164,7 +165,9 @@ export async function openUI() {
     }
 
     // Background preload ext-ui.js to avoid transition lag when entering Preset Manager
-    import('../preset-manager/main.js').catch(() => {});
+    import('../preset-manager/main.js').then(m => {
+        presetManagerModule = m;
+    }).catch(() => {});
 
     overlay = document.createElement('div');
     overlay.id = 'zero-overlay';
@@ -379,10 +382,22 @@ function buildModal(modal, preset, listInfo) {
             class: 'zero-manage-btn',
             title: '打开预设管理',
             html: '<i class="fa-solid fa-list-ul"></i>',
-            onclick: async () => {
-                closeUI();
-                const { showPanel } = await import('../preset-manager/main.js');
-                await showPanel();
+            onclick: () => {
+                if (overlay) overlay.style.display = 'none';
+                const openPanel = () => {
+                    if (presetManagerModule) {
+                        presetManagerModule.showPanel();
+                    } else {
+                        import('../preset-manager/main.js').then(m => {
+                            presetManagerModule = m;
+                            m.showPanel();
+                        });
+                    }
+                    setTimeout(() => {
+                        closeUI();
+                    }, 500);
+                };
+                openPanel();
             }
         }),
         h('button', {

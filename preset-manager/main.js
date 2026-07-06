@@ -1320,7 +1320,6 @@ export async function showPanel() {
     await loadModules();
     ensurePanel();
     syncTheme();
-    _presetsLastFetch = 0; // 每次打开面板强制刷新预设列表
     
     // Initialize history button states
     HistoryManager.updateButtonsState();
@@ -1330,11 +1329,11 @@ export async function showPanel() {
     $panel[0].offsetHeight;
     $panel.css('opacity', '1');
 
-    // Defer heavy rendering to the next animation frame so the panel open transition starts instantly
-    requestAnimationFrame(() => {
+    // Defer heavy tab rendering to a macro-task so the panel open transition runs smoothly first
+    setTimeout(() => {
         const lastTab = localStorage.getItem('zero_last_main_tab') || 'contrast';
         $(`#${PANEL_ID} .zero-tab-link[data-tab="${lastTab}"]`).click();
-    });
+    }, 50);
 }
 
 export function closePanel() {

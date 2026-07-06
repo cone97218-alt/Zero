@@ -357,13 +357,15 @@ export function renderMatchResults(matched, onlyA, onlyB, allItems, manualMatche
         `;
     };
 
-    matched.forEach(m => $('#sub-content-matched').append(buildRow(m)));
-    manualMatched.forEach(m => $('#sub-content-manual').append(buildRow(m)));
-    onlyA.forEach(a => $('#sub-content-onlyA').append(buildRow(a)));
-    onlyB.forEach(b => $('#sub-content-onlyB').append(buildRow(b)));
+    const htmlMatched = matched.map(m => buildRow(m)).join('');
+    const htmlManual = manualMatched.map(m => buildRow(m)).join('');
+    const htmlOnlyA = onlyA.map(a => buildRow(a)).join('');
+    const htmlOnlyB = onlyB.map(b => buildRow(b)).join('');
 
-    if (matched.length === 0) $('#sub-content-matched').html('<div style="text-align:center; padding:20px; opacity:0.5; font-size:12px;">无自动匹配项</div>');
-    if (manualMatched.length === 0) $('#sub-content-manual').html('<div style="text-align:center; padding:20px; opacity:0.5; font-size:12px;">无手动关联项</div>');
+    $('#sub-content-matched').html(htmlMatched || '<div style="text-align:center; padding:20px; opacity:0.5; font-size:12px;">无自动匹配项</div>');
+    $('#sub-content-manual').html(htmlManual || '<div style="text-align:center; padding:20px; opacity:0.5; font-size:12px;">无手动关联项</div>');
+    $('#sub-content-onlyA').html(htmlOnlyA || '<div style="text-align:center; padding:20px; opacity:0.5; font-size:12px;">无仅 A 有项</div>');
+    $('#sub-content-onlyB').html(htmlOnlyB || '<div style="text-align:center; padding:20px; opacity:0.5; font-size:12px;">无仅 B 有项</div>');
 
     $list.off('click', '.contrast-row').on('click', '.contrast-row', function(e) {
         const $unlinkBtn = $(e.target).closest('.unlink-trigger');
