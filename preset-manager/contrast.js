@@ -1,6 +1,7 @@
 import { getPresetPrompts, escapeHtml, debounce } from './utils.js';
 import { openQuickEditor } from './editor.js';
 import { GroupManager, zeroTranslate, HistoryManager } from '../qr-snapshot/state.js';
+import { highlightText as highlightTextUtil } from '../qr-snapshot/search-util.js';
 
 let isRestoringContrastScroll = false;
 
@@ -222,10 +223,34 @@ export async function performAutoMatch() {
             }
         });
 
-        const matched = allItems.filter(i => i.type === 'matched');
-        const manualMatched = allItems.filter(i => i.type === 'manual');
-        const onlyA = allItems.filter(i => i.type === 'onlyA');
-        const onlyB = allItems.filter(i => i.type === 'onlyB');
+        const query = $('#contrast-search-input').val()?.trim();
+        const queryLower = query?.toLowerCase();
+        let filteredItems = allItems;
+        if (queryLower) {
+            const activeFilters = [];
+            $('.contrast-search-filter-badge.active').each(function() {
+                activeFilters.push($(this).data('filter'));
+            });
+            filteredItems = allItems.filter(item => {
+                const matchPromptWithFilters = (p) => {
+                    if (!p) return false;
+                    const name = activeFilters.includes('name') ? (p.name || p.identifier || '').toLowerCase() : '';
+                    const content = activeFilters.includes('content') ? (p.content || '').toLowerCase() : '';
+                    const note = activeFilters.includes('note') ? (p.fav_note || '').toLowerCase() : '';
+                    const origin = activeFilters.includes('origin') ? (p.fav_origin_preset || '').toLowerCase() : '';
+                    return (name && name.includes(queryLower)) || 
+                           (content && content.includes(queryLower)) || 
+                           (note && note.includes(queryLower)) || 
+                           (origin && origin.includes(queryLower));
+                };
+                return matchPromptWithFilters(item.a) || matchPromptWithFilters(item.b);
+            });
+        }
+
+        const matched = filteredItems.filter(i => i.type === 'matched');
+        const manualMatched = filteredItems.filter(i => i.type === 'manual');
+        const onlyA = filteredItems.filter(i => i.type === 'onlyA');
+        const onlyB = filteredItems.filter(i => i.type === 'onlyB');
 
         const orderedItems = [...matched, ...manualMatched, ...onlyA, ...onlyB];
         window.zero_contrast_allItems = orderedItems;
@@ -240,6 +265,15 @@ export async function performAutoMatch() {
 export function renderMatchResults(matched, onlyA, onlyB, allItems, manualMatched = []) {
     const $list = $('#contrast-list');
     $list.empty();
+
+    const query = $('#contrast-search-input').val()?.trim();
+    const queryLower = query?.toLowerCase();
+    const activeFilters = [];
+    if (queryLower) {
+        $('.contrast-search-filter-badge.active').each(function() {
+            activeFilters.push($(this).data('filter'));
+        });
+    }
 
     const subNavHtml = `
         <div class="zero-sub-tabs" style="display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px;">
@@ -279,6 +313,27 @@ export function renderMatchResults(matched, onlyA, onlyB, allItems, manualMatche
             color = 'var(--SmartThemeQuoteColor)';
         }
 
+        const isNameFilterActive = !queryLower || activeFilters.includes('name');
+        const displayName = queryLower ? highlightTextUtil(name || '未命名', query, isNameFilterActive) : escapeHtml(name || '未命名');
+
+        const p = item.a || item.b;
+        let metaHtml = '';
+        if (p && (p.fav_origin_preset || p.fav_note)) {
+            const isOriginFilterActive = !queryLower || activeFilters.includes('origin');
+            const isNoteFilterActive = !queryLower || activeFilters.includes('note');
+            
+            metaHtml += `<div style="display: flex; align-items: center; gap: 8px; margin-top: 4px; font-size: 11px; flex-wrap: wrap;">`;
+            if (p.fav_origin_preset) {
+                const highlightedOrigin = queryLower ? highlightTextUtil(p.fav_origin_preset, query, isOriginFilterActive) : escapeHtml(p.fav_origin_preset);
+                metaHtml += `<span style="background: rgba(255,255,255,0.05); border: 1px solid var(--SmartThemeBorderColor); padding: 1px 6px; border-radius: 4px; font-size: 10px; display: inline-flex; align-items: center; gap: 4px;"><i class="fa-solid fa-map-pin"></i> ${highlightedOrigin}</span>`;
+            }
+            if (p.fav_note) {
+                const highlightedNote = queryLower ? highlightTextUtil(p.fav_note, query, isNoteFilterActive) : escapeHtml(p.fav_note);
+                metaHtml += `<span style="color: var(--SmartThemeBodyColor); opacity: 0.6; display: inline-flex; align-items: center; gap: 4px;"><i class="fa-solid fa-tag"></i> 备注: ${highlightedNote}</span>`;
+            }
+            metaHtml += `</div>`;
+        }
+
         return `
             <div class="contrast-row interactable" data-index="${allItems.indexOf(item)}" data-type="${type}" style="
                 display: flex;
@@ -292,8 +347,11 @@ export function renderMatchResults(matched, onlyA, onlyB, allItems, manualMatche
                 margin-bottom: 4px;
             ">
                 <input type="checkbox" checked style="flex-shrink: 0;" onclick="event.stopPropagation()">
-                <div style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(name)}</div>
-                <div style="font-size: 11px; color: ${color}; opacity: 0.8;">${status}</div>
+                <div style="flex: 1; overflow: hidden; display: flex; flex-direction: column; min-width: 0;">
+                    <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${displayName}</div>
+                    ${metaHtml}
+                </div>
+                <div style="font-size: 11px; color: ${color}; opacity: 0.8; flex-shrink: 0;">${status}</div>
                 ${actions}
             </div>
         `;

@@ -350,10 +350,12 @@ async function saveToFavoritePreset(presetName, prompts, isNewPreset = false, or
         let addedCount = 0;
         let duplicateCount = 0;
 
+        // O(1) duplicate lookup using a Set of combined name and content
+        const existingSet = new Set(presetData.prompts.map(p => `${p.name}|||${p.content}`));
+
         for (const promptItem of prompts) {
-            // 重复收藏检测：比对名称与内容
-            const isDuplicate = presetData.prompts.some(p => p.name === promptItem.name && p.content === promptItem.content);
-            if (isDuplicate) {
+            const key = `${promptItem.name}|||${promptItem.content}`;
+            if (existingSet.has(key)) {
                 duplicateCount++;
                 continue;
             }
@@ -361,7 +363,7 @@ async function saveToFavoritePreset(presetName, prompts, isNewPreset = false, or
             const clone = JSON.parse(JSON.stringify(promptItem));
             clone.identifier = 'system_prompt_fav_' + Date.now() + Math.floor(Math.random() * 1000) + '_' + Math.floor(Math.random() * 1000);
 
-            // 写入备注及来源预设
+            // Write notes and origin
             if (note) {
                 clone.fav_note = note;
             } else if (promptItem.fav_note) {
@@ -386,9 +388,8 @@ async function saveToFavoritePreset(presetName, prompts, isNewPreset = false, or
             toastr.info(`已成功收藏 ${addedCount} 个条目，过滤了 ${duplicateCount} 个重复项`);
         }
 
-        // 记录当前活跃的预设名称，防止自动切换
+        // Check if we can skip native list update and avoid triggering selection changes
         const activeName = pm.getSelectedPresetName();
-
         const skipUpdate = activeName !== presetName;
         await pm.savePreset(presetName, presetData, { skipUpdate });
 
@@ -403,14 +404,6 @@ async function saveToFavoritePreset(presetName, prompts, isNewPreset = false, or
                 const newIdx = presets.length - 1;
                 preset_names[presetName] = newIdx;
                 $(pm.select).append($('<option></option>', { value: newIdx, text: presetName }));
-            }
-        }
-
-        // 恢复之前选中的活跃预设
-        if (activeName && activeName !== presetName) {
-            const activeVal = pm.findPreset(activeName);
-            if (activeVal !== undefined && activeVal !== null) {
-                pm.selectPreset(activeVal);
             }
         }
 
@@ -429,8 +422,12 @@ async function saveToFavoritePreset(presetName, prompts, isNewPreset = false, or
             }
         }
 
-        const { populatePresetSelects } = await import('./main.js');
-        await populatePresetSelects();
+        // Silent non-blocking updates for dropdown selects
+        import('./main.js').then(({ populatePresetSelects }) => {
+            populatePresetSelects();
+        }).catch(e => {
+            console.warn('[Zero] Failed to populate preset selects after fav save:', e);
+        });
     } catch (e) {
         console.error('[Zero] saveToFavoritePreset failed:', e);
         toastr.error('保存至收藏夹失败');

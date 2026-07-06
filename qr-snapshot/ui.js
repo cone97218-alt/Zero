@@ -1145,80 +1145,514 @@ function showGroupAssignMenu(modal, panel, preset, prompt, currentGroup, isUngro
 function showLinkageManager(panel, preset, modal) {
     const pName = preset.name;
     const menuBox = h('div', { class: 'zero-confirm' });
-    const contentBox = h('div', { class: 'zero-confirm-box zero-group-mgr-box', style: 'max-width: 420px; max-height: 75vh; display: flex; flex-direction: column;' });
+    const contentBox = h('div', { class: 'zero-confirm-box zero-group-mgr-box', style: 'max-width: 450px; height: 90vh; display: flex; flex-direction: column;' });
     contentBox.appendChild(h('div', { class: 'zero-confirm-msg', text: '条目联动管理' }));
 
-    const listContainer = h('div', { class: 'zero-group-mgr-list', style: 'overflow-y: auto; max-height: 35vh; margin: 8px 0; border: 1px solid rgba(255,255,255,0.06); border-radius: 6px; background: rgba(0,0,0,0.1);' });
+    // Tab Navigation
+    const tabContainer = h('div', { class: 'zero-tabs', style: 'margin-bottom: 12px; flex-shrink: 0;' });
+    const listTab = h('div', {
+        class: 'zero-tab active',
+        html: '<i class="fa-solid fa-list"></i>规则列表',
+        onclick: () => switchTab('list')
+    });
+    const createTab = h('div', {
+        class: 'zero-tab',
+        html: '<i class="fa-solid fa-pen-to-square"></i>联动配置',
+        onclick: () => switchTab('create')
+    });
+    tabContainer.appendChild(listTab);
+    tabContainer.appendChild(createTab);
+    contentBox.appendChild(tabContainer);
+
+    // Tab Panels Container
+    const panelsContainer = h('div', { style: 'flex: 1; min-height: 0; display: flex; flex-direction: column;' });
+    
+    // Panel 1: Rules List
+    const listPanel = h('div', { style: 'display: flex; flex-direction: column; height: 100%; min-height: 0;' });
+    const listContainer = h('div', { class: 'zero-group-mgr-list', style: 'overflow-y: auto; flex: 1; border: 1px solid rgba(255,255,255,0.06); border-radius: 6px; background: rgba(0,0,0,0.15); padding: 8px;' });
+    listPanel.appendChild(listContainer);
 
     function renderList() {
         listContainer.innerHTML = '';
         const linkages = LinkageManager.get(pName);
         if (linkages.length === 0) {
-            listContainer.appendChild(h('div', { class: 'zero-empty', style: 'padding:20px 0', text: '暂无联动规则' }));
+            const emptyBtn = h('button', {
+                class: 'zero-btn primary',
+                style: 'margin-top: 12px; font-size: 12px;',
+                text: '新建联动规则 ➔',
+                onclick: () => switchTab('create')
+            });
+            const emptyContainer = h('div', { class: 'zero-empty', style: 'padding: 40px 0; display: flex; flex-direction: column; align-items: center; gap: 10px;' },
+                h('div', { text: '暂无联动规则', style: 'opacity: 0.5;' }),
+                emptyBtn
+            );
+            listContainer.appendChild(emptyContainer);
             return;
         }
-        linkages.forEach(l => {
-            const sourcePrompt = preset.prompts.find(p => p.identifier === l.source);
-            const targetPrompt = preset.prompts.find(p => p.identifier === l.target);
-            const sName = sourcePrompt ? (sourcePrompt.name || sourcePrompt.identifier) : l.source;
-            const tName = targetPrompt ? (targetPrompt.name || targetPrompt.identifier) : l.target;
 
-            const row = h('div', { class: 'zero-group-mgr-row', style: 'display: flex; align-items: center; justify-content: space-between; padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 13px;' },
-                h('div', { style: 'display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; padding-right: 8px;' },
-                    h('span', { text: sName, style: 'overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: var(--SmartThemeBodyColor); flex: 1;' }),
-                    h('span', { html: '<i class="fa-solid fa-arrow-right" style="opacity: 0.5; font-size: 11px;"></i>', style: 'flex-shrink: 0;' }),
-                    h('span', { text: tName, style: 'overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--SmartThemeQuoteColor); flex: 1;' })
+        // Group linkages by source
+        const grouped = new Map();
+        linkages.forEach(l => {
+            if (!grouped.has(l.source)) grouped.set(l.source, []);
+            grouped.get(l.source).push(l.target);
+        });
+
+        grouped.forEach((targets, source) => {
+            const sourcePrompt = preset.prompts.find(p => p.identifier === source);
+            const sName = sourcePrompt ? (sourcePrompt.name || sourcePrompt.identifier) : source;
+
+            // Card container for each source
+            const card = h('div', {
+                style: 'background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; margin-bottom: 10px; overflow: hidden; display: flex; flex-direction: column;'
+            });
+
+            const chevron = h('i', { class: 'fa-solid fa-chevron-right', style: 'opacity: 0.5; font-size: 10px; transition: transform 0.2s; flex-shrink: 0;' });
+            const cardBody = h('div', { style: 'padding: 4px 6px; display: none; flex-direction: column; gap: 2px; border-top: 1px solid rgba(255,255,255,0.03);' });
+
+            // Card Header: Source Prompt Name (Collapsible on click)
+            const cardHeader = h('div', {
+                style: 'background: rgba(255,255,255,0.02); padding: 8px 12px; display: flex; align-items: center; gap: 8px; justify-content: space-between; cursor: pointer; user-select: none;',
+                onclick: (e) => {
+                    if (e.target.closest('.interactable')) return;
+                    const isCollapsed = cardBody.style.display === 'none';
+                    cardBody.style.display = isCollapsed ? 'flex' : 'none';
+                    chevron.style.transform = isCollapsed ? 'rotate(90deg)' : 'none';
+                }
+            },
+                h('div', { style: 'display: flex; align-items: center; gap: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;' },
+                    chevron,
+                    h('i', { class: 'fa-solid fa-code-fork', style: 'color: var(--SmartThemeQuoteColor); font-size: 12px;' }),
+                    h('span', { text: sName, style: 'font-weight: bold; font-size: 13px; color: var(--SmartThemeBodyColor); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;' })
                 ),
-                h('button', {
-                    class: 'zero-icon-btn',
-                    title: '删除联动',
-                    html: '<i class="fa-solid fa-trash"></i>',
-                    onclick: () => {
-                        LinkageManager.remove(pName, l.source, l.target);
-                        renderList();
+                h('span', {
+                    class: 'interactable',
+                    style: 'cursor: pointer; font-size: 11px; color: var(--SmartThemeQuoteColor); opacity: 0.8; padding: 2px 6px;',
+                    text: '编辑',
+                    onclick: (e) => {
+                        e.stopPropagation();
+                        sourceSelect.value = source;
+                        switchTab('create');
                     }
                 })
             );
-            listContainer.appendChild(row);
+            card.appendChild(cardHeader);
+
+            // Card Body: Vertical Target List
+            targets.forEach(tgt => {
+                const targetPrompt = preset.prompts.find(p => p.identifier === tgt);
+                const tName = targetPrompt ? (targetPrompt.name || targetPrompt.identifier) : tgt;
+
+                const targetRow = h('div', {
+                    style: 'display: flex; align-items: center; justify-content: space-between; padding: 6px 8px; border-radius: 4px; font-size: 12px; transition: background 0.15s;'
+                },
+                    h('div', { style: 'display: flex; align-items: center; gap: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;' },
+                        h('i', { class: 'fa-solid fa-link', style: 'opacity: 0.4; font-size: 10px;' }),
+                        h('span', { text: tName, style: 'overflow: hidden; text-overflow: ellipsis; white-space: nowrap;' })
+                    ),
+                    h('i', {
+                        class: 'fa-solid fa-trash-can interactable',
+                        style: 'cursor: pointer; opacity: 0.4; transition: opacity 0.15s; font-size: 11px; padding: 2px 4px;',
+                        onclick: (e) => {
+                            e.stopPropagation();
+                            LinkageManager.remove(pName, source, tgt);
+                            renderList();
+                        }
+                    })
+                );
+
+                targetRow.addEventListener('mouseenter', () => {
+                    targetRow.style.background = 'rgba(255,255,255,0.04)';
+                    targetRow.querySelector('.fa-trash-can').style.opacity = '0.9';
+                });
+                targetRow.addEventListener('mouseleave', () => {
+                    targetRow.style.background = 'transparent';
+                    targetRow.querySelector('.fa-trash-can').style.opacity = '0.4';
+                });
+
+                cardBody.appendChild(targetRow);
+            });
+
+            card.appendChild(cardBody);
+            listContainer.appendChild(card);
         });
     }
 
-    renderList();
-    contentBox.appendChild(listContainer);
-
-    const sourceSelect = h('select', { class: 'zero-preset-select', style: 'width: 100%; margin-bottom: 8px;' });
-    const targetSelect = h('select', { class: 'zero-preset-select', style: 'width: 100%; margin-bottom: 12px;' });
+    // Panel 2: New Linkage Form (Asymmetrical Two-Step Panel)
+    const createPanel = h('div', { style: 'display: none; flex-direction: column; gap: 10px; height: 100%; min-height: 0;' });
+    
+    const sourceSelect = h('select', { class: 'zero-preset-select', style: 'width: 100%;' });
+    const targetContainer = h('div', {
+        style: 'flex: 1; overflow-y: auto; border: 1px solid rgba(255,255,255,0.06); padding: 4px; border-radius: 6px; background: rgba(0,0,0,0.15); display: flex; flex-direction: column; gap: 2px;'
+    });
 
     preset.prompts.forEach(p => {
         const name = p.name || p.identifier;
         sourceSelect.appendChild(h('option', { value: p.identifier, text: name }));
-        targetSelect.appendChild(h('option', { value: p.identifier, text: name }));
+
+        const targetRow = h('label', { style: 'display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer; padding: 6px 8px; border-radius: 4px; transition: background 0.15s, border-color 0.15s; border-left: 3px solid transparent;' },
+            h('input', { type: 'checkbox', class: 'zero-linkage-target-cb', value: p.identifier }),
+            h('span', { text: name, style: 'overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;' })
+        );
+
+        targetRow.querySelector('input').addEventListener('change', (e) => {
+            targetRow.style.borderLeftColor = e.target.checked ? 'var(--SmartThemeQuoteColor)' : 'transparent';
+            targetRow.style.background = e.target.checked ? 'rgba(123, 140, 222, 0.08)' : 'transparent';
+        });
+
+        targetRow.addEventListener('mouseenter', () => {
+            const input = targetRow.querySelector('input');
+            if (!input.disabled && !input.checked) {
+                targetRow.style.background = 'rgba(255,255,255,0.04)';
+            }
+        });
+        targetRow.addEventListener('mouseleave', () => {
+            const input = targetRow.querySelector('input');
+            if (!input.checked) {
+                targetRow.style.background = 'transparent';
+            }
+        });
+        
+        targetContainer.appendChild(targetRow);
     });
 
-    const createForm = h('div', { style: 'margin-top: 8px; display: flex; flex-direction: column; gap: 4px;' },
-        h('label', { text: '源条目（当此条目开关变化时）', style: 'font-size: 11px; color: var(--SmartThemeEmColor); text-align: left;' }),
-        sourceSelect,
-        h('label', { text: '联动目标（跟着变为相同状态）', style: 'font-size: 11px; color: var(--SmartThemeEmColor); text-align: left;' }),
-        targetSelect,
+    // Update target checkboxes availability and load existing linkages (Bi-directional Binding)
+    function updateTargetAvailability() {
+        const srcVal = sourceSelect.value;
+        const linkages = LinkageManager.get(pName);
+        // Find targets currently linked to this source
+        const currentTargets = new Set(linkages.filter(l => l.source === srcVal).map(l => l.target));
+
+        const cbs = targetContainer.querySelectorAll('.zero-linkage-target-cb');
+        cbs.forEach(cb => {
+            const label = cb.closest('label');
+            if (cb.value === srcVal) {
+                cb.checked = false;
+                cb.disabled = true;
+                label.style.opacity = '0.2';
+                label.style.pointerEvents = 'none';
+                label.style.background = 'transparent';
+                label.style.borderLeftColor = 'transparent';
+            } else {
+                cb.disabled = false;
+                label.style.opacity = '1';
+                label.style.pointerEvents = 'auto';
+                cb.checked = currentTargets.has(cb.value);
+                label.style.borderLeftColor = cb.checked ? 'var(--SmartThemeQuoteColor)' : 'transparent';
+                label.style.background = cb.checked ? 'rgba(123, 140, 222, 0.08)' : 'transparent';
+            }
+        });
+    }
+
+    sourceSelect.addEventListener('change', updateTargetAvailability);
+    setTimeout(updateTargetAvailability, 0);
+
+    // Search query states
+    let searchQuery = '';
+    let searchScopeName = true;
+    let searchScopeContent = true;
+    let searchDebounceTimer = null;
+
+    // Filter targets by search text and scope
+    function filterTargets(query) {
+        const labels = targetContainer.querySelectorAll('label');
+        labels.forEach(label => {
+            const pId = label.querySelector('input').value;
+            const p = preset.prompts.find(x => x.identifier === pId);
+            if (!p) {
+                label.style.display = 'none';
+                return;
+            }
+
+            if (!query) {
+                label.style.display = 'flex';
+                return;
+            }
+
+            let matches = false;
+            if (searchScopeName) {
+                const name = (p.name || p.identifier || '').toLowerCase();
+                if (name.includes(query)) matches = true;
+            }
+            if (searchScopeContent && !matches) {
+                const content = (p.content || '').toLowerCase();
+                if (content.includes(query)) matches = true;
+            }
+
+            label.style.display = matches ? 'flex' : 'none';
+        });
+    }
+
+    // Bulk toggle checkboxes
+    function toggleAllTargets(check) {
+        const cbs = targetContainer.querySelectorAll('.zero-linkage-target-cb');
+        cbs.forEach(cb => {
+            const label = cb.closest('label');
+            if (!cb.disabled && label.style.display !== 'none') {
+                cb.checked = check;
+                label.style.borderLeftColor = check ? 'var(--SmartThemeQuoteColor)' : 'transparent';
+                label.style.background = check ? 'rgba(123, 140, 222, 0.08)' : 'transparent';
+            }
+        });
+    }
+
+    // Step 1 Section (Source Select)
+    const sourceSection = h('div', {
+        style: 'background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 8px 12px; display: flex; flex-direction: column; gap: 6px; flex-shrink: 0;'
+    },
+        h('div', { style: 'display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--SmartThemeEmColor); font-weight: bold;' },
+            h('i', { class: 'fa-solid fa-arrow-turn-down', style: 'color: var(--SmartThemeQuoteColor);' }),
+            h('span', { text: '第一步：选择源条目' })
+        ),
+        sourceSelect
+    );
+
+    // Collapsible Search Wrap Setup (Tab 2)
+    const enableAnim = UiStateManager.get().searchBarAnimation !== false;
+    const searchWrap = h('div', { class: 'zero-search-wrap' + (enableAnim ? '' : ' no-animation') });
+    const searchRow1 = h('div', { class: 'zero-search-row1' });
+    const searchBtn = h('button', {
+        class: 'zero-search-btn',
+        title: '搜索',
+        html: '<i class="fa-solid fa-magnifying-glass"></i>',
+        onclick: (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const isExpanded = searchWrap.classList.contains('expanded');
+            if (isExpanded) {
+                collapseSearch();
+            } else {
+                expandSearch();
+            }
+        }
+    });
+    const searchInput = h('input', {
+        type: 'text',
+        class: 'zero-search-input',
+        placeholder: '过滤名称或内容...',
+        style: 'font-size: inherit !important;'
+    });
+    const searchClear = h('button', {
+        class: 'zero-search-clear',
+        title: '清除',
+        html: '<i class="fa-solid fa-xmark"></i>',
+        onclick: (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            searchInput.value = '';
+            triggerSearch('');
+        }
+    });
+    searchRow1.appendChild(searchBtn);
+    searchRow1.appendChild(searchInput);
+    searchRow1.appendChild(searchClear);
+
+    const searchRow2 = h('div', { class: 'zero-search-row2' },
+        h('span', { class: 'zero-search-opt-label', text: '筛选范围:' }),
         h('button', {
-            class: 'zero-btn primary',
-            style: 'width: 100%; justify-content: center; margin-top: 6px;',
-            html: '<i class="fa-solid fa-plus"></i> 添加联动规则',
-            onclick: () => {
-                const src = sourceSelect.value;
-                const tgt = targetSelect.value;
-                if (src === tgt) {
-                    toastr.error('源条目和目标条目不能相同');
-                    return;
-                }
-                LinkageManager.add(pName, src, tgt);
-                renderList();
+            class: 'zero-chip zero-search-opt-btn name-btn' + (searchScopeName ? ' active' : ''),
+            text: '名称',
+            onclick: (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (searchScopeName && !searchScopeContent) return;
+                searchScopeName = !searchScopeName;
+                nameBtn.classList.toggle('active', searchScopeName);
+                triggerSearch(searchInput.value);
+            }
+        }),
+        h('button', {
+            class: 'zero-chip zero-search-opt-btn content-btn' + (searchScopeContent ? ' active' : ''),
+            text: '内容',
+            onclick: (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (searchScopeContent && !searchScopeName) return;
+                searchScopeContent = !searchScopeContent;
+                contentBtn.classList.toggle('active', searchScopeContent);
+                triggerSearch(searchInput.value);
             }
         })
     );
-    contentBox.appendChild(createForm);
+    searchWrap.appendChild(searchRow1);
+    searchWrap.appendChild(searchRow2);
 
-    contentBox.appendChild(h('div', { class: 'zero-confirm-btns', style: 'margin-top:16px;' },
+    const nameBtn = searchRow2.querySelector('.name-btn');
+    const contentBtn = searchRow2.querySelector('.content-btn');
+
+    function expandSearch() {
+        searchWrap.classList.add('expanded');
+        const titleEl = targetSection.querySelector('.target-title');
+        const actionsEl = targetSection.querySelector('.target-quick-actions');
+        if (enableAnim) {
+            if (titleEl) {
+                titleEl.style.opacity = '0';
+                setTimeout(() => { titleEl.style.display = 'none'; }, 200);
+            }
+            if (actionsEl) {
+                actionsEl.style.opacity = '0';
+                setTimeout(() => { actionsEl.style.display = 'none'; }, 200);
+            }
+        } else {
+            if (titleEl) titleEl.style.display = 'none';
+            if (actionsEl) actionsEl.style.display = 'none';
+        }
+        searchBtn.innerHTML = '<i class="fa-solid fa-arrow-left"></i>';
+        searchBtn.title = '返回';
+        setTimeout(() => searchInput.focus(), 50);
+    }
+
+    function collapseSearch() {
+        searchWrap.classList.remove('expanded');
+        const titleEl = targetSection.querySelector('.target-title');
+        const actionsEl = targetSection.querySelector('.target-quick-actions');
+        if (enableAnim) {
+            if (titleEl) {
+                titleEl.style.display = 'flex';
+                setTimeout(() => { titleEl.style.opacity = '1'; }, 50);
+            }
+            if (actionsEl) {
+                actionsEl.style.display = 'flex';
+                setTimeout(() => { actionsEl.style.opacity = '1'; }, 50);
+            }
+        } else {
+            if (titleEl) {
+                titleEl.style.display = 'flex';
+                titleEl.style.opacity = '1';
+            }
+            if (actionsEl) {
+                actionsEl.style.display = 'flex';
+                actionsEl.style.opacity = '1';
+            }
+        }
+        searchBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i>';
+        searchBtn.title = '搜索';
+        searchInput.value = '';
+        triggerSearch('');
+    }
+
+    function triggerSearch(val) {
+        searchQuery = val.trim().toLowerCase();
+        filterTargets(searchQuery);
+    }
+
+    searchInput.addEventListener('input', () => {
+        clearTimeout(searchDebounceTimer);
+        searchDebounceTimer = setTimeout(() => {
+            triggerSearch(searchInput.value);
+        }, 1000); // 1 second debounce
+    });
+
+    searchInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            collapseSearch();
+        }
+    });
+
+    // Step 2 Section (Target Checklist + Search)
+    const targetSection = h('div', {
+        style: 'background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0;'
+    },
+        h('div', { style: 'display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; min-height: 28px; position: relative; overflow: hidden;' },
+            h('div', { class: 'target-title', style: 'display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--SmartThemeEmColor); font-weight: bold; transition: opacity 0.2s;' },
+                h('i', { class: 'fa-solid fa-list-check', style: 'color: var(--SmartThemeQuoteColor);' }),
+                h('span', { text: '第二步：配置联动目标' })
+            ),
+            searchWrap,
+            h('div', { class: 'target-quick-actions', style: 'display: flex; gap: 8px; font-size: 11px; align-items: center; transition: opacity 0.2s;' },
+                h('span', {
+                    text: '全选',
+                    class: 'interactable',
+                    style: 'cursor: pointer; color: var(--SmartThemeQuoteColor);',
+                    onclick: () => toggleAllTargets(true)
+                }),
+                h('span', {
+                    text: '清空',
+                    class: 'interactable',
+                    style: 'cursor: pointer; opacity: 0.6;',
+                    onclick: () => toggleAllTargets(false)
+                })
+            )
+        ),
+        targetContainer
+    );
+
+    const createForm = h('div', { style: 'display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0;' },
+        sourceSection,
+        targetSection,
+        h('button', {
+            class: 'zero-btn primary',
+            style: 'width: 100%; justify-content: center; flex-shrink: 0; padding: 8px 0; font-weight: bold;',
+            html: '<i class="fa-solid fa-floppy-disk"></i> 保存联动配置',
+            onclick: () => {
+                const src = sourceSelect.value;
+                const cbs = targetContainer.querySelectorAll('.zero-linkage-target-cb');
+                
+                const checkedTgts = [];
+                const uncheckedTgts = [];
+                cbs.forEach(cb => {
+                    if (cb.disabled) return;
+                    if (cb.checked) {
+                        checkedTgts.push(cb.value);
+                    } else {
+                        uncheckedTgts.push(cb.value);
+                    }
+                });
+
+                let added = 0;
+                let removed = 0;
+
+                const currentLinkages = LinkageManager.get(pName);
+                // Add checked rules
+                checkedTgts.forEach(tgt => {
+                    if (!currentLinkages.some(l => l.source === src && l.target === tgt)) {
+                        LinkageManager.add(pName, src, tgt);
+                        added++;
+                    }
+                });
+
+                // Remove unchecked rules
+                uncheckedTgts.forEach(tgt => {
+                    if (currentLinkages.some(l => l.source === src && l.target === tgt)) {
+                        LinkageManager.remove(pName, src, tgt);
+                        removed++;
+                    }
+                });
+
+                if (added > 0 || removed > 0) {
+                    toastr.success(`联动规则已更新 (新建 ${added} 条，移除 ${removed} 条)`);
+                    switchTab('list');
+                } else {
+                    toastr.info('联动配置未发生变化');
+                }
+            }
+        })
+    );
+    createPanel.appendChild(createForm);
+
+    panelsContainer.appendChild(listPanel);
+    panelsContainer.appendChild(createPanel);
+    contentBox.appendChild(panelsContainer);
+
+    // Switch Tab helper
+    function switchTab(tabId) {
+        if (tabId === 'list') {
+            listTab.classList.add('active');
+            createTab.classList.remove('active');
+            listPanel.style.display = 'flex';
+            createPanel.style.display = 'none';
+            renderList();
+        } else {
+            listTab.classList.remove('active');
+            createTab.classList.add('active');
+            listPanel.style.display = 'none';
+            createPanel.style.display = 'flex';
+            updateTargetAvailability();
+        }
+    }
+
+    renderList();
+
+    contentBox.appendChild(h('div', { class: 'zero-confirm-btns', style: 'margin-top:16px; flex-shrink: 0;' },
         h('button', {
             class: 'zero-btn',
             text: '关闭',

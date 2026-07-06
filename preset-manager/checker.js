@@ -32,35 +32,70 @@ export const Checker = {
             const content = p.content || '';
             const entryName = p.name || p.identifier || `Entry ${idx + 1}`;
 
-            // {{setvar::name:: }} or {{setglobalvar::name:: }}
-            const initRegex = /\{\{set(?:global)?var::([^:]+)::[ ]*\}\}/g;
-            // {{setvar::name::content}} or {{setglobalvar::name::content}}
-            const setRegex = /\{\{set(?:global)?var::([^:]+)::([^}]+)\}\}/g;
-            // {{getvar::name}} or {{getglobalvar::name}}
-            const getRegex = /\{\{get(?:global)?var::([^:]+)\}\}/g;
+            // Parse variables using a robust stack-based parser to support macro nesting
+            const stack = [];
+            let i = 0;
+            while (i < content.length) {
+                if (content.startsWith('{{', i)) {
+                    stack.push(i);
+                    i += 2;
+                } else if (content.startsWith('}}', i)) {
+                    if (stack.length > 0) {
+                        const startIdx = stack.pop();
+                        const endIdx = i + 2;
+                        const rawMacro = content.substring(startIdx, endIdx);
+                        const inner = rawMacro.substring(2, rawMacro.length - 2);
 
-            let match;
-            while ((match = initRegex.exec(content)) !== null) {
-                const name = match[1].trim();
-                if (!varMap.has(name)) varMap.set(name, { init: [], set: [], get: [] });
-                varMap.get(name).init.push({ entry: p, name: entryName });
-            }
+                        // Tokenize by splitting on '::', respecting nested braces depth
+                        const parts = [];
+                        let currentPart = '';
+                        let braceDepth = 0;
+                        let j = 0;
+                        while (j < inner.length) {
+                            if (inner.startsWith('{{', j)) {
+                                braceDepth++;
+                                currentPart += '{{';
+                                j += 2;
+                            } else if (inner.startsWith('}}', j)) {
+                                braceDepth--;
+                                currentPart += '}}';
+                                j += 2;
+                            } else if (inner.substring(j, j + 2) === '::' && braceDepth === 0) {
+                                parts.push(currentPart);
+                                currentPart = '';
+                                j += 2;
+                            } else {
+                                currentPart += inner[j];
+                                j++;
+                            }
+                        }
+                        parts.push(currentPart);
 
-            // Reset regex or use matchAll
-            const setMatches = content.matchAll(/\{\{set(?:global)?var::([^:]+)::([^}]+)\}\}/g);
-            for (const m of setMatches) {
-                const name = m[1].trim();
-                const value = m[2].trim();
-                if (value === '') continue; // Already caught by init if it was " "
-                if (!varMap.has(name)) varMap.set(name, { init: [], set: [], get: [] });
-                varMap.get(name).set.push({ entry: p, name: entryName, value });
-            }
-
-            const getMatches = content.matchAll(/\{\{get(?:global)?var::([^:]+)\}\}/g);
-            for (const m of getMatches) {
-                const name = m[1].trim();
-                if (!varMap.has(name)) varMap.set(name, { init: [], set: [], get: [] });
-                varMap.get(name).get.push({ entry: p, name: entryName });
+                        const macroType = parts[0]?.trim().toLowerCase();
+                        if (macroType === 'setvar' || macroType === 'setglobalvar') {
+                            const name = parts[1]?.trim();
+                            const value = parts.slice(2).join('::');
+                            if (name) {
+                                if (!varMap.has(name)) varMap.set(name, { init: [], set: [], get: [] });
+                                const isInit = !value || value.trim() === '';
+                                if (isInit) {
+                                    varMap.get(name).init.push({ entry: p, name: entryName });
+                                } else {
+                                    varMap.get(name).set.push({ entry: p, name: entryName, value: value.trim() });
+                                }
+                            }
+                        } else if (macroType === 'getvar' || macroType === 'getglobalvar') {
+                            const name = parts[1]?.trim();
+                            if (name) {
+                                if (!varMap.has(name)) varMap.set(name, { init: [], set: [], get: [] });
+                                varMap.get(name).get.push({ entry: p, name: entryName });
+                            }
+                        }
+                    }
+                    i += 2;
+                } else {
+                    i++;
+                }
             }
         });
 

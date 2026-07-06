@@ -75,7 +75,7 @@ export async function handleRename(oldName) {
             return;
         }
 
-        const { preset_names } = pm.getPresetList();
+        const { preset_names, presets } = pm.getPresetList();
         const isKeyed = pm.isKeyedApi();
         const exists = isKeyed ? preset_names.includes(newName) : Object.keys(preset_names).includes(newName);
         if (exists) {
@@ -86,40 +86,67 @@ export async function handleRename(oldName) {
         const activeName = pm.getSelectedPresetName();
         const isEditingActive = (oldName === activeName);
 
-        // 1. Retrieve the complete preset settings object synchronously from memory
+        // 1. Retrieve the complete preset settings object synchronously from memory and merge extensions
         const presetObj = pm.getCompletionPresetByName(oldName);
         if (!presetObj) {
             toastr.error('未找到源预设数据');
             return;
         }
+        const extensions = pm.readPresetExtensionField({ name: oldName, path: '' });
+        if (extensions) {
+            presetObj.extensions = extensions;
+        }
 
         // 2. Perform native rename operations (emits events & preserves ST extensions)
         await eventSource.emit(event_types.PRESET_RENAMED_BEFORE, { apiId: 'openai', oldName, newName });
-        const extensions = pm.readPresetExtensionField({ name: oldName, path: '' });
-        
-        await pm.savePreset(newName, presetObj);
-        if (extensions) {
-            await pm.writePresetExtensionField({ name: newName, path: '', value: extensions });
+
+        // Save preset with skipUpdate: true to prevent auto-selecting and triggering change events
+        await pm.savePreset(newName, presetObj, { skipUpdate: true });
+
+        // Helper to manually add/update the new preset in native memory and dropdown lists silently
+        const updateListManually = () => {
+            presets.push(presetObj);
+            const value = presets.length - 1;
+            if (isKeyed) {
+                preset_names.push(newName);
+                $(pm.select).append($('<option></option>', { value: newName, text: newName }));
+            } else {
+                preset_names[newName] = value;
+                $(pm.select).append($('<option></option>', { value: value, text: newName }));
+            }
+        };
+
+        if (isEditingActive) {
+            // Case 1: Renaming the currently active preset
+            // First add the new preset to UI
+            updateListManually();
+            // Switch selection to the new preset (triggers a single change event)
+            const activeVal = pm.findPreset(newName);
+            if (activeVal !== undefined && activeVal !== null) {
+                pm.selectPreset(activeVal);
+            }
+            // Delete the old preset (since it's no longer active, no additional switches occur)
+            await pm.deletePreset(oldName);
+        } else {
+            // Case 2: Renaming an inactive preset
+            // Delete the old preset first
+            await pm.deletePreset(oldName);
+            // Add the new preset to UI silently (no selection switch occurs)
+            updateListManually();
         }
-        await pm.deletePreset(oldName);
-        
+
         await eventSource.emit(event_types.PRESET_RENAMED, { apiId: 'openai', oldName, newName });
 
         // 3. Rename Zero's internal settings (groups, hidden items, linkages, snapshots)
         PresetManager.renameSettings(oldName, newName);
 
-        // 4. Restore active preset selection if it wasn't the one renamed
-        if (!isEditingActive) {
-            const activeVal = pm.findPreset(activeName);
-            if (activeVal !== undefined && activeVal !== null) {
-                pm.selectPreset(activeVal);
-            }
-        }
         window.dispatchEvent(new Event('zero-presets-list-changed')); // 通知缓存失效
         refreshNativePresetManager(pm);
         
-        await renderManageTab();
-        await populatePresetSelects();
+        await Promise.all([
+            renderManageTab(),
+            populatePresetSelects()
+        ]);
 
     } catch (e) {
         console.error('[Zero] Failed to rename preset:', oldName, e);
