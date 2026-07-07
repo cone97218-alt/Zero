@@ -506,8 +506,50 @@ function ensurePanel() {
                             </div>
                         </div>
                     </div>
+
+                    <!-- 3. 缝合设置 (折叠) -->
+                    <div class="zero-settings-section" style="
+                        display: flex;
+                        flex-direction: column;
+                        background: rgba(255, 255, 255, 0.03);
+                        border: 1px solid var(--SmartThemeBorderColor, #444);
+                        border-radius: 10px;
+                        overflow: hidden;
+                    ">
+                        <div class="zero-settings-header interactable" id="zero-settings-stitch-toggle" style="
+                            display: flex;
+                            align-items: center;
+                            justify-content: space-between;
+                            padding: 14px;
+                            cursor: pointer;
+                            user-select: none;
+                        ">
+                            <div style="font-weight: bold; font-size: 14px; display: flex; align-items: center; gap: 6px;">
+                                <i class="fa-solid fa-scissors" style="color: var(--SmartThemeQuoteColor);"></i> 缝合设置
+                            </div>
+                            <i class="fa-solid fa-chevron-right zero-settings-chevron" style="transition: transform 0.15s; font-size: 12px; opacity: 0.7;"></i>
+                        </div>
+                        <div class="zero-settings-body" id="zero-settings-stitch-body" style="
+                            display: none;
+                            flex-direction: column;
+                            gap: 14px;
+                            padding: 0 14px 14px 14px;
+                        ">
+                            <!-- 缝合成功后收起目标预设 B -->
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px;">
+                                <div style="flex: 1;">
+                                    <strong style="display: block; font-size: 13px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">缝合成功后收起目标预设 B</strong>
+                                    <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">在缝合模块，成功将条目缝合后，目标预设 B 抽屉自动收回折叠状态。</span>
+                                </div>
+                                <label class="zero-switch">
+                                    <input type="checkbox" id="zero-setting-stitch-collapse-b" class="interactable">
+                                    <span class="zero-slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
                     
-                    <!-- 3. UI 设置 (折叠) -->
+                    <!-- 4. UI 设置 (折叠) -->
                     <div class="zero-settings-section" style="
                         display: flex;
                         flex-direction: column;
@@ -610,6 +652,20 @@ function ensurePanel() {
                                         <select id="zero-setting-ui-tab-pos" class="interactable" style="padding: 4px 8px; background: var(--SmartThemeChatTintColor); color: inherit; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; font-size: 12px; cursor: pointer;">
                                             <option value="top">顶部标题</option>
                                             <option value="bottom">底部标题</option>
+                                        </select>
+                                    </div>
+
+                                    <!-- Tab 标题大小 -->
+                                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 12px; margin-top: 4px;">
+                                        <div style="flex: 1;">
+                                            <strong style="display: block; font-size: 12px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">Tab 标题大小</strong>
+                                            <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">调整预设管理 Tab 栏页签标题（包含文字和图标）的显示大小。</span>
+                                        </div>
+                                        <select id="zero-setting-ui-tab-size" class="interactable" style="padding: 4px 8px; background: var(--SmartThemeChatTintColor); color: inherit; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; font-size: 12px; cursor: pointer;">
+                                            <option value="13px">小 (13px)</option>
+                                            <option value="15px">中 (15px - 默认)</option>
+                                            <option value="17px">大 (17px)</option>
+                                            <option value="19px">超大 (19px)</option>
                                         </select>
                                     </div>
 
@@ -928,6 +984,19 @@ function ensurePanel() {
         });
     });
 
+    $('body').off('click', '#zero-settings-stitch-toggle').on('click', '#zero-settings-stitch-toggle', function() {
+        const $body = $('#zero-settings-stitch-body');
+        const $chevron = $(this).find('.zero-settings-chevron');
+        $body.slideToggle(150, function() {
+            if ($body.is(':visible')) {
+                $body.css('display', 'flex');
+                $chevron.addClass('expanded');
+            } else {
+                $chevron.removeClass('expanded');
+            }
+        });
+    });
+
     $('body').off('click', '#zero-settings-ui-toggle').on('click', '#zero-settings-ui-toggle', function() {
         const $body = $('#zero-settings-ui-body');
         const $chevron = $(this).find('.zero-settings-chevron');
@@ -1038,6 +1107,19 @@ function ensurePanel() {
         const val = $(this).val();
         UiStateManager.save({ snapshotModalAnimation: val });
         toastr.success('快照弹窗动效已更新');
+    });
+
+    $('body').off('change', '#zero-setting-stitch-collapse-b').on('change', '#zero-setting-stitch-collapse-b', function() {
+        const checked = $(this).is(':checked');
+        UiStateManager.save({ collapseTargetBOnStitch: checked });
+        toastr.success(checked ? '已开启缝合成功后自动折叠' : '已关闭缝合成功后自动折叠');
+    });
+
+    $('body').off('change', '#zero-setting-ui-tab-size').on('change', '#zero-setting-ui-tab-size', function() {
+        const val = $(this).val();
+        UiStateManager.save({ tabTitleSize: val });
+        applyTabSettings();
+        toastr.success('Tab 标题大小已更新');
     });
 
     $('body').off('input', '#zero-setting-ui-modal-scale').on('input', '#zero-setting-ui-modal-scale', function() {
@@ -1588,6 +1670,9 @@ export function renderSettingsTab() {
     $('#zero-setting-toast-stitch').prop('checked', state.toastOnPresetStitch === true);
     $('#zero-setting-confirm-snapshot').prop('checked', state.confirmOnSnapshot === true);
 
+    // Stitch switches
+    $('#zero-setting-stitch-collapse-b').prop('checked', state.collapseTargetBOnStitch === true);
+
     // UI switches
     $('#zero-setting-ui-search-anim').prop('checked', state.searchBarAnimation !== false);
     $('#zero-setting-ui-avoid-statusbar').prop('checked', state.avoidStatusbar === true);
@@ -1596,6 +1681,7 @@ export function renderSettingsTab() {
     // Tab Bar switches
     $('#zero-setting-ui-tab-style').val(state.tabTitleStyle || 'text');
     $('#zero-setting-ui-tab-pos').val(state.tabBarPosition || 'top');
+    $('#zero-setting-ui-tab-size').val(state.tabTitleSize || '15px');
     $('#zero-setting-ui-active-exit').prop('checked', state.clickActiveTabToExit === true);
 
     // Snapshot Modal switches
@@ -1674,6 +1760,8 @@ export function applyTabSettings() {
         'align-items': 'stretch'
     });
 
+    const tabSize = state.tabTitleSize || '15px';
+
     $(`#${PANEL_ID} .zero-tab-link`).each(function() {
         const tab = $(this).data('tab');
         const meta = tabMeta[tab];
@@ -1685,11 +1773,11 @@ export function applyTabSettings() {
             }
         }
 
-        // Apply distributed spacing & larger font size
+        // Apply distributed spacing & custom font/icon size
         $(this).css({
             'flex': '1',
             'text-align': 'center',
-            'font-size': '15px',          // Slightly larger font size
+            'font-size': tabSize,
             'padding': '12px 6px',        // Comfortable padding for tapping
             'transition': 'all 0.15s ease-out',
             'cursor': 'pointer',
@@ -1697,6 +1785,9 @@ export function applyTabSettings() {
             'align-items': 'center',
             'justify-content': 'center'
         });
+
+        // Ensure icon size inherits the custom size
+        $(this).find('i').css('font-size', 'inherit');
 
         // Adjust active/inactive border positions
         const isActive = $(this).hasClass('active');

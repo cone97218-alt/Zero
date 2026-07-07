@@ -8,6 +8,8 @@ let _cachedStitchName = null;
 
 let isRestoringStitchScroll = false;
 let isRestoringStitchPeekScroll = false;
+let isRefreshingStitchList = false;
+let isRefreshingTargetB = false;
 
 export function initScroll() {
     const saveListScrollDebounced = debounce((effectiveName, scrollTop) => {
@@ -19,7 +21,7 @@ export function initScroll() {
     }, 150);
 
     $('#stitch-list').off('scroll.zero-stitch').on('scroll.zero-stitch', function() {
-        if (isRestoringStitchScroll) return;
+        if (isRestoringStitchScroll || isRefreshingStitchList) return;
         const nameA = $('#stitch-preset-source').val();
         const nameB = $('#stitch-preset-target').val();
         const effectiveName = nameA || nameB;
@@ -29,7 +31,7 @@ export function initScroll() {
     });
 
     $('#stitch-peek-body').off('scroll.zero-stitch-peek').on('scroll.zero-stitch-peek', function() {
-        if (isRestoringStitchPeekScroll) return;
+        if (isRestoringStitchPeekScroll || isRefreshingTargetB) return;
         const nameB = $('#stitch-preset-target').val();
         if (nameB) {
             savePeekScrollDebounced(nameB, $(this).scrollTop());
@@ -48,7 +50,10 @@ export function restoreScroll() {
         $list.scrollTop(savedScroll);
         setTimeout(() => {
             isRestoringStitchScroll = false;
+            isRefreshingStitchList = false;
         }, 50);
+    } else {
+        isRefreshingStitchList = false;
     }
 }
 
@@ -61,7 +66,10 @@ export function restorePeekScroll() {
         $peekBody.scrollTop(savedScroll);
         setTimeout(() => {
             isRestoringStitchPeekScroll = false;
+            isRefreshingTargetB = false;
         }, 50);
+    } else {
+        isRefreshingTargetB = false;
     }
 }
 
@@ -75,6 +83,7 @@ export function resetStitchBatchMode() {
 }
 
 export async function renderStitchList(forceRefresh = true) {
+    isRefreshingStitchList = true;
     const nameA = $('#stitch-preset-source').val();
     const nameB = $('#stitch-preset-target').val();
     
@@ -284,6 +293,7 @@ export async function renderStitchList(forceRefresh = true) {
     } catch (e) {
         console.error('[Zero] Failed to render stitch list:', e);
         $list.html('<p style="text-align: center; color: var(--SmartThemeShadowColor);">加载失败</p>');
+        isRefreshingStitchList = false;
     }
 }
 
@@ -335,7 +345,7 @@ export async function performStitch(itemsA, targetName, position) {
         } else if (position === 'bottom') {
             orderArray.push(...clones);
         } else {
-            const idx = orderArray.findIndex(o => o && o.identifier === position);
+            const idx = orderArray.findIndex(o => o && String(o.identifier) === String(position));
             if (idx !== -1) {
                 orderArray.splice(idx + 1, 0, ...clones);
             } else {
@@ -621,12 +631,14 @@ export async function showMoveModal(items, presetName) {
 }
 
 export async function renderTargetBPeek() {
+    isRefreshingTargetB = true;
     const nameB = $('#stitch-preset-target').val();
     const $drawer = $('#stitch-target-peek-drawer');
     const $list = $('#stitch-peek-list');
 
     if (!nameB) {
         $drawer.css('display', 'none');
+        isRefreshingTargetB = false;
         return;
     }
 
@@ -800,6 +812,15 @@ export async function renderTargetBPeek() {
             
             // Reload list and sync B peek drawer
             await renderStitchList(true);
+
+            // Collapse target preset B drawer if enabled in settings
+            if (UiStateManager.get().collapseTargetBOnStitch === true) {
+                const $drawer = $('#stitch-target-peek-drawer');
+                if ($drawer.hasClass('expanded')) {
+                    $drawer.removeClass('expanded');
+                    $('#stitch-peek-toggle-icon i').removeClass('fa-chevron-down').addClass('fa-chevron-up');
+                }
+            }
         };
 
         $('.stitch-peek-insert-top').off('click').on('click', function(e) {
@@ -811,7 +832,7 @@ export async function renderTargetBPeek() {
             e.stopPropagation();
             const eTarget = $(e.target);
             const $btn = eTarget.hasClass('stitch-peek-insert-btn') ? eTarget : eTarget.find('.stitch-peek-insert-btn');
-            const id = $btn.data('id');
+            const id = $btn.attr('data-id');
             doInsertStitch(id, $btn);
         });
 
@@ -819,5 +840,6 @@ export async function renderTargetBPeek() {
     } catch (e) {
         console.error('[Zero] Failed to render target B peek:', e);
         $list.html('<p style="text-align: center; color: #ff5555; font-size: 11px; padding: 10px;">加载失败</p>');
+        isRefreshingTargetB = false;
     }
 }
