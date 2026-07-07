@@ -169,20 +169,135 @@ export async function openUI() {
         presetManagerModule = m;
     }).catch(() => {});
 
+    const state = UiStateManager.get();
+    const modalStyle = state.snapshotModalStyle || 'center';
+    const scale = state.snapshotModalScale || 80;
+    const animStyle = state.snapshotModalAnimation || 'slide';
+
     overlay = document.createElement('div');
     overlay.id = 'zero-overlay';
     Object.assign(overlay.style, {
         position: 'fixed', top: '0', left: '0', width: '100vw', height: '100vh',
-        zIndex: '10001', background: 'rgba(0,0,0,0.55)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden'
+        zIndex: '10001', background: 'rgba(0,0,0,0)',
+        display: 'flex', overflow: 'hidden'
     });
+
+    if (animStyle !== 'none') {
+        overlay.style.transition = 'background 0.25s ease-out';
+    }
+
+    if (modalStyle === 'center') {
+        overlay.style.alignItems = 'center';
+        overlay.style.justifyContent = 'center';
+    } else if (modalStyle === 'top') {
+        overlay.style.alignItems = 'flex-start';
+        overlay.style.justifyContent = 'center';
+    } else if (modalStyle === 'bottom') {
+        overlay.style.alignItems = 'flex-end';
+        overlay.style.justifyContent = 'center';
+    } else if (modalStyle === 'left') {
+        overlay.style.alignItems = 'stretch';
+        overlay.style.justifyContent = 'flex-start';
+    } else if (modalStyle === 'right') {
+        overlay.style.alignItems = 'stretch';
+        overlay.style.justifyContent = 'flex-end';
+    }
+
     overlay.addEventListener('click', (e) => { if (e.target === overlay) closeUI(); });
 
     const modal = h('div', { class: 'zero-modal' });
+    
+    // Override zero-modal style defaults inline
+    Object.assign(modal.style, {
+        animation: 'none' // Disable original stylesheet slideUp animation
+    });
+
+    if (animStyle === 'scale') {
+        modal.style.transition = 'transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.25s ease-out';
+    } else if (animStyle === 'fade') {
+        modal.style.transition = 'opacity 0.2s ease-out';
+    } else if (animStyle === 'slide') {
+        modal.style.transition = 'transform 0.25s cubic-bezier(0.25, 0.8, 0.25, 1), opacity 0.25s ease-out';
+    }
+
+    if (modalStyle === 'center') {
+        modal.style.width = '92%';
+        modal.style.maxWidth = '520px';
+        modal.style.height = `${scale}vh`;
+        modal.style.maxHeight = '90vh';
+        modal.style.borderRadius = '14px';
+        
+        if (animStyle === 'slide') {
+            modal.style.transform = 'translateY(40px)';
+            modal.style.opacity = '0';
+        } else if (animStyle === 'scale') {
+            modal.style.transform = 'scale(0.85)';
+            modal.style.opacity = '0';
+        } else if (animStyle === 'fade') {
+            modal.style.opacity = '0';
+        } else { // none
+            modal.style.opacity = '1';
+        }
+    } else {
+        if (modalStyle === 'top') {
+            modal.style.width = '100%';
+            modal.style.maxWidth = '600px';
+            modal.style.height = `${scale}vh`;
+            modal.style.maxHeight = '100vh';
+            modal.style.borderRadius = '0 0 14px 14px';
+            if (animStyle === 'slide') modal.style.transform = 'translateY(-100%)';
+        } else if (modalStyle === 'bottom') {
+            modal.style.width = '100%';
+            modal.style.maxWidth = '600px';
+            modal.style.height = `${scale}vh`;
+            modal.style.maxHeight = '100vh';
+            modal.style.borderRadius = '14px 14px 0 0';
+            if (animStyle === 'slide') modal.style.transform = 'translateY(100%)';
+        } else if (modalStyle === 'left') {
+            modal.style.width = `${scale}vw`;
+            modal.style.height = '100vh';
+            modal.style.maxHeight = '100vh';
+            modal.style.borderRadius = '0 14px 14px 0';
+            if (animStyle === 'slide') modal.style.transform = 'translateX(-100%)';
+        } else if (modalStyle === 'right') {
+            modal.style.width = `${scale}vw`;
+            modal.style.height = '100vh';
+            modal.style.maxHeight = '100vh';
+            modal.style.borderRadius = '14px 0 0 14px';
+            if (animStyle === 'slide') modal.style.transform = 'translateX(100%)';
+        }
+
+        if (animStyle === 'scale') {
+            modal.style.transform = 'scale(0.85)';
+            modal.style.opacity = '0';
+        } else if (animStyle === 'fade') {
+            modal.style.opacity = '0';
+        } else if (animStyle === 'slide') {
+            modal.style.opacity = '0';
+        } else { // none
+            modal.style.opacity = '1';
+        }
+    }
+
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
 
     modal.innerHTML = '<div class="zero-skeleton"><div class="zero-sk-header"></div><div class="zero-sk-tabs"></div><div class="zero-sk-row"></div><div class="zero-sk-row short"></div><div class="zero-sk-row"></div><div class="zero-sk-row short"></div></div>';
+
+    // Trigger slide-in transition in next frame
+    if (animStyle !== 'none') {
+        requestAnimationFrame(() => {
+            if (overlay) {
+                overlay.style.background = 'rgba(0,0,0,0.55)';
+            }
+            if (modal) {
+                modal.style.opacity = '1';
+                modal.style.transform = 'translate(0) scale(1)';
+            }
+        });
+    } else {
+        overlay.style.background = 'rgba(0,0,0,0.55)';
+    }
 
     try {
         PresetManager.invalidate();
@@ -209,8 +324,47 @@ export function closeUI() {
             UiStateManager.saveScrollPos(activeTab, content.scrollTop);
             SillyTavern.getContext().saveSettingsDebounced();
         }
-        overlay.remove();
-        overlay = null;
+
+        const modal = overlay.querySelector('.zero-modal');
+        const state = UiStateManager.get();
+        const modalStyle = state.snapshotModalStyle || 'center';
+        const animStyle = state.snapshotModalAnimation || 'slide';
+
+        if (animStyle !== 'none') {
+            overlay.style.background = 'rgba(0,0,0,0)';
+            if (modal) {
+                modal.style.opacity = '0';
+                if (animStyle === 'scale') {
+                    modal.style.transform = 'scale(0.85)';
+                } else if (animStyle === 'fade') {
+                    // no transform changes
+                } else if (animStyle === 'slide') {
+                    if (modalStyle === 'center') {
+                        modal.style.transform = 'translateY(40px)';
+                    } else if (modalStyle === 'top') {
+                        modal.style.transform = 'translateY(-100%)';
+                    } else if (modalStyle === 'bottom') {
+                        modal.style.transform = 'translateY(100%)';
+                    } else if (modalStyle === 'left') {
+                        modal.style.transform = 'translateX(-100%)';
+                    } else if (modalStyle === 'right') {
+                        modal.style.transform = 'translateX(100%)';
+                    }
+                }
+            }
+
+            const targetOverlay = overlay;
+            overlay = null; // Set to null immediately so subsequent calls know it's closing
+
+            setTimeout(() => {
+                if (targetOverlay && targetOverlay.parentNode) {
+                    targetOverlay.remove();
+                }
+            }, 250);
+        } else {
+            overlay.remove();
+            overlay = null;
+        }
     }
     try {
         HistoryManager.clear();
@@ -486,13 +640,15 @@ function buildModal(modal, preset, listInfo) {
                 Object.values(panels).forEach(p => p.classList.remove('active'));
                 panels[t.id].classList.add('active');
 
-                // Render content (lazy/refresh)
-                const freshPreset = PresetManager.cached() || preset;
-                renderTab(t.id, panels[t.id], freshPreset, modal);
+                // Defer heavy tab rendering to a macro-task so tab switch triggers instantly
+                setTimeout(() => {
+                    const freshPreset = PresetManager.cached() || preset;
+                    renderTab(t.id, panels[t.id], freshPreset, modal);
 
-                // Update scroll tracking and restore position
-                setupScrollTracking(content, t.id);
-                restoreScrollPos(content, t.id);
+                    // Update scroll tracking and restore position
+                    setupScrollTracking(content, t.id);
+                    restoreScrollPos(content, t.id);
+                }, 0);
             }
         });
         tabBar.appendChild(tab);
@@ -1655,13 +1811,13 @@ function showLinkageManager(panel, preset, modal) {
             createTab.classList.remove('active');
             listPanel.style.display = 'flex';
             createPanel.style.display = 'none';
-            renderList();
+            setTimeout(renderList, 0);
         } else {
             listTab.classList.remove('active');
             createTab.classList.add('active');
             listPanel.style.display = 'none';
             createPanel.style.display = 'flex';
-            updateTargetAvailability();
+            setTimeout(updateTargetAvailability, 0);
         }
     }
 

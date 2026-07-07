@@ -16,6 +16,9 @@ let _checker  = null;
 let _editor   = null;
 let _modulesLoaded = false;
 
+// ── 选项卡渲染缓存（避免切换 Tab 重复渲染 DOM） ──────────────────────────────
+export const renderedTabs = new Set();
+
 // ── 预设列表缓存（避免切 Tab 重复拉取）──────────────────────────────────────
 let _presetsListCache = null;
 let _presetsLastFetch  = 0;
@@ -191,24 +194,6 @@ function ensurePanel() {
                         <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
                             <span style="font-size: 12px; opacity: 0.7; width: 60px; flex-shrink: 0;">预设 B:</span>
                             <select id="contrast-preset-b" class="interactable" style="flex: 1; min-width: 0; padding: 4px; background: var(--SmartThemeChatTintColor); color: inherit; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px;"></select>
-                            <button id="contrast-search-toggle" class="interactable" title="展开/折叠搜索" style="width: 28px; height: 28px; padding: 0; background: rgba(255,255,255,0.05); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; color: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                                <i class="fa-solid fa-magnifying-glass"></i>
-                            </button>
-                        </div>
-                        <div id="contrast-search-container" style="display: none; flex-direction: column; gap: 6px; margin-top: 4px; padding: 6px 0; background: none; box-shadow: none;">
-                            <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
-                                <span style="font-size: 11px; opacity: 0.7; width: 60px; flex-shrink: 0;">搜索条目:</span>
-                                <div style="position: relative; flex: 1; display: flex; align-items: center;">
-                                    <input type="text" id="contrast-search-input" class="interactable" placeholder="输入关键字搜索..." style="width: 100%; padding: 0 24px 0 8px; height: 28px !important; box-sizing: border-box !important; line-height: 1.2 !important; background: var(--SmartThemeChatTintColor); color: inherit; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; font-size: inherit !important;">
-                                    <i id="contrast-search-clear" class="fa-solid fa-circle-xmark interactable" title="清空搜索" style="position: absolute; right: 8px; cursor: pointer; opacity: 0.5; display: none; font-size: 12px;"></i>
-                                </div>
-                            </div>
-                            <div id="contrast-search-filters" style="display: flex; gap: 6px; align-items: center; padding-left: 68px;">
-                                <span class="contrast-search-filter-badge interactable active" data-filter="name" style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background: var(--SmartThemeQuoteColor); color: white; cursor: pointer; user-select: none; transition: all 0.15s ease;">名称</span>
-                                <span class="contrast-search-filter-badge interactable active" data-filter="content" style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background: var(--SmartThemeQuoteColor); color: white; cursor: pointer; user-select: none; transition: all 0.15s ease;">内容</span>
-                                <span class="contrast-search-filter-badge interactable active" data-filter="note" style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background: var(--SmartThemeQuoteColor); color: white; cursor: pointer; user-select: none; transition: all 0.15s ease;">备注</span>
-                                <span class="contrast-search-filter-badge interactable active" data-filter="origin" style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background: var(--SmartThemeQuoteColor); color: white; cursor: pointer; user-select: none; transition: all 0.15s ease;">来源</span>
-                            </div>
                         </div>
                         <div style="display: flex; gap: 8px; margin-top: 4px;">
                             <button id="contrast-auto-match" class="interactable" style="flex: 1; padding: 6px; font-size: 12px; background: var(--SmartThemeBorderColor); color: inherit; border: none; border-radius: 4px;">自动匹配</button>
@@ -387,7 +372,7 @@ function ensurePanel() {
                 </div>
 
                 <!-- Settings Tab -->
-                <div id="zero-tab-settings" class="zero-tab-content" style="padding: 12px; display: none; flex-direction: column; gap: 12px; flex: 1; overflow-y: auto !important; -webkit-overflow-scrolling: touch; height: 100%;">
+                <div id="zero-tab-settings" class="zero-tab-content" style="padding: 12px 12px 80px 12px; display: none; flex-direction: column; gap: 12px; flex: 1; overflow-y: auto !important; -webkit-overflow-scrolling: touch; min-height: 0;">
                     <!-- 1. 通知设置 (折叠) -->
                     <div class="zero-settings-section" style="
                         display: flex;
@@ -555,7 +540,7 @@ function ensurePanel() {
                             <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px;">
                                 <div style="flex: 1;">
                                     <strong style="display: block; font-size: 13px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">搜索框展开动画</strong>
-                                    <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">在相机栏界面，点击搜索图标展开搜索框时显示平滑的过渡动画。</span>
+                                    <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">在相机栏界面，点击搜索图标展开搜索框时显示平滑 of 过渡动画。</span>
                                 </div>
                                 <label class="zero-switch">
                                     <input type="checkbox" id="zero-setting-ui-search-anim" class="interactable">
@@ -563,16 +548,155 @@ function ensurePanel() {
                                 </label>
                             </div>
 
-                            <!-- 避让顶部状态栏 -->
-                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 12px; margin-top: 4px;">
-                                <div style="flex: 1;">
-                                    <strong style="display: block; font-size: 13px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">避让顶部状态栏</strong>
-                                    <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">在移动端全屏显示时，为顶部留出安全区域以避让系统状态栏或刘海屏。</span>
+                            <!-- 导航与状态栏设置 (子折叠) -->
+                            <div class="zero-settings-section sub-section" style="
+                                display: flex;
+                                flex-direction: column;
+                                background: rgba(0, 0, 0, 0.15);
+                                border: 1px solid rgba(255, 255, 255, 0.05);
+                                border-radius: 8px;
+                                overflow: hidden;
+                                margin-top: 4px;
+                            ">
+                                <div class="zero-settings-header sub-header interactable" id="zero-settings-nav-status-toggle" style="
+                                    display: flex;
+                                    align-items: center;
+                                    justify-content: space-between;
+                                    padding: 10px 12px;
+                                    cursor: pointer;
+                                    user-select: none;
+                                ">
+                                    <div style="font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 6px; color: var(--SmartThemeBodyColor);">
+                                        <i class="fa-solid fa-square-caret-down" style="color: var(--SmartThemeQuoteColor); font-size: 13px;"></i> 导航与状态栏设置
+                                    </div>
+                                    <i class="fa-solid fa-chevron-right zero-settings-chevron" style="transition: transform 0.15s; font-size: 10px; opacity: 0.7;"></i>
                                 </div>
-                                <label class="zero-switch">
-                                    <input type="checkbox" id="zero-setting-ui-avoid-statusbar" class="interactable">
-                                    <span class="zero-slider"></span>
-                                </label>
+                                <div class="zero-settings-body sub-body" id="zero-settings-nav-status-body" style="
+                                    display: none;
+                                    flex-direction: column;
+                                    gap: 12px;
+                                    padding: 0 12px 12px 12px;
+                                ">
+                                    <!-- 避让顶部状态栏 -->
+                                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-top: 8px;">
+                                        <div style="flex: 1;">
+                                            <strong style="display: block; font-size: 12px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">避让顶部状态栏</strong>
+                                            <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">在移动端全屏显示时，为顶部留出安全区域以避让系统状态栏或刘海屏。</span>
+                                        </div>
+                                        <label class="zero-switch">
+                                            <input type="checkbox" id="zero-setting-ui-avoid-statusbar" class="interactable">
+                                            <span class="zero-slider"></span>
+                                        </label>
+                                    </div>
+
+                                    <!-- Tab 标题样式 -->
+                                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 12px; margin-top: 4px;">
+                                        <div style="flex: 1;">
+                                            <strong style="display: block; font-size: 12px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">Tab 标题样式</strong>
+                                            <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">选择预设管理顶部 Tab 页签显示文字还是 FontAwesome 图标。</span>
+                                        </div>
+                                        <select id="zero-setting-ui-tab-style" class="interactable" style="padding: 4px 8px; background: var(--SmartThemeChatTintColor); color: inherit; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; font-size: 12px; cursor: pointer;">
+                                            <option value="text">文字标题</option>
+                                            <option value="icon">图标标题</option>
+                                        </select>
+                                    </div>
+
+                                    <!-- Tab 栏位置 -->
+                                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 12px; margin-top: 4px;">
+                                        <div style="flex: 1;">
+                                            <strong style="display: block; font-size: 12px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">Tab 栏位置</strong>
+                                            <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">将 Tab 导航栏放置在页面顶部或底部（底部模式更适合手机手势操作）。</span>
+                                        </div>
+                                        <select id="zero-setting-ui-tab-pos" class="interactable" style="padding: 4px 8px; background: var(--SmartThemeChatTintColor); color: inherit; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; font-size: 12px; cursor: pointer;">
+                                            <option value="top">顶部标题</option>
+                                            <option value="bottom">底部标题</option>
+                                        </select>
+                                    </div>
+
+                                    <!-- 点击当前激活 Tab 退出 -->
+                                    <div id="zero-setting-ui-active-exit-row" style="display: flex; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 12px; margin-top: 4px;">
+                                        <div style="flex: 1;">
+                                            <strong style="display: block; font-size: 12px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">点击当前激活 Tab 退出</strong>
+                                            <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">Tab 栏在底部时，点击当前已处于激活状态 of Tab 页签可隐藏关闭按钮并直接退出预设管理。</span>
+                                        </div>
+                                        <label class="zero-switch">
+                                            <input type="checkbox" id="zero-setting-ui-active-exit" class="interactable">
+                                            <span class="zero-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 快照弹窗设置 (子折叠) -->
+                            <div class="zero-settings-section sub-section" style="
+                                display: flex;
+                                flex-direction: column;
+                                background: rgba(0, 0, 0, 0.15);
+                                border: 1px solid rgba(255, 255, 255, 0.05);
+                                border-radius: 8px;
+                                overflow: hidden;
+                                margin-top: 8px;
+                            ">
+                                <div class="zero-settings-header sub-header interactable" id="zero-settings-snapshot-modal-toggle" style="
+                                    display: flex;
+                                    align-items: center;
+                                    justify-content: space-between;
+                                    padding: 10px 12px;
+                                    cursor: pointer;
+                                    user-select: none;
+                                ">
+                                    <div style="font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 6px; color: var(--SmartThemeBodyColor);">
+                                        <i class="fa-solid fa-window-restore" style="color: var(--SmartThemeQuoteColor); font-size: 13px;"></i> 快照弹窗样式与比例
+                                    </div>
+                                    <i class="fa-solid fa-chevron-right zero-settings-chevron" style="transition: transform 0.15s; font-size: 10px; opacity: 0.7;"></i>
+                                </div>
+                                <div class="zero-settings-body sub-body" id="zero-settings-snapshot-modal-body" style="
+                                    display: none;
+                                    flex-direction: column;
+                                    gap: 12px;
+                                    padding: 0 12px 12px 12px;
+                                ">
+                                    <!-- 快照弹窗样式 -->
+                                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-top: 8px;">
+                                        <div style="flex: 1;">
+                                            <strong style="display: block; font-size: 12px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">快照弹窗样式</strong>
+                                            <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">设置快照面板显示为普通中心弹窗，还是从特定方向滑出。</span>
+                                        </div>
+                                        <select id="zero-setting-ui-modal-style" class="interactable" style="padding: 4px 8px; background: var(--SmartThemeChatTintColor); color: inherit; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; font-size: 12px; cursor: pointer;">
+                                            <option value="center">普通弹窗</option>
+                                            <option value="top">从上弹出</option>
+                                            <option value="bottom">从下弹出</option>
+                                            <option value="left">从左弹出</option>
+                                            <option value="right">从右弹出</option>
+                                        </select>
+                                    </div>
+
+                                    <!-- 快照弹窗动效 -->
+                                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 12px; margin-top: 4px;">
+                                        <div style="flex: 1;">
+                                            <strong style="display: block; font-size: 12px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">快照弹窗动效</strong>
+                                            <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">设置快照面板显示时的过渡动画效果。</span>
+                                        </div>
+                                        <select id="zero-setting-ui-modal-anim" class="interactable" style="padding: 4px 8px; background: var(--SmartThemeChatTintColor); color: inherit; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; font-size: 12px; cursor: pointer;">
+                                            <option value="slide">方向滑入</option>
+                                            <option value="scale">弹性缩放</option>
+                                            <option value="fade">渐显淡入</option>
+                                            <option value="none">无动画</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <!-- 快照弹窗所占比例 -->
+                                    <div style="display: flex; flex-direction: column; gap: 6px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 12px; margin-top: 4px;">
+                                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px;">
+                                            <div style="flex: 1;">
+                                                <strong style="display: block; font-size: 12px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">弹窗尺寸比例</strong>
+                                                <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">调整快照弹窗在对应弹出方向上的屏幕高度/宽度占比。</span>
+                                            </div>
+                                            <span id="zero-setting-ui-modal-scale-val" style="font-size: 12px; font-weight: bold; color: var(--SmartThemeQuoteColor);">80%</span>
+                                        </div>
+                                        <input type="range" id="zero-setting-ui-modal-scale" class="interactable" min="20" max="100" step="5" style="width: 100%; accent-color: var(--SmartThemeQuoteColor); cursor: pointer; background: rgba(255,255,255,0.1); border-radius: 4px; height: 6px; outline: none; margin-top: 4px;">
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -661,43 +785,84 @@ function ensurePanel() {
                  .zero-settings-chevron.expanded {
                      transform: rotate(90deg);
                  }
+                 .zero-settings-section {
+                     flex-shrink: 0 !important;
+                 }
             </style>
         `);
     }
 
     $('body').append(panelHtml);
 
-    $(`#${PANEL_ID} .zero-tab-link`).on('click', function() {
+    $(`#${PANEL_ID} .zero-tab-link`).on('click', function(e) {
         const tab = $(this).data('tab');
         localStorage.setItem('zero_last_main_tab', tab);
         
-        $(`#${PANEL_ID} .zero-tab-link`).removeClass('active').css('border-bottom-color', 'transparent');
-        $(this).addClass('active').css('border-bottom-color', 'var(--SmartThemeBorderColor, #444)');
+        const isActive = $(this).hasClass('active');
+        if (isActive && e.originalEvent) {
+            const state = UiStateManager.get();
+            if (state.tabBarPosition === 'bottom' && state.clickActiveTabToExit === true) {
+                closePanel();
+                return;
+            }
+        }
+
+        $(`#${PANEL_ID} .zero-tab-link`).removeClass('active');
+        $(this).addClass('active');
+
+        applyTabSettings();
 
         $(`#${PANEL_ID} .zero-tab-content`).css('display', 'none');
         $(`#zero-tab-${tab}`).css('display', 'flex');
         
-        if (tab === 'manage') _manage.renderManageTab();
-        else if (tab === 'contrast') populatePresetSelects().then(() => {
-            $('#contrast-search-input').val('');
-            $('#contrast-search-clear').hide();
-            if (_contrast && typeof _contrast.restoreScroll === 'function') _contrast.restoreScroll();
-        });
-        else if (tab === 'stitch') populatePresetSelects().then(() => {
-            $('#stitch-search-input').val('');
-            $('#stitch-search-clear').hide();
-            $('#stitch-peek-search-input').val('');
-            $('#stitch-peek-search-clear').hide();
-            return _stitch.renderStitchList();
-        }).then(() => {
-            if (_stitch && typeof _stitch.restorePeekScroll === 'function') _stitch.restorePeekScroll();
-        });
-        else if (tab === 'check') populatePresetSelects().then(() => {
-            _checker.Checker.render('check-results-container', $('#check-preset-select').val());
-        });
-        else if (tab === 'settings') {
-            renderSettingsTab();
-        }
+        // Defer heavy tab rendering to a macro-task so the tab switch highlights instantly
+        setTimeout(() => {
+            if (tab === 'manage') {
+                if (!renderedTabs.has('manage')) {
+                    _manage.renderManageTab();
+                    renderedTabs.add('manage');
+                }
+            }
+            else if (tab === 'contrast') {
+                if (!renderedTabs.has('contrast')) {
+                    populatePresetSelects().then(() => {
+                        $('#contrast-search-input').val('');
+                        $('#contrast-search-clear').hide();
+                        renderedTabs.add('contrast');
+                        if (_contrast && typeof _contrast.restoreScroll === 'function') _contrast.restoreScroll();
+                    });
+                } else {
+                    if (_contrast && typeof _contrast.restoreScroll === 'function') _contrast.restoreScroll();
+                }
+            }
+            else if (tab === 'stitch') {
+                if (!renderedTabs.has('stitch')) {
+                    populatePresetSelects().then(() => {
+                        $('#stitch-search-input').val('');
+                        $('#stitch-search-clear').hide();
+                        $('#stitch-peek-search-input').val('');
+                        $('#stitch-peek-search-clear').hide();
+                        return _stitch.renderStitchList();
+                    }).then(() => {
+                        renderedTabs.add('stitch');
+                        if (_stitch && typeof _stitch.restorePeekScroll === 'function') _stitch.restorePeekScroll();
+                    });
+                } else {
+                    if (_stitch && typeof _stitch.restorePeekScroll === 'function') _stitch.restorePeekScroll();
+                }
+            }
+            else if (tab === 'check') {
+                if (!renderedTabs.has('check')) {
+                    populatePresetSelects().then(() => {
+                        _checker.Checker.render('check-results-container', $('#check-preset-select').val());
+                        renderedTabs.add('check');
+                    });
+                }
+            }
+            else if (tab === 'settings') {
+                renderSettingsTab();
+            }
+        }, 0);
     });
 
     $(`#zero-panel-close`).on('click', () => closePanel());
@@ -732,6 +897,7 @@ function ensurePanel() {
 
     $(window).off('zero-history-changed.zero').on('zero-history-changed.zero', async () => {
         _presetsLastFetch = 0; // Force cache invalidation so fresh preset list renders
+        renderedTabs.clear();  // Clear tab rendering cache so all tabs reload fresh data
         await refreshActiveTab();
     });
 
@@ -764,6 +930,34 @@ function ensurePanel() {
 
     $('body').off('click', '#zero-settings-ui-toggle').on('click', '#zero-settings-ui-toggle', function() {
         const $body = $('#zero-settings-ui-body');
+        const $chevron = $(this).find('.zero-settings-chevron');
+        $body.slideToggle(150, function() {
+            if ($body.is(':visible')) {
+                $body.css('display', 'flex');
+                $chevron.addClass('expanded');
+            } else {
+                $chevron.removeClass('expanded');
+            }
+        });
+    });
+
+    // 子折叠：导航与状态栏设置
+    $('body').off('click', '#zero-settings-nav-status-toggle').on('click', '#zero-settings-nav-status-toggle', function() {
+        const $body = $('#zero-settings-nav-status-body');
+        const $chevron = $(this).find('.zero-settings-chevron');
+        $body.slideToggle(150, function() {
+            if ($body.is(':visible')) {
+                $body.css('display', 'flex');
+                $chevron.addClass('expanded');
+            } else {
+                $chevron.removeClass('expanded');
+            }
+        });
+    });
+
+    // 子折叠：快照弹窗设置
+    $('body').off('click', '#zero-settings-snapshot-modal-toggle').on('click', '#zero-settings-snapshot-modal-toggle', function() {
+        const $body = $('#zero-settings-snapshot-modal-body');
         const $chevron = $(this).find('.zero-settings-chevron');
         $body.slideToggle(150, function() {
             if ($body.is(':visible')) {
@@ -813,6 +1007,50 @@ function ensurePanel() {
         toastr.success(checked ? '已开启避让状态栏' : '已关闭避让状态栏');
     });
 
+    $('body').off('change', '#zero-setting-ui-tab-style').on('change', '#zero-setting-ui-tab-style', function() {
+        const val = $(this).val();
+        UiStateManager.save({ tabTitleStyle: val });
+        applyTabSettings();
+        toastr.success('Tab 标题样式已更新');
+    });
+
+    $('body').off('change', '#zero-setting-ui-tab-pos').on('change', '#zero-setting-ui-tab-pos', function() {
+        const val = $(this).val();
+        UiStateManager.save({ tabBarPosition: val });
+        applyTabSettings();
+        toastr.success('Tab 栏位置已更新');
+    });
+
+    $('body').off('change', '#zero-setting-ui-active-exit').on('change', '#zero-setting-ui-active-exit', function() {
+        const checked = $(this).is(':checked');
+        UiStateManager.save({ clickActiveTabToExit: checked });
+        applyTabSettings();
+        toastr.success(checked ? '已开启激活 Tab 点击退出' : '已关闭激活 Tab 点击退出');
+    });
+
+    $('body').off('change', '#zero-setting-ui-modal-style').on('change', '#zero-setting-ui-modal-style', function() {
+        const val = $(this).val();
+        UiStateManager.save({ snapshotModalStyle: val });
+        toastr.success('快照弹窗样式已更新');
+    });
+
+    $('body').off('change', '#zero-setting-ui-modal-anim').on('change', '#zero-setting-ui-modal-anim', function() {
+        const val = $(this).val();
+        UiStateManager.save({ snapshotModalAnimation: val });
+        toastr.success('快照弹窗动效已更新');
+    });
+
+    $('body').off('input', '#zero-setting-ui-modal-scale').on('input', '#zero-setting-ui-modal-scale', function() {
+        const val = $(this).val();
+        $('#zero-setting-ui-modal-scale-val').text(`${val}%`);
+    });
+
+    $('body').off('change', '#zero-setting-ui-modal-scale').on('change', '#zero-setting-ui-modal-scale', function() {
+        const val = parseInt($(this).val());
+        UiStateManager.save({ snapshotModalScale: val });
+        toastr.success('快照弹窗尺寸已更新');
+    });
+
     $('body').off('change', '#zero-setting-migrate-compare').on('change', '#zero-setting-migrate-compare', function() {
         const checked = $(this).is(':checked');
         UiStateManager.save({ migrateContentCompare: checked });
@@ -839,14 +1077,10 @@ function ensurePanel() {
     $('#manage-manual-matches').on('click', () => _contrast.showManualLinksManager());
 
     $('#contrast-preset-a').on('change', function() {
-        $('#contrast-search-input').val('');
-        $('#contrast-search-clear').hide();
         localStorage.setItem('zero_last_a', $(this).val());
         _contrast.performAutoMatch();
     });
     $('#contrast-preset-b').on('change', function() {
-        $('#contrast-search-input').val('');
-        $('#contrast-search-clear').hide();
         localStorage.setItem('zero_last_b', $(this).val());
         _contrast.performAutoMatch();
     });
@@ -959,52 +1193,6 @@ function ensurePanel() {
             $container.css('display', 'none');
             $(this).css('background', 'rgba(255,255,255,0.05)').css('color', 'inherit');
         }
-    });
-
-    let contrastSearchTimeout = null;
-    $('body').off('input', '#contrast-search-input').on('input', '#contrast-search-input', function() {
-        const query = $(this).val().trim();
-        if (query) {
-            $('#contrast-search-clear').show();
-        } else {
-            $('#contrast-search-clear').hide();
-        }
-        
-        clearTimeout(contrastSearchTimeout);
-        contrastSearchTimeout = setTimeout(() => {
-            _contrast.performAutoMatch();
-        }, 1000); // 1s delay to adapt to low-performance devices
-    });
-
-    $('body').off('click', '#contrast-search-clear').on('click', '#contrast-search-clear', function() {
-        $('#contrast-search-input').val('');
-        $('#contrast-search-clear').hide();
-        clearTimeout(contrastSearchTimeout);
-        _contrast.performAutoMatch();
-    });
-
-    $('body').off('click', '#contrast-search-toggle').on('click', '#contrast-search-toggle', function() {
-        const $container = $('#contrast-search-container');
-        const isCollapsed = $container.css('display') === 'none';
-        if (isCollapsed) {
-            $container.css('display', 'flex');
-            $(this).css('background', 'var(--SmartThemeQuoteColor)').css('color', 'white');
-            $('#contrast-search-input').focus();
-        } else {
-            $container.css('display', 'none');
-            $(this).css('background', 'rgba(255,255,255,0.05)').css('color', 'inherit');
-        }
-    });
-
-    $('body').off('click', '.contrast-search-filter-badge').on('click', '.contrast-search-filter-badge', function() {
-        $(this).toggleClass('active');
-        if ($(this).hasClass('active')) {
-            $(this).css('background', 'var(--SmartThemeQuoteColor)').css('color', 'white').css('opacity', '1');
-        } else {
-            $(this).css('background', 'rgba(255,255,255,0.08)').css('color', 'inherit').css('opacity', '0.5');
-        }
-        clearTimeout(contrastSearchTimeout);
-        _contrast.performAutoMatch();
     });
 
     $('#check-preset-select').on('change', function() {
@@ -1317,8 +1505,10 @@ function ensurePanel() {
 }
 
 export async function showPanel() {
+    renderedTabs.clear(); // Clear rendering cache on open to force fresh data load
     await loadModules();
     ensurePanel();
+    applyTabSettings();
     syncTheme();
     
     // Initialize history button states
@@ -1337,6 +1527,7 @@ export async function showPanel() {
 }
 
 export function closePanel() {
+    renderedTabs.clear(); // Clear cache on close to release DOM resources
     const $panel = $(`#${PANEL_ID}`);
     $panel.css('opacity', '0');
     setTimeout(() => {
@@ -1401,6 +1592,18 @@ export function renderSettingsTab() {
     $('#zero-setting-ui-search-anim').prop('checked', state.searchBarAnimation !== false);
     $('#zero-setting-ui-avoid-statusbar').prop('checked', state.avoidStatusbar === true);
     $('#zero-setting-migrate-compare').prop('checked', state.migrateContentCompare !== false);
+
+    // Tab Bar switches
+    $('#zero-setting-ui-tab-style').val(state.tabTitleStyle || 'text');
+    $('#zero-setting-ui-tab-pos').val(state.tabBarPosition || 'top');
+    $('#zero-setting-ui-active-exit').prop('checked', state.clickActiveTabToExit === true);
+
+    // Snapshot Modal switches
+    $('#zero-setting-ui-modal-style').val(state.snapshotModalStyle || 'center');
+    $('#zero-setting-ui-modal-anim').val(state.snapshotModalAnimation || 'slide');
+    const scale = state.snapshotModalScale || 80;
+    $('#zero-setting-ui-modal-scale').val(scale);
+    $('#zero-setting-ui-modal-scale-val').text(`${scale}%`);
 }
 
 export async function refreshActiveTab() {
@@ -1426,5 +1629,104 @@ export async function refreshActiveTab() {
         }
     } else if (tab === 'settings') {
         renderSettingsTab();
+    }
+}
+
+export function applyTabSettings() {
+    const state = UiStateManager.get();
+    const isBottom = state.tabBarPosition === 'bottom';
+    const isIcon = state.tabTitleStyle === 'icon';
+    const clickActiveExit = state.clickActiveTabToExit === true;
+
+    // 1. Position zero-tabs-nav at top or bottom
+    const $panel = $(`#${PANEL_ID}`);
+    if (!$panel.length) return; // Guard clause if panel is not loaded yet
+    
+    $panel.css('flex-direction', isBottom ? 'column-reverse' : 'column');
+
+    const $nav = $(`.zero-tabs-nav`);
+    if (isBottom) {
+        $nav.css({
+            'border-top': '1px solid var(--SmartThemeBorderColor, #444)',
+            'border-bottom': 'none'
+        });
+    } else {
+        $nav.css({
+            'border-top': 'none',
+            'border-bottom': '1px solid var(--SmartThemeBorderColor, #444)'
+        });
+    }
+
+    // 2. Render Text vs Icon titles
+    const tabMeta = {
+        contrast: { text: '对照', icon: '<i class="fa-solid fa-code-compare"></i>' },
+        stitch: { text: '缝合', icon: '<i class="fa-solid fa-scissors"></i>' },
+        check: { text: '自查', icon: '<i class="fa-solid fa-stethoscope"></i>' },
+        manage: { text: '管理', icon: '<i class="fa-solid fa-list-ul"></i>' },
+        settings: { text: '设置', icon: '<i class="fa-solid fa-gear"></i>' }
+    };
+
+    // Ensure tabs wrapper stretches to full width and centers contents
+    $nav.find('> div:first-child').css({
+        'display': 'flex',
+        'flex': '1',
+        'justify-content': 'space-around',
+        'align-items': 'stretch'
+    });
+
+    $(`#${PANEL_ID} .zero-tab-link`).each(function() {
+        const tab = $(this).data('tab');
+        const meta = tabMeta[tab];
+        if (meta) {
+            if (isIcon) {
+                $(this).html(meta.icon).attr('title', meta.text);
+            } else {
+                $(this).text(meta.text).removeAttr('title');
+            }
+        }
+
+        // Apply distributed spacing & larger font size
+        $(this).css({
+            'flex': '1',
+            'text-align': 'center',
+            'font-size': '15px',          // Slightly larger font size
+            'padding': '12px 6px',        // Comfortable padding for tapping
+            'transition': 'all 0.15s ease-out',
+            'cursor': 'pointer',
+            'display': 'flex',
+            'align-items': 'center',
+            'justify-content': 'center'
+        });
+
+        // Adjust active/inactive border positions
+        const isActive = $(this).hasClass('active');
+        if (isActive) {
+            $(this).css({
+                'font-weight': 'bold',
+                'opacity': '1',
+                'color': 'var(--SmartThemeQuoteColor)',
+                'background': 'rgba(255, 255, 255, 0.02)',
+                'border-bottom': isBottom ? 'none' : '3px solid var(--SmartThemeQuoteColor)',
+                'border-top': isBottom ? '3px solid var(--SmartThemeQuoteColor)' : 'none'
+            });
+            $(this).find('i').css('color', 'var(--SmartThemeQuoteColor)');
+        } else {
+            $(this).css({
+                'font-weight': 'normal',
+                'opacity': '0.55',
+                'color': 'inherit',
+                'background': 'transparent',
+                'border-bottom': 'none',
+                'border-top': 'none'
+            });
+            $(this).find('i').css('color', 'inherit');
+        }
+    });
+
+    // 3. Close button visibility
+    if (isBottom && clickActiveExit) {
+        $('#zero-panel-close').hide();
+    } else {
+        $('#zero-panel-close').show();
     }
 }
