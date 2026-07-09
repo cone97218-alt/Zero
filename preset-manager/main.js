@@ -194,6 +194,24 @@ function ensurePanel() {
                         <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
                             <span style="font-size: 12px; opacity: 0.7; width: 60px; flex-shrink: 0;">预设 B:</span>
                             <select id="contrast-preset-b" class="interactable" style="flex: 1; min-width: 0; padding: 4px; background: var(--SmartThemeChatTintColor); color: inherit; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px;"></select>
+                            <button id="contrast-search-toggle" class="interactable" title="展开/折叠搜索" style="width: 28px; height: 28px; padding: 0; background: rgba(255,255,255,0.05); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; color: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                                <i class="fa-solid fa-magnifying-glass"></i>
+                            </button>
+                        </div>
+                        <div id="contrast-search-container" style="display: none; flex-direction: column; gap: 6px; margin-top: 4px; padding: 6px 0; background: none; box-shadow: none;">
+                            <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+                                <span style="font-size: 11px; opacity: 0.7; width: 60px; flex-shrink: 0;">搜索条目:</span>
+                                <div style="position: relative; flex: 1; display: flex; align-items: center;">
+                                    <input type="text" id="contrast-search-input" class="interactable" placeholder="输入关键字搜索..." style="width: 100%; padding: 0 24px 0 8px; height: 28px !important; box-sizing: border-box !important; line-height: 1.2 !important; background: var(--SmartThemeChatTintColor); color: inherit; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; font-size: inherit !important;">
+                                    <i id="contrast-search-clear" class="fa-solid fa-circle-xmark interactable" title="清空搜索" style="position: absolute; right: 8px; cursor: pointer; opacity: 0.5; display: none; font-size: 12px;"></i>
+                                </div>
+                            </div>
+                            <div id="contrast-search-filters" style="display: flex; gap: 6px; align-items: center; padding-left: 68px;">
+                                <span class="contrast-search-filter-badge interactable active" data-filter="name" style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background: var(--SmartThemeQuoteColor); color: white; cursor: pointer; user-select: none; transition: all 0.15s ease;">名称</span>
+                                <span class="contrast-search-filter-badge interactable active" data-filter="content" style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background: var(--SmartThemeQuoteColor); color: white; cursor: pointer; user-select: none; transition: all 0.15s ease;">内容</span>
+                                <span class="contrast-search-filter-badge interactable active" data-filter="note" style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background: var(--SmartThemeQuoteColor); color: white; cursor: pointer; user-select: none; transition: all 0.15s ease;">备注</span>
+                                <span class="contrast-search-filter-badge interactable active" data-filter="origin" style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background: var(--SmartThemeQuoteColor); color: white; cursor: pointer; user-select: none; transition: all 0.15s ease;">来源</span>
+                            </div>
                         </div>
                         <div style="display: flex; gap: 8px; margin-top: 4px;">
                             <button id="contrast-auto-match" class="interactable" style="flex: 1; padding: 6px; font-size: 12px; background: var(--SmartThemeBorderColor); color: inherit; border: none; border-radius: 4px;">自动匹配</button>
@@ -1159,11 +1177,61 @@ function ensurePanel() {
     $('#manage-manual-matches').on('click', () => _contrast.showManualLinksManager());
 
     $('#contrast-preset-a').on('change', function() {
+        $('#contrast-search-input').val('');
+        $('#contrast-search-clear').hide();
         localStorage.setItem('zero_last_a', $(this).val());
         _contrast.performAutoMatch();
     });
     $('#contrast-preset-b').on('change', function() {
+        $('#contrast-search-input').val('');
+        $('#contrast-search-clear').hide();
         localStorage.setItem('zero_last_b', $(this).val());
+        _contrast.performAutoMatch();
+    });
+
+    let contrastSearchTimeout = null;
+    $('body').off('input', '#contrast-search-input').on('input', '#contrast-search-input', function() {
+        const query = $(this).val().trim();
+        if (query) {
+            $('#contrast-search-clear').show();
+        } else {
+            $('#contrast-search-clear').hide();
+        }
+        
+        clearTimeout(contrastSearchTimeout);
+        contrastSearchTimeout = setTimeout(() => {
+            _contrast.performAutoMatch();
+        }, 1000); // 1s delay to adapt to low-performance devices
+    });
+
+    $('body').off('click', '#contrast-search-clear').on('click', '#contrast-search-clear', function() {
+        $('#contrast-search-input').val('');
+        $('#contrast-search-clear').hide();
+        clearTimeout(contrastSearchTimeout);
+        _contrast.performAutoMatch();
+    });
+
+    $('body').off('click', '#contrast-search-toggle').on('click', '#contrast-search-toggle', function() {
+        const $container = $('#contrast-search-container');
+        const isCollapsed = $container.css('display') === 'none';
+        if (isCollapsed) {
+            $container.css('display', 'flex');
+            $(this).css('background', 'var(--SmartThemeQuoteColor)').css('color', 'white');
+            $('#contrast-search-input').focus();
+        } else {
+            $container.css('display', 'none');
+            $(this).css('background', 'rgba(255,255,255,0.05)').css('color', 'inherit');
+        }
+    });
+
+    $('body').off('click', '.contrast-search-filter-badge').on('click', '.contrast-search-filter-badge', function() {
+        $(this).toggleClass('active');
+        if ($(this).hasClass('active')) {
+            $(this).css('background', 'var(--SmartThemeQuoteColor)').css('color', 'white').css('opacity', '1');
+        } else {
+            $(this).css('background', 'rgba(255,255,255,0.08)').css('color', 'inherit').css('opacity', '0.5');
+        }
+        clearTimeout(contrastSearchTimeout);
         _contrast.performAutoMatch();
     });
 

@@ -178,12 +178,13 @@ export async function openUI() {
     overlay.id = 'zero-overlay';
     Object.assign(overlay.style, {
         position: 'fixed', top: '0', left: '0', width: '100vw', height: '100vh',
-        zIndex: '10001', background: 'rgba(0,0,0,0)',
+        zIndex: '10001', background: 'rgba(0,0,0,0.55)',
         display: 'flex', overflow: 'hidden'
     });
 
     if (animStyle !== 'none') {
-        overlay.style.transition = 'background 0.25s ease-out';
+        overlay.style.opacity = '0';
+        overlay.style.transition = 'opacity 0.2s ease-out';
     }
 
     if (modalStyle === 'center') {
@@ -288,7 +289,7 @@ export async function openUI() {
     if (animStyle !== 'none') {
         requestAnimationFrame(() => {
             if (overlay) {
-                overlay.style.background = 'rgba(0,0,0,0.55)';
+                overlay.style.opacity = '1';
             }
             if (modal) {
                 modal.style.opacity = '1';
@@ -296,7 +297,7 @@ export async function openUI() {
             }
         });
     } else {
-        overlay.style.background = 'rgba(0,0,0,0.55)';
+        overlay.style.opacity = '1';
     }
 
     try {
@@ -331,7 +332,8 @@ export function closeUI() {
         const animStyle = state.snapshotModalAnimation || 'slide';
 
         if (animStyle !== 'none') {
-            overlay.style.background = 'rgba(0,0,0,0)';
+            overlay.style.transition = 'opacity 0.2s ease-out';
+            overlay.style.opacity = '0';
             if (modal) {
                 modal.style.opacity = '0';
                 if (animStyle === 'scale') {
@@ -360,7 +362,7 @@ export function closeUI() {
                 if (targetOverlay && targetOverlay.parentNode) {
                     targetOverlay.remove();
                 }
-            }, 250);
+            }, 200);
         } else {
             overlay.remove();
             overlay = null;
