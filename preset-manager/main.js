@@ -32,7 +32,7 @@ export function invalidatePresetsCache() { _presetsLastFetch = 0; }
 
 export function applyAvoidStatusbar() {
     try {
-        const avoid = UiStateManager.get().avoidStatusbar === true;
+        const avoid = UiStateManager.get().avoidStatusbar !== false;
         if (avoid) {
             $('body').addClass('zero-avoid-statusbar');
         } else {
@@ -774,6 +774,91 @@ function ensurePanel() {
                             </div>
                         </div>
                     </div>
+
+                    <!-- 5. 使用教程 (折叠) -->
+                    <div class="zero-settings-section" style="
+                        display: flex;
+                        flex-direction: column;
+                        background: rgba(255, 255, 255, 0.03);
+                        border: 1px solid var(--SmartThemeBorderColor, #444);
+                        border-radius: 10px;
+                        overflow: hidden;
+                    ">
+                        <div class="zero-settings-header interactable" id="zero-settings-tutorial-toggle" style="
+                            display: flex;
+                            align-items: center;
+                            justify-content: space-between;
+                            padding: 14px;
+                            cursor: pointer;
+                            user-select: none;
+                        ">
+                            <div style="font-weight: bold; font-size: 14px; display: flex; align-items: center; gap: 6px;">
+                                <i class="fa-solid fa-book" style="color: var(--SmartThemeQuoteColor);"></i> 使用教程
+                            </div>
+                            <i class="fa-solid fa-chevron-right zero-settings-chevron" style="transition: transform 0.15s; font-size: 12px; opacity: 0.7;"></i>
+                        </div>
+                        <div class="zero-settings-body" id="zero-settings-tutorial-body" style="
+                            display: none;
+                            flex-direction: column;
+                            gap: 16px;
+                            padding: 0 14px 14px 14px;
+                        ">
+                            <!-- 1. 快照与相机栏 -->
+                            <div style="border-bottom: 1px dashed rgba(255,255,255,0.06); padding-bottom: 12px;">
+                                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                                    <i class="fa-solid fa-camera" style="color: var(--SmartThemeQuoteColor); font-size: 14px;"></i>
+                                    <strong style="font-size: 13px; color: var(--SmartThemeBodyColor);">快照与相机浮窗</strong>
+                                </div>
+                                <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.5; padding-left: 22px;">
+                                    点击顶部/侧边 QR 栏的相机图标，即可弹出快照管理面板。支持一键创建快照、精准还原特定历史状态，并提供分组管理与隐藏功能，方便您快速切换条目状态。
+                                </span>
+                            </div>
+
+                            <!-- 2. 对照模块 -->
+                            <div style="border-bottom: 1px dashed rgba(255,255,255,0.06); padding-bottom: 12px;">
+                                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                                    <i class="fa-solid fa-code-compare" style="color: var(--SmartThemeQuoteColor); font-size: 14px;"></i>
+                                    <strong style="font-size: 13px; color: var(--SmartThemeBodyColor);">差异对照 (Contrast)</strong>
+                                </div>
+                                <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.5; padding-left: 22px;">
+                                    在预设管理器中选择「对照」页，可以对两个预设的 Prompt 块进行多维度比对。支持直观的高亮 Diff 视图展示，并允许一键将单个条目的改动、新增或缺失同步到另一方。
+                                </span>
+                            </div>
+
+                            <!-- 3. 缝合模块 -->
+                            <div style="border-bottom: 1px dashed rgba(255,255,255,0.06); padding-bottom: 12px;">
+                                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                                    <i class="fa-solid fa-scissors" style="color: var(--SmartThemeQuoteColor); font-size: 14px;"></i>
+                                    <strong style="font-size: 13px; color: var(--SmartThemeBodyColor);">预设缝合 (Stitch)</strong>
+                                </div>
+                                <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.5; padding-left: 22px;">
+                                    「缝合」模块用于灵活搬运条目。您可以将源预设 A 中的多个 Prompt 块拖拽排序或一键复制导入目标预设 B。内置了批量选择、连选、批量收藏和批量删除功能。
+                                </span>
+                            </div>
+
+                            <!-- 4. 自查模块 -->
+                            <div style="border-bottom: 1px dashed rgba(255,255,255,0.06); padding-bottom: 12px;">
+                                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                                    <i class="fa-solid fa-circle-check" style="color: var(--SmartThemeQuoteColor); font-size: 14px;"></i>
+                                    <strong style="font-size: 13px; color: var(--SmartThemeBodyColor);">合规自查 (Checker)</strong>
+                                </div>
+                                <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.5; padding-left: 22px;">
+                                    使用「自查」模块对指定预设进行静态检查。自动识别宏语法损坏（如 <code>{{}}</code> 缺失）、Token 超限风险、拼写或敏感占位符等问题，帮助您在运行前排查潜在故障。
+                                </span>
+                            </div>
+
+                            <!-- 5. 批量管理 -->
+                            <div>
+                                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                                    <i class="fa-solid fa-list-check" style="color: var(--SmartThemeQuoteColor); font-size: 14px;"></i>
+                                    <strong style="font-size: 13px; color: var(--SmartThemeBodyColor);">批量管理与备份 (Manage)</strong>
+                                </div>
+                                <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.5; padding-left: 22px;">
+                                    「管理」模块支持批量的预设 JSON 文件导入及删除。无需逐个手动设置，轻松同步外部他人的高级预设，并与原生预设下拉菜单无缝联动。
+                                </span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1017,6 +1102,19 @@ function ensurePanel() {
 
     $('body').off('click', '#zero-settings-ui-toggle').on('click', '#zero-settings-ui-toggle', function() {
         const $body = $('#zero-settings-ui-body');
+        const $chevron = $(this).find('.zero-settings-chevron');
+        $body.slideToggle(150, function() {
+            if ($body.is(':visible')) {
+                $body.css('display', 'flex');
+                $chevron.addClass('expanded');
+            } else {
+                $chevron.removeClass('expanded');
+            }
+        });
+    });
+
+    $('body').off('click', '#zero-settings-tutorial-toggle').on('click', '#zero-settings-tutorial-toggle', function() {
+        const $body = $('#zero-settings-tutorial-body');
         const $chevron = $(this).find('.zero-settings-chevron');
         $body.slideToggle(150, function() {
             if ($body.is(':visible')) {
@@ -1743,7 +1841,7 @@ export function renderSettingsTab() {
 
     // UI switches
     $('#zero-setting-ui-search-anim').prop('checked', state.searchBarAnimation !== false);
-    $('#zero-setting-ui-avoid-statusbar').prop('checked', state.avoidStatusbar === true);
+    $('#zero-setting-ui-avoid-statusbar').prop('checked', state.avoidStatusbar !== false);
     $('#zero-setting-migrate-compare').prop('checked', state.migrateContentCompare !== false);
 
     // Tab Bar switches
