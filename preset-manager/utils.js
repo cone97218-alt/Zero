@@ -391,7 +391,7 @@ async function saveToFavoritePreset(presetName, prompts, isNewPreset = false, or
         // Check if we can skip native list update and avoid triggering selection changes
         const activeName = pm.getSelectedPresetName();
         const skipUpdate = activeName !== presetName;
-        await pm.savePreset(presetName, presetData, { skipUpdate });
+        await savePresetWithoutRegexToast(pm, presetName, presetData, { skipUpdate });
 
         if (isNewPreset) {
             const { presets, preset_names } = pm.getPresetList();
@@ -431,5 +431,33 @@ async function saveToFavoritePreset(presetName, prompts, isNewPreset = false, or
     } catch (e) {
         console.error('[Zero] saveToFavoritePreset failed:', e);
         toastr.error('保存至收藏夹失败');
+    }
+}
+
+export async function savePresetWithoutRegexToast(pm, presetName, presetData, options = {}) {
+    const originalToastInfo = window.toastr ? window.toastr.info : null;
+    if (originalToastInfo) {
+        window.toastr.info = function (message, title, ...args) {
+            if (title && (title.includes('contains enabled regex') || title.includes('包含已启用正则') || title.includes('regex') || title.includes('正则'))) {
+                console.log('[Zero] Suppressed regex warning toast:', title);
+                return;
+            }
+            return originalToastInfo.call(window.toastr, message, title, ...args);
+        };
+    }
+    try {
+        if (options.loadOnly) {
+            if (typeof pm.loadPreset === 'function') {
+                await pm.loadPreset(presetName);
+            }
+        } else {
+            await pm.savePreset(presetName, presetData, options);
+        }
+    } finally {
+        if (originalToastInfo) {
+            setTimeout(() => {
+                if (window.toastr) window.toastr.info = originalToastInfo;
+            }, 100);
+        }
     }
 }

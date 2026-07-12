@@ -1,4 +1,4 @@
-import { getPresetPrompts, escapeHtml, debounce } from './utils.js';
+import { getPresetPrompts, escapeHtml, debounce, savePresetWithoutRegexToast } from './utils.js';
 import { HistoryManager, UiStateManager, GroupManager } from '../qr-snapshot/state.js';
 import { matchStitch, highlightText as highlightTextUtil } from '../qr-snapshot/search-util.js';
 
@@ -369,9 +369,9 @@ export async function performStitch(itemsA, targetName, position) {
         }
 
         const isActive = pm.getSelectedPresetName() === targetName;
-        pm.savePreset(targetName, targetPreset, { skipUpdate: !isActive }).then(() => {
+        savePresetWithoutRegexToast(pm, targetName, targetPreset, { skipUpdate: !isActive }).then(() => {
             if (isActive && typeof pm.loadPreset === 'function') {
-                return pm.loadPreset(targetName);
+                return savePresetWithoutRegexToast(pm, targetName, null, { loadOnly: true });
             }
         }).catch(err => {
             console.error('[Zero] Background save/load failed in performStitch:', err);
@@ -447,9 +447,9 @@ export async function performMove(itemsA, presetName, position) {
         }
 
         const isActive = pm.getSelectedPresetName() === presetName;
-        pm.savePreset(presetName, preset, { skipUpdate: !isActive }).then(() => {
+        savePresetWithoutRegexToast(pm, presetName, preset, { skipUpdate: !isActive }).then(() => {
             if (isActive && typeof pm.loadPreset === 'function') {
-                return pm.loadPreset(presetName);
+                return savePresetWithoutRegexToast(pm, presetName, null, { loadOnly: true });
             }
         }).catch(err => {
             console.error('[Zero] Background save/load failed in performMove:', err);
@@ -513,9 +513,9 @@ export async function performBatchDelete(items, presetName) {
         _cachedStitchPrompts = _cachedStitchPrompts.filter(p => !idsToRemove.includes(p.identifier));
         renderStitchList(false);
 
-        manager.savePreset(presetName, preset, { skipUpdate: !isActive }).then(() => {
+        savePresetWithoutRegexToast(manager, presetName, preset, { skipUpdate: !isActive }).then(() => {
             if (isActive && typeof manager.loadPreset === 'function') {
-                return manager.loadPreset(presetName);
+                return savePresetWithoutRegexToast(manager, presetName, null, { loadOnly: true });
             }
         }).catch(err => {
             console.error('[Zero] Background save/load failed in performBatchDelete:', err);
@@ -591,9 +591,9 @@ export async function performSingleClone(item, presetName) {
         }
         renderStitchList(false);
 
-        manager.savePreset(presetName, preset, { skipUpdate: !isActive }).then(() => {
+        savePresetWithoutRegexToast(manager, presetName, preset, { skipUpdate: !isActive }).then(() => {
             if (isActive && typeof manager.loadPreset === 'function') {
-                return manager.loadPreset(presetName);
+                return savePresetWithoutRegexToast(manager, presetName, null, { loadOnly: true });
             }
         }).catch(err => {
             console.error('[Zero] Background save/load failed in performSingleClone:', err);

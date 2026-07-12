@@ -1,4 +1,4 @@
-import { escapeHtml } from './utils.js';
+import { escapeHtml, savePresetWithoutRegexToast } from './utils.js';
 import { Checker } from './checker.js';
 import { GroupManager, HistoryManager } from '../qr-snapshot/state.js';
 
@@ -416,7 +416,7 @@ export async function openQuickEditor(presetName, itemName) {
             }
 
             const isActive = pm.getSelectedPresetName() === presetName;
-            pm.savePreset(presetName, preset, { skipUpdate: !isActive }).catch(err => {
+            savePresetWithoutRegexToast(pm, presetName, preset, { skipUpdate: !isActive }).catch(err => {
                 console.error('[Zero] Background save failed:', err);
                 toastr.error('背景保存失败');
             });

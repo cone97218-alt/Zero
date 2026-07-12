@@ -3067,7 +3067,10 @@ async function openNativeEditor(identifier) {
         promptManager.clearInspectForm();
         promptManager.loadPromptIntoEditForm(prompt);
         
-        if (overlay) overlay.style.display = 'none';
+        if (overlay) {
+            overlay.style.opacity = '0';
+            overlay.style.pointerEvents = 'none';
+        }
         promptManager.showPopup();
 
         const popupId = promptManager.configuration.prefix + 'prompt_manager_popup';
@@ -3077,34 +3080,44 @@ async function openNativeEditor(identifier) {
                 // React instantly when the closing animation starts (openDrawer class removed)
                 if (!popup.classList.contains('openDrawer')) {
                     observer.disconnect();
-                    if (overlay) {
-                        overlay.style.display = 'flex';
-                        try {
-                            const p = await PresetManager.load();
-                            if (p) {
-                                const panel = overlay.querySelector('.zero-panel.active');
-                                if (panel) {
-                                    const activeTab = UiStateManager.get().activeTab || 'entries';
-                                    if (activeTab === 'editor') {
-                                        renderEditor(panel, p, overlay.querySelector('.zero-modal'));
-                                    } else if (activeTab === 'entries') {
-                                        renderEntries(panel, p, overlay.querySelector('.zero-modal'));
+                    // Wait 250ms for native slideUp closing animation to fully finish before restoring and re-rendering list
+                    setTimeout(async () => {
+                        if (overlay) {
+                            overlay.style.opacity = '1';
+                            overlay.style.pointerEvents = 'auto';
+                            try {
+                                const p = await PresetManager.load();
+                                if (p) {
+                                    const panel = overlay.querySelector('.zero-panel.active');
+                                    if (panel) {
+                                        const activeTab = UiStateManager.get().activeTab || 'entries';
+                                        if (activeTab === 'editor') {
+                                            renderEditor(panel, p, overlay.querySelector('.zero-modal'));
+                                        } else if (activeTab === 'entries') {
+                                            renderEntries(panel, p, overlay.querySelector('.zero-modal'));
+                                        }
                                     }
                                 }
-                            }
-                        } catch (err) { console.error('[Zero] reload after native edit:', err); }
-                    }
+                            } catch (err) { console.error('[Zero] reload after native edit:', err); }
+                        }
+                    }, 250);
                 }
             });
             observer.observe(popup, { attributes: true, attributeFilter: ['class'] });
         } else {
             console.warn('[Zero] Could not find native popup:', popupId);
-            if (overlay) overlay.style.display = 'flex';
+            if (overlay) {
+                overlay.style.opacity = '1';
+                overlay.style.pointerEvents = 'auto';
+            }
         }
     } catch (e) {
         console.error('[Zero] openNativeEditor failed:', e);
         toastr.error('无法打开编辑器');
-        if (overlay) overlay.style.display = 'flex';
+        if (overlay) {
+            overlay.style.opacity = '1';
+            overlay.style.pointerEvents = 'auto';
+        }
     }
 }
 
