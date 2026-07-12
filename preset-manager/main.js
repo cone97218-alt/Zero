@@ -22,7 +22,7 @@ export const renderedTabs = new Set();
 // ── 预设列表缓存（避免切 Tab 重复拉取）──────────────────────────────────────
 let _presetsListCache = null;
 let _presetsLastFetch  = 0;
-const PRESETS_CACHE_TTL = 8000; // 8 秒内跳过重复拉取
+const PRESETS_CACHE_TTL = 60000; // 60 秒内跳过重复拉取
 
 // ui-manage.js 写操作完成后，通过事件通知缓存失效
 window.addEventListener('zero-presets-list-changed', () => { _presetsLastFetch = 0; });
@@ -58,18 +58,21 @@ async function loadModules() {
 const PANEL_ID = 'zero-preset-manager-panel';
 const BTN_ID = 'zero-preset-manager-btn';
 
+export async function getPresetsList(forceRefresh = false) {
+    const now = Date.now();
+    if (!forceRefresh && _presetsListCache && (now - _presetsLastFetch) < PRESETS_CACHE_TTL) {
+        return _presetsListCache;
+    }
+    PresetManager.invalidate();
+    const list = await PresetManager.listNames();
+    _presetsListCache = list;
+    _presetsLastFetch = now;
+    return list;
+}
+
 export async function populatePresetSelects() {
     try {
-        const now = Date.now();
-        let list;
-        if (_presetsListCache && (now - _presetsLastFetch) < PRESETS_CACHE_TTL) {
-            list = _presetsListCache; // 命中缓存，跳过网络请求
-        } else {
-            PresetManager.invalidate();
-            list = await PresetManager.listNames();
-            _presetsListCache = list;
-            _presetsLastFetch = now;
-        }
+        const list = await getPresetsList();
         const $selectA = $('#contrast-preset-a');
         const $selectB = $('#contrast-preset-b');
         const $stitchA = $('#stitch-preset-source');
@@ -1754,6 +1757,7 @@ function ensurePanel() {
 
 export async function showPanel() {
     renderedTabs.clear(); // Clear rendering cache on open to force fresh data load
+    _presetsLastFetch = 0; // Force cache invalidation so the initial tab load is fresh
     await loadModules();
     ensurePanel();
     applyTabSettings();
@@ -1767,11 +1771,11 @@ export async function showPanel() {
     $panel[0].offsetHeight;
     $panel.css('opacity', '1');
 
-    // Defer heavy tab rendering to a macro-task so the panel open transition runs smoothly first
+    // Defer heavy tab rendering to a macro-task after the panel opacity transition completes smoothly
     setTimeout(() => {
         const lastTab = localStorage.getItem('zero_last_main_tab') || 'contrast';
         $(`#${PANEL_ID} .zero-tab-link[data-tab="${lastTab}"]`).click();
-    }, 50);
+    }, 200);
 }
 
 export function closePanel() {
@@ -1809,6 +1813,11 @@ export function injectExtensionButton() {
 export function init() {
     injectExtensionButton();
     applyAvoidStatusbar();
+    
+    // Stop event bubbling for typing events on all Zero inputs/textareas to prevent SillyTavern's heavy global key/input listeners from lagging mobile devices
+    $('body').on('keydown keyup keypress input', '#zero-preset-manager-panel input, #zero-preset-manager-panel textarea, #zero-quick-editor input, #zero-quick-editor textarea', function(e) {
+        e.stopPropagation();
+    });
     
     // Background preloading of UI modules to eliminate lag on first open
     setTimeout(() => {

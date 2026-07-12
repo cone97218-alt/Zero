@@ -1,14 +1,13 @@
 import { PresetManager, HistoryManager } from '../qr-snapshot/state.js';
 import { escapeHtml, refreshNativePresetManager } from './utils.js';
-import { populatePresetSelects } from './main.js';
+import { populatePresetSelects, getPresetsList } from './main.js';
 
 export async function renderManageTab() {
     const $list = $('#manage-preset-list');
     $list.html('<p style="text-align: center; padding: 20px;"><i class="fa-solid fa-spinner fa-spin"></i> 加载中...</p>');
 
     try {
-        PresetManager.invalidate();
-        const list = await PresetManager.listNames();
+        const list = await getPresetsList();
         const activeName = list.active;
         
         $list.empty();

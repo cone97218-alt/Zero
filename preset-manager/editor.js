@@ -101,7 +101,7 @@ export async function openQuickEditor(presetName, itemName) {
 
             <!-- Content Area (Main Focus) -->
             <div style="flex: 1; display: flex; flex-direction: column; gap: 10px; overflow: hidden;">
-                <textarea id="quick-edit-content" class="zero-quick-textarea" spellcheck="false" autocomplete="off" style="flex: 1; background: var(--SmartThemeChatTintColor, rgba(255,255,255,0.05)); border: 1px solid var(--SmartThemeBorderColor); color: var(--SmartThemeBodyColor); padding: 20px; border-radius: 12px; font-family: 'Consolas', 'Monaco', monospace; font-size: 15px; resize: none; outline: none; line-height: 1.6; box-shadow: inset 0 2px 10px rgba(0,0,0,0.2);">${escapeHtml(prompt.content)}</textarea>
+                <textarea id="quick-edit-content" class="zero-quick-textarea" spellcheck="false" autocomplete="off" style="flex: 1; background: var(--SmartThemeChatTintColor, rgba(255,255,255,0.05)); border: 1px solid var(--SmartThemeBorderColor); color: var(--SmartThemeBodyColor); padding: 20px; border-radius: 12px; font-family: 'Consolas', 'Monaco', monospace; font-size: 15px; resize: none; outline: none; line-height: 1.6; box-shadow: none;">${escapeHtml(prompt.content)}</textarea>
                 
                 <!-- Quick Phrases Section -->
                 <div id="quick-phrases-section" style="background: rgba(255,255,255,0.01); border: 1px solid var(--SmartThemeBorderColor); border-radius: 12px; padding: 12px; flex-shrink: 0;">
@@ -133,7 +133,7 @@ export async function openQuickEditor(presetName, itemName) {
 
             <!-- Save Action Button -->
             <div style="margin-top: 15px; display: flex; gap: 12px; flex-shrink: 0;">
-                <button id="save-quick-edit" class="interactable" style="flex: 3; padding: 10px; background: var(--SmartThemeQuoteColor); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 13px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">保存并刷新</button>
+                <button id="save-quick-edit" class="interactable" style="flex: 3; padding: 10px; background: var(--SmartThemeQuoteColor); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 13px; box-shadow: none;">保存并刷新</button>
                 <button id="fav-quick-edit" class="interactable" style="flex: 1; padding: 10px; background: rgba(255, 255, 255, 0.05); color: var(--SmartThemeQuoteColor); border: 1px solid var(--SmartThemeQuoteColor); border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 6px;"><i class="fa-solid fa-star"></i> 收藏</button>
             </div>
         </div>
@@ -416,7 +416,10 @@ export async function openQuickEditor(presetName, itemName) {
             }
 
             const isActive = pm.getSelectedPresetName() === presetName;
-            await pm.savePreset(presetName, preset, { skipUpdate: !isActive });
+            pm.savePreset(presetName, preset, { skipUpdate: !isActive }).catch(err => {
+                console.error('[Zero] Background save failed:', err);
+                toastr.error('背景保存失败');
+            });
             
             closeEditor();
             
@@ -425,7 +428,7 @@ export async function openQuickEditor(presetName, itemName) {
                 Checker.render('check-results-container', presetName);
             } else if ($('#zero-tab-stitch').is(':visible')) {
                 const { renderStitchList } = await import('./stitch.js');
-                await renderStitchList();
+                await renderStitchList(false);
             } else if ($('#zero-tab-contrast').is(':visible')) {
                 if ($('#comparison-overlay').is(':visible')) {
                     // Details overlay is open, it will refresh itself via the event listener

@@ -105,7 +105,7 @@ export const Checker = {
             const hasSet = data.set.length > 0;
             const hasGet = data.get.length > 0;
 
-            const isProblem = !hasInit || !hasSet || !hasGet || data.init.length > 1;
+            const isProblem = !hasSet || !hasGet || data.init.length > 1;
 
             const varResult = {
                 name,
@@ -466,11 +466,24 @@ export const Checker = {
     },
 
     buildVariableRow(v, presetName) {
+        const initBg = v.hasInit ? 'var(--SmartThemeQuoteColor)' : 'var(--SmartThemeBorderColor)';
+        const initColor = v.hasInit ? 'white' : 'var(--SmartThemeBodyColor)';
+        const initOpacity = v.hasInit ? '1' : '0.8';
+        const initText = v.hasInit ? `初始化${v.initCount > 1 ? ` (${v.initCount}!)` : ''}` : '初始化 (可选)';
+
+        const setBg = v.hasSet ? '#44aa44' : '#aa4444';
+        const setOpacity = v.hasSet ? '1' : '0.8';
+        const setText = v.hasSet ? `内容设置 (${v.setCount})` : '未设置内容';
+
+        const getBg = v.hasGet ? '#44aa44' : '#aa4444';
+        const getOpacity = v.hasGet ? '1' : '0.8';
+        const getText = v.hasGet ? `变量读取 (${v.getCount})` : '未读取';
+
         const statusHtml = `
             <div style="display: flex; gap: 4px; margin-top: 6px;">
-                <span style="font-size: 10px; padding: 2px 5px; border-radius: 3px; background: ${v.hasInit ? '#44aa44' : '#aa4444'}; color: white; opacity: ${v.hasInit ? '1' : '0.5'}">初始化 ${v.initCount > 1 ? `(${v.initCount}!)` : ''}</span>
-                <span style="font-size: 10px; padding: 2px 5px; border-radius: 3px; background: ${v.hasSet ? '#44aa44' : '#aa4444'}; color: white; opacity: ${v.hasSet ? '1' : '0.5'}">内容设置 (${v.setCount})</span>
-                <span style="font-size: 10px; padding: 2px 5px; border-radius: 3px; background: ${v.hasGet ? '#44aa44' : '#aa4444'}; color: white; opacity: ${v.hasGet ? '1' : '0.5'}">变量读取 (${v.getCount})</span>
+                <span style="font-size: 10px; padding: 2px 5px; border-radius: 3px; background: ${initBg}; color: ${initColor}; opacity: ${initOpacity}">${initText}</span>
+                <span style="font-size: 10px; padding: 2px 5px; border-radius: 3px; background: ${setBg}; color: white; opacity: ${setOpacity}">${setText}</span>
+                <span style="font-size: 10px; padding: 2px 5px; border-radius: 3px; background: ${getBg}; color: white; opacity: ${getOpacity}">${getText}</span>
             </div>
         `;
 

@@ -354,7 +354,13 @@ export async function performStitch(itemsA, targetName, position) {
         }
 
         const isActive = pm.getSelectedPresetName() === targetName;
-        await pm.savePreset(targetName, targetPreset, { skipUpdate: !isActive });
+        pm.savePreset(targetName, targetPreset, { skipUpdate: !isActive }).then(() => {
+            if (isActive && typeof pm.loadPreset === 'function') {
+                return pm.loadPreset(targetName);
+            }
+        }).catch(err => {
+            console.error('[Zero] Background save/load failed in performStitch:', err);
+        });
         if (UiStateManager.get().toastOnPresetStitch === true) {
             toastr.success(`成功缝合至预设「${targetName}」`);
         }
@@ -426,14 +432,16 @@ export async function performMove(itemsA, presetName, position) {
         }
 
         const isActive = pm.getSelectedPresetName() === presetName;
-        await pm.savePreset(presetName, preset, { skipUpdate: !isActive });
+        pm.savePreset(presetName, preset, { skipUpdate: !isActive }).then(() => {
+            if (isActive && typeof pm.loadPreset === 'function') {
+                return pm.loadPreset(presetName);
+            }
+        }).catch(err => {
+            console.error('[Zero] Background save/load failed in performMove:', err);
+        });
         
         _cachedStitchPrompts = await getPresetPrompts(presetName);
         renderStitchList(false);
-
-        if (isActive && typeof pm.loadPreset === 'function') {
-            await pm.loadPreset(presetName);
-        }
     } catch (err) {
         console.error('[Zero] Perform move failed:', err);
         toastr.error('移动失败');
@@ -490,11 +498,13 @@ export async function performBatchDelete(items, presetName) {
         _cachedStitchPrompts = _cachedStitchPrompts.filter(p => !idsToRemove.includes(p.identifier));
         renderStitchList(false);
 
-        await manager.savePreset(presetName, preset, { skipUpdate: !isActive });
-        
-        if (isActive && typeof manager.loadPreset === 'function') {
-            await manager.loadPreset(presetName);
-        }
+        manager.savePreset(presetName, preset, { skipUpdate: !isActive }).then(() => {
+            if (isActive && typeof manager.loadPreset === 'function') {
+                return manager.loadPreset(presetName);
+            }
+        }).catch(err => {
+            console.error('[Zero] Background save/load failed in performBatchDelete:', err);
+        });
     } catch (err) {
         console.error('[Zero] Batch delete failed:', err);
         toastr.error('删除失败: ' + err.message);
@@ -558,11 +568,13 @@ export async function performSingleClone(item, presetName) {
         }
         renderStitchList(false);
 
-        await manager.savePreset(presetName, preset, { skipUpdate: !isActive });
-        
-        if (isActive && typeof manager.loadPreset === 'function') {
-            await manager.loadPreset(presetName);
-        }
+        manager.savePreset(presetName, preset, { skipUpdate: !isActive }).then(() => {
+            if (isActive && typeof manager.loadPreset === 'function') {
+                return manager.loadPreset(presetName);
+            }
+        }).catch(err => {
+            console.error('[Zero] Background save/load failed in performSingleClone:', err);
+        });
     } catch (err) {
         console.error('[Zero] Single clone failed:', err);
         toastr.error('复制失败: ' + err.message);
