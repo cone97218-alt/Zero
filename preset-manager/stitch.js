@@ -1,5 +1,5 @@
 import { getPresetPrompts, escapeHtml, debounce } from './utils.js';
-import { HistoryManager, UiStateManager } from '../qr-snapshot/state.js';
+import { HistoryManager, UiStateManager, GroupManager } from '../qr-snapshot/state.js';
 import { matchStitch, highlightText as highlightTextUtil } from '../qr-snapshot/search-util.js';
 
 export let stitch_batch_mode = false;
@@ -333,11 +333,26 @@ export async function performStitch(itemsA, targetName, position) {
         }
 
         const clones = [];
+        const sourcePresetName = $('#stitch-preset-source').val();
         for (const itemA of items) {
             const cloneA = JSON.parse(JSON.stringify(itemA));
             cloneA.identifier = 'system_prompt_' + Date.now() + Math.floor(Math.random() * 1000) + '_' + Math.floor(Math.random() * 1000); 
             targetPreset.prompts.push(cloneA);
             clones.push({ identifier: cloneA.identifier, enabled: false });
+
+            // Inherit original item's group
+            if (sourcePresetName && sourcePresetName !== targetName) {
+                const srcGroups = GroupManager.get(sourcePresetName);
+                const tgtGroups = GroupManager.get(targetName);
+                const srcGroup = srcGroups.find(g => g.ids.includes(itemA.identifier));
+                if (srcGroup) {
+                    let tgtGroup = tgtGroups.find(g => g.name === srcGroup.name);
+                    if (!tgtGroup) {
+                        tgtGroup = GroupManager.create(targetName, srcGroup.name);
+                    }
+                    GroupManager.assign(targetName, tgtGroup.id, [cloneA.identifier]);
+                }
+            }
         }
 
         if (position === 'top') {
@@ -524,11 +539,19 @@ export async function performSingleClone(item, presetName) {
         const clone = JSON.parse(JSON.stringify(item));
         clone.identifier = newId;
         clone.name = (clone.name || clone.identifier) + ' (副本)';
+        clone.enabled = false;
         
         if (Array.isArray(preset.prompts)) {
             preset.prompts.push(clone);
         } else if (preset.prompts && typeof preset.prompts === 'object') {
             preset.prompts[newId] = clone;
+        }
+
+        // Inherit original item's group
+        const groups = GroupManager.get(presetName);
+        const originalGroup = groups.find(g => g.ids.includes(originalId));
+        if (originalGroup) {
+            GroupManager.assign(presetName, originalGroup.id, [newId]);
         }
 
         if (preset.prompt_order) {
@@ -538,7 +561,7 @@ export async function performSingleClone(item, presetName) {
                     return id === originalId;
                 });
                 if (idx !== -1) {
-                    const newItem = (order[0] && typeof order[0] === 'object') ? { identifier: newId, enabled: true } : newId;
+                    const newItem = (order[0] && typeof order[0] === 'object') ? { identifier: newId, enabled: false } : newId;
                     order.splice(idx + 1, 0, newItem);
                 }
             };

@@ -1213,7 +1213,7 @@ function showMultiSelectBar(modal, panel, preset) {
     const countEl = h('span', { class: 'zero-ms-count', text: `已选 ${msSelected.size}` });
     msBar = h('div', { class: 'zero-multiselect-bar' },
         countEl,
-        h('button', { class: 'zero-btn', html: '<i class="fa-solid fa-check-double"></i> 全选', onclick: () => {
+        h('button', { class: 'zero-btn', title: '全选', html: '<i class="fa-solid fa-check-double"></i>', onclick: () => {
             panel.querySelectorAll('.zero-group-inner').forEach(inner => {
                 if (!inner.hasChildNodes()) {
                     const groupEl = inner.closest('.zero-group');
@@ -1233,8 +1233,56 @@ function showMultiSelectBar(modal, panel, preset) {
             });
             updateMultiSelectBar();
         }}),
-        h('button', { class: 'zero-btn primary', html: '<i class="fa-solid fa-folder"></i> 分到组', onclick: () => showBatchGroupAssign(modal, panel, preset) }),
-        h('button', { class: 'zero-btn', html: '<i class="fa-solid fa-xmark"></i> 退出', onclick: exitMultiSelect })
+        h('button', { class: 'zero-btn', title: '连选', html: '<i class="fa-solid fa-arrows-up-down"></i>', onclick: () => {
+            const selectedIds = Array.from(msSelected);
+            if (selectedIds.length < 2) {
+                toastr.info('请先选择两个条目作为起点和终点');
+                return;
+            }
+            const allEntries = Array.from(panel.querySelectorAll('.zero-entry[data-id]'));
+            const indices = selectedIds.map(id => allEntries.findIndex(el => el.dataset.id === id)).filter(idx => idx !== -1);
+            if (indices.length < 2) return;
+            const minIdx = Math.min(...indices);
+            const maxIdx = Math.max(...indices);
+            for (let i = minIdx; i <= maxIdx; i++) {
+                const el = allEntries[i];
+                const id = el.dataset.id;
+                if (!msSelected.has(id)) {
+                    msSelected.add(id);
+                    el.classList.add('selected');
+                    const ic = el.querySelector('.zero-sel-check');
+                    if (ic) ic.innerHTML = '<i class="fa-solid fa-circle-check"></i>';
+                }
+            }
+            updateMultiSelectBar();
+        }}),
+        h('button', { class: 'zero-btn', title: '反选', html: '<i class="fa-solid fa-right-left"></i>', onclick: () => {
+            panel.querySelectorAll('.zero-group-inner').forEach(inner => {
+                if (!inner.hasChildNodes()) {
+                    const groupEl = inner.closest('.zero-group');
+                    const gid = groupEl.dataset.gid;
+                    const members = _groupMemberMap.get(gid) || [];
+                    inner.innerHTML = members.map(entryHTML).join('');
+                }
+            });
+            panel.querySelectorAll('.zero-entry[data-id]').forEach(el => {
+                const id = el.dataset.id;
+                const ic = el.querySelector('.zero-sel-check');
+                if (msSelected.has(id)) {
+                    msSelected.delete(id);
+                    el.classList.remove('selected');
+                    if (ic) ic.innerHTML = '<i class="fa-solid fa-circle"></i>';
+                } else {
+                    msSelected.add(id);
+                    el.classList.add('selected');
+                    if (ic) ic.innerHTML = '<i class="fa-solid fa-circle-check"></i>';
+                }
+            });
+            updateMultiSelectBar();
+            if (msSelected.size === 0) exitMultiSelect();
+        }}),
+        h('button', { class: 'zero-btn primary', title: '分组', html: '<i class="fa-solid fa-folder"></i>', onclick: () => showBatchGroupAssign(modal, panel, preset) }),
+        h('button', { class: 'zero-btn', title: '退出', html: '<i class="fa-solid fa-xmark"></i>', onclick: exitMultiSelect })
     );
     modal.appendChild(msBar);
 }
@@ -1248,26 +1296,45 @@ function updateMultiSelectBar() {
 function showBatchGroupAssign(modal, panel, preset) {
     const pName = preset.name;
     const groups = GroupManager.get(pName);
-    if (groups.length === 0) { toastr.info('请先创建分组'); return; }
     if (msSelected.size === 0) { toastr.info('未选择任何条目'); return; }
 
     const menuBox = h('div', { class: 'zero-confirm' });
     const menuContent = h('div', { class: 'zero-confirm-box zero-menu-box' },
-        h('div', { class: 'zero-confirm-msg', text: `将 ${msSelected.size} 个条目分到…` })
+        h('div', { class: 'zero-confirm-msg', text: `对 ${msSelected.size} 个条目进行分组操作：` })
     );
-    groups.forEach(g => {
-        menuContent.appendChild(h('button', {
-            class: 'zero-menu-item',
-            html: `<i class="fa-solid fa-folder"></i> ${g.name}`,
-            onclick: () => {
-                const count = msSelected.size;
-                GroupManager.assign(pName, g.id, Array.from(msSelected));
-                menuBox.remove();
-                exitMultiSelect();
-                renderEntries(panel, preset, modal);
-            }
-        }));
-    });
+    
+    // 从分组中清除选项
+    menuContent.appendChild(h('button', {
+        class: 'zero-menu-item',
+        style: 'color: #ff5f5f; border-bottom: 1px solid rgba(255,255,255,0.05); margin-bottom: 6px; padding-bottom: 8px;',
+        html: `<i class="fa-solid fa-right-from-bracket"></i> 从当前所有分组中清空/移出`,
+        onclick: () => {
+            Array.from(msSelected).forEach(id => {
+                GroupManager.unassign(pName, id);
+            });
+            menuBox.remove();
+            exitMultiSelect();
+            renderEntries(panel, preset, modal);
+        }
+    }));
+
+    if (groups.length === 0) {
+        menuContent.appendChild(h('div', { class: 'zero-confirm-msg', style: 'font-size: 11px; opacity: 0.5; margin-top: 10px;', text: '暂无可用分组（请先在快照面板的 XML/分组设置中创建分组）' }));
+    } else {
+        groups.forEach(g => {
+            menuContent.appendChild(h('button', {
+                class: 'zero-menu-item',
+                html: `<i class="fa-solid fa-folder"></i> 移入「${g.name}」`,
+                onclick: () => {
+                    GroupManager.assign(pName, g.id, Array.from(msSelected));
+                    menuBox.remove();
+                    exitMultiSelect();
+                    renderEntries(panel, preset, modal);
+                }
+            }));
+        });
+    }
+
     menuContent.appendChild(h('div', { class: 'zero-confirm-btns', style: 'margin-top:12px' },
         h('button', { class: 'zero-btn', text: '取消', onclick: () => menuBox.remove() })
     ));

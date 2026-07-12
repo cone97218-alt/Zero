@@ -280,6 +280,13 @@ export const Checker = {
             </div>
 
             <div id="check-sub-vars" class="check-sub-content" style="display: none;">
+                ${localStorage.getItem('zero_hide_var_init_tip') === 'true' ? '' : `
+                <div id="check-var-init-tip" style="position: relative; font-size: 11px; line-height: 1.5; padding: 8px 30px 8px 12px; background: rgba(255,170,51,0.05); border: 1px solid rgba(255,170,51,0.3); border-radius: 6px; margin-bottom: 10px; color: var(--SmartThemeBodyColor);">
+                    <i class="fa-solid fa-circle-info" style="color: #ffaa33; margin-right: 6px;"></i>
+                    <strong>提示：</strong>变量没有初始化（Init）也可以正常使用，但可能会造成<strong>变量内容残留</strong>。例如当你关闭了某个设置变量内容的条目后，因没有初始化条目在最前方执行置空，该变量可能无法被及时清空，后续依然能读取到其残留的旧内容。
+                    <i id="close-var-init-tip" class="fa-solid fa-xmark interactable" title="不再提示" style="position: absolute; right: 10px; top: 10px; cursor: pointer; opacity: 0.5; font-size: 12px;"></i>
+                </div>
+                `}
                 <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; padding: 4px;">
                     <div class="var-filter-btn" data-filter="problem" style="padding: 4px 12px; font-size: 11px; border-radius: 14px; cursor: pointer; background: rgba(255,255,255,0.05); color: inherit; border: 1px solid rgba(255,255,255,0.1);">问题变量</div>
                     <div class="var-filter-btn" data-filter="correct" style="padding: 4px 12px; font-size: 11px; border-radius: 14px; cursor: pointer; background: rgba(255,255,255,0.05); color: inherit; border: 1px solid rgba(255,255,255,0.1);">正确变量</div>
@@ -287,7 +294,6 @@ export const Checker = {
                 </div>
                 <div id="vars-list-container"></div>
             </div>
-
             <div id="check-sub-all-entries" class="check-sub-content" style="display: none;">
                 <div style="margin-bottom: 10px; display: flex; flex-direction: column; gap: 6px;">
                     <input type="text" id="check-entry-search" placeholder="搜索条目名称或内容..." style="width: 100%; padding: 4px 8px; background: rgba(0,0,0,0.2); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 4px; font-size: inherit !important;">
@@ -302,6 +308,14 @@ export const Checker = {
         `;
 
         $container.append(summaryHtml);
+
+        // Bind close banner event
+        $('#close-var-init-tip').on('click', function() {
+            localStorage.setItem('zero_hide_var_init_tip', 'true');
+            $('#check-var-init-tip').slideUp(200, function() {
+                $(this).remove();
+            });
+        });
 
         // --- Render XML Issues ---
         const $xmlList = $('#xml-issues-list');
