@@ -1,6 +1,6 @@
 import { getPresetPrompts, escapeHtml, debounce, savePresetWithoutRegexToast } from './utils.js';
 import { openQuickEditor } from './editor.js';
-import { GroupManager, zeroTranslate, HistoryManager } from '../qr-snapshot/state.js';
+import { GroupManager, zeroTranslate, HistoryManager, getStringSimilarityFromInfos, getBigrams } from '../qr-snapshot/state.js';
 import { highlightText as highlightTextUtil } from '../qr-snapshot/search-util.js';
 
 let isRestoringContrastScroll = false;
@@ -189,6 +189,8 @@ export async function performAutoMatch() {
             if (!mapBByName.has(key)) mapBByName.set(key, p);
         });
 
+        const unmatchedA = [];
+
         promptsA.forEach(pA => {
             const idA = pA.identifier;
             let pB = null;
@@ -213,14 +215,98 @@ export async function performAutoMatch() {
                 mapBByName.delete((pB.name || pB.identifier).trim());
                 allItems.push({ idA: pA.identifier, idB: pB.identifier, name: (pA.name || pA.identifier), type: type, a: pA, b: pB });
             } else {
+                unmatchedA.push(pA);
+            }
+        });
+
+        const matchedAIds = new Set();
+        let unmatchedB = promptsB.filter(p => !usedB.has(p.identifier));
+
+        const similarityEnabled = localStorage.getItem('zero_contrast_similarity_enable') === 'true';
+        const similarityThresholdVal = parseFloat(localStorage.getItem('zero_contrast_similarity_threshold') || '80') / 100.0;
+
+        if (similarityEnabled && similarityThresholdVal > 0) {
+            const aInfos = new Map();
+            unmatchedA.forEach(p => {
+                if (typeof p.content === 'string' && p.content.trim()) {
+                    aInfos.set(p.identifier, getBigrams(p.content));
+                }
+            });
+
+            const bInfos = new Map();
+            unmatchedB.forEach(p => {
+                if (typeof p.content === 'string' && p.content.trim()) {
+                    bInfos.set(p.identifier, getBigrams(p.content));
+                }
+            });
+
+            if (aInfos.size > 0 && bInfos.size > 0) {
+                const unmatchedBSet = new Set(unmatchedB);
+                let comparisonsCount = 0;
+
+                for (const pA of unmatchedA) {
+                    const infoA = aInfos.get(pA.identifier);
+                    if (!infoA) continue;
+
+                    let bestMatch = null;
+                    let highestScore = -1;
+
+                    for (const pB of unmatchedBSet) {
+                        const infoB = bInfos.get(pB.identifier);
+                        if (!infoB) continue;
+
+                        const b1 = infoA.cleanStr.length - 1;
+                        const b2 = infoB.cleanStr.length - 1;
+                        if (b1 <= 0 || b2 <= 0) continue;
+
+                        // Length-based maximum possible score check
+                        const maxPossible = (2.0 * Math.min(b1, b2)) / (b1 + b2);
+                        if (maxPossible < similarityThresholdVal || maxPossible <= highestScore) continue;
+
+                        const score = getStringSimilarityFromInfos(infoA, infoB);
+                        comparisonsCount++;
+                        if (comparisonsCount % 300 === 0) {
+                            await new Promise(resolve => setTimeout(resolve, 0));
+                        }
+
+                        if (score >= similarityThresholdVal && score > highestScore) {
+                            highestScore = score;
+                            bestMatch = pB;
+                            if (score === 1.0) {
+                                break; // Perfect match found, skip remaining comparisons for this item
+                            }
+                        }
+                    }
+
+                    if (bestMatch) {
+                        allItems.push({
+                            idA: pA.identifier,
+                            idB: bestMatch.identifier,
+                            name: (pA.name || pA.identifier),
+                            type: 'matched',
+                            a: pA,
+                            b: bestMatch,
+                            score: highestScore
+                        });
+                        usedB.add(bestMatch.identifier);
+                        unmatchedBSet.delete(bestMatch);
+                        matchedAIds.add(pA.identifier);
+                    }
+                }
+                unmatchedB = Array.from(unmatchedBSet);
+            }
+        }
+
+        // Add remaining unmatched A prompts as onlyA
+        unmatchedA.forEach(pA => {
+            if (!matchedAIds.has(pA.identifier)) {
                 allItems.push({ idA: pA.identifier, idB: null, name: (pA.name || pA.identifier), type: 'onlyA', a: pA, b: null });
             }
         });
 
-        promptsB.forEach(pB => {
-            if (!usedB.has(pB.identifier)) {
-                allItems.push({ idA: null, idB: pB.identifier, name: (pB.name || pB.identifier), type: 'onlyB', a: null, b: pB });
-            }
+        // Add remaining unmatched B prompts as onlyB
+        unmatchedB.forEach(pB => {
+            allItems.push({ idA: null, idB: pB.identifier, name: (pB.name || pB.identifier), type: 'onlyB', a: null, b: pB });
         });
 
         const query = $('#contrast-search-input').val()?.trim();
@@ -300,7 +386,12 @@ export function renderMatchResults(matched, onlyA, onlyB, allItems, manualMatche
             const nameA = $('#contrast-preset-a').val();
             const nameB = $('#contrast-preset-b').val();
             const hasChange = hasPromptDifference(item.a, item.b, nameA, nameB);
-            status = hasChange ? '已修改' : '无变动';
+            if (item.score !== undefined) {
+                const pct = Math.round(item.score * 100);
+                status = `相似度 ${pct}% (${hasChange ? '已修改' : '无变动'})`;
+            } else {
+                status = hasChange ? '已修改' : '无变动';
+            }
             color = hasChange ? 'var(--SmartThemeQuoteColor)' : 'inherit';
             if (type === 'manual') {
                 actions = `<button class="zero-icon-btn unlink-trigger" data-ida="${item.idA}" title="取消关联" style="font-size: 12px; opacity: 0.6; padding: 4px; background: none; border: none; color: inherit; cursor: pointer;"><i class="fa-solid fa-link-slash"></i></button>`;
@@ -314,7 +405,19 @@ export function renderMatchResults(matched, onlyA, onlyB, allItems, manualMatche
         }
 
         const isNameFilterActive = !queryLower || activeFilters.includes('name');
-        const displayName = queryLower ? highlightTextUtil(name || '未命名', query, isNameFilterActive) : escapeHtml(name || '未命名');
+        let displayName = '';
+        if ((type === 'matched' || type === 'manual') && item.a && item.b) {
+            const nameValA = item.a.name || item.a.identifier || '未命名';
+            const nameValB = item.b.name || item.b.identifier || '未命名';
+            if (nameValA !== nameValB) {
+                const dispA = queryLower ? highlightTextUtil(nameValA, query, isNameFilterActive) : escapeHtml(nameValA);
+                const dispB = queryLower ? highlightTextUtil(nameValB, query, isNameFilterActive) : escapeHtml(nameValB);
+                displayName = `${dispA} <i class="fa-solid fa-arrow-right" style="opacity: 0.5; margin: 0 4px; font-size: 11px;"></i> ${dispB}`;
+            }
+        }
+        if (!displayName) {
+            displayName = queryLower ? highlightTextUtil(name || '未命名', query, isNameFilterActive) : escapeHtml(name || '未命名');
+        }
 
         const p = item.a || item.b;
         let metaHtml = '';
@@ -437,6 +540,8 @@ export async function showComparisonDetail(index, allItems) {
     const item = allItems[index];
     let currentIdA = item.idA || null;
     let currentIdB = item.idB || null;
+    let isPinnedA = false;
+    let isPinnedB = false;
 
     const nameA = $('#contrast-preset-a').val();
     const nameB = $('#contrast-preset-b').val();
@@ -465,6 +570,90 @@ export async function showComparisonDetail(index, allItems) {
         if (pA && pB && (pA.name || pA.identifier) === (pB.name || pB.identifier)) return true;
         return false;
     }
+
+    function getNavigationState() {
+        if (isPinnedA) {
+            const listB = [null, ...promptsB.map(p => p.identifier)];
+            const curIdx = listB.findIndex(id => (id === null && currentIdB === null) || (id !== null && currentIdB !== null && String(id) === String(currentIdB)));
+            const canPrev = curIdx > 0;
+            const canNext = curIdx < listB.length - 1;
+            return {
+                canPrev,
+                canNext,
+                prevFn: () => {
+                    if (canPrev) {
+                        currentIdB = listB[curIdx - 1];
+                        renderDetailContent();
+                    }
+                },
+                nextFn: () => {
+                    if (canNext) {
+                        currentIdB = listB[curIdx + 1];
+                        renderDetailContent();
+                    }
+                }
+            };
+        } else if (isPinnedB) {
+            const listA = [null, ...promptsA.map(p => p.identifier)];
+            const curIdx = listA.findIndex(id => (id === null && currentIdA === null) || (id !== null && currentIdA !== null && String(id) === String(currentIdA)));
+            const canPrev = curIdx > 0;
+            const canNext = curIdx < listA.length - 1;
+            return {
+                canPrev,
+                canNext,
+                prevFn: () => {
+                    if (canPrev) {
+                        currentIdA = listA[curIdx - 1];
+                        renderDetailContent();
+                    }
+                },
+                nextFn: () => {
+                    if (canNext) {
+                        currentIdA = listA[curIdx + 1];
+                        renderDetailContent();
+                    }
+                }
+            };
+        } else {
+            let currentIndex = allItems.findIndex(i => String(i.idA) === String(currentIdA) && String(i.idB) === String(currentIdB));
+            if (currentIndex === -1) currentIndex = index;
+            const canPrev = currentIndex > 0;
+            const canNext = currentIndex < allItems.length - 1;
+            return {
+                canPrev,
+                canNext,
+                prevFn: () => {
+                    if (canPrev) {
+                        const prevItem = allItems[currentIndex - 1];
+                        currentIdA = prevItem.idA || null;
+                        currentIdB = prevItem.idB || null;
+                        renderDetailContent();
+                    }
+                },
+                nextFn: () => {
+                    if (canNext) {
+                        const nextItem = allItems[currentIndex + 1];
+                        currentIdA = nextItem.idA || null;
+                        currentIdB = nextItem.idB || null;
+                        renderDetailContent();
+                    }
+                }
+            };
+        }
+    }
+
+    const getNavButtonsHtml = (canPrev, canNext, layoutStyle = '') => {
+        return `
+            <div class="zero-contrast-nav-row" style="display: flex; gap: 10px; padding: 8px 0; width: 100%; box-sizing: border-box; ${layoutStyle}">
+                <button class="prev-comp-btn interactable" style="flex: 1; padding: 10px 12px; border: none; border-radius: 6px; background: rgba(255,255,255,0.08); color: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12px;" ${!canPrev ? 'disabled style="opacity:0.3; cursor:default;"' : ''}>
+                    <i class="fa-solid fa-chevron-left"></i> 上一个
+                </button>
+                <button class="next-comp-btn interactable" style="flex: 1; padding: 10px 12px; border: none; border-radius: 6px; background: rgba(255,255,255,0.08); color: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12px;" ${!canNext ? 'disabled style="opacity:0.3; cursor:default;"' : ''}>
+                    下一个 <i class="fa-solid fa-chevron-right"></i>
+                </button>
+            </div>
+        `;
+    };
 
     const optionsA_html = `<option value="">-- 无 --</option>` + promptsA.map(p => `<option value="${p.identifier}">${escapeHtml(p.name || p.identifier)}</option>`).join('');
     const optionsB_html = `<option value="">-- 无 --</option>` + promptsB.map(p => `<option value="${p.identifier}">${escapeHtml(p.name || p.identifier)}</option>`).join('');
@@ -498,6 +687,9 @@ export async function showComparisonDetail(index, allItems) {
         ">
             <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--SmartThemeBorderColor);">
                 <div style="display: flex; align-items: center; flex: 1; min-width: 0; gap: 8px;">
+                    <button id="comp-pin-a" class="interactable" title="钉选 A" style="flex-shrink: 0; padding: 6px; background: none; border: none; color: inherit; cursor: pointer; opacity: 0.5; font-size: 14px;">
+                        <i class="fa-solid fa-thumbtack"></i>
+                    </button>
                     <select id="comp-item-selector-a" class="interactable" style="flex: 1; min-width: 0; padding: 6px; background: rgba(255,255,255,0.05); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 4px; font-size: 14px;">
                         ${optionsA_html}
                     </select>
@@ -507,6 +699,9 @@ export async function showComparisonDetail(index, allItems) {
                     <select id="comp-item-selector-b" class="interactable" style="flex: 1; min-width: 0; padding: 6px; background: rgba(255,255,255,0.05); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 4px; font-size: 14px;">
                         ${optionsB_html}
                     </select>
+                    <button id="comp-pin-b" class="interactable" title="钉选 B" style="flex-shrink: 0; padding: 6px; background: none; border: none; color: inherit; cursor: pointer; opacity: 0.5; font-size: 14px;">
+                        <i class="fa-solid fa-thumbtack"></i>
+                    </button>
                 </div>
                 <div id="close-comparison" class="interactable" style="cursor: pointer; padding: 8px; margin-left: 8px;"><i class="fa-solid fa-xmark"></i></div>
             </div>
@@ -514,10 +709,7 @@ export async function showComparisonDetail(index, allItems) {
             <div id="comp-content-area" style="flex: 1; overflow-y: auto; overflow-x: hidden; padding: 12px; display: flex; flex-direction: column;">
             </div>
             
-            <div style="padding: 12px; border-top: 1px solid var(--SmartThemeBorderColor); display: flex; gap: 10px; background: rgba(0,0,0,0.1);">
-                <button id="prev-comp" class="interactable" style="flex: 1; padding: 12px; border: none; border-radius: 6px; background: rgba(255,255,255,0.08); color: inherit;" ${index <= 0 ? 'disabled style="opacity:0.3"' : ''}><i class="fa-solid fa-chevron-left"></i> 上一个</button>
-                <button id="next-comp" class="interactable" style="flex: 1; padding: 12px; border: none; border-radius: 6px; background: rgba(255,255,255,0.08); color: inherit;" ${index >= allItems.length - 1 ? 'disabled style="opacity:0.3"' : ''}>下一个 <i class="fa-solid fa-chevron-right"></i></button>
-            </div>
+            <div id="comp-nav-bottom-container"></div>
         </div>
     `;
 
@@ -540,6 +732,24 @@ export async function showComparisonDetail(index, allItems) {
             $linkBtn.css('color', linked ? 'var(--SmartThemeQuoteColor)' : 'inherit');
             $linkBtn.css('opacity', linked ? '1' : '0.5');
             $linkBtn.attr('title', linked ? '取消关联' : '建立关联');
+
+            // Update pin button states
+            const $pinA = $('#comp-pin-a');
+            const $pinB = $('#comp-pin-b');
+            
+            $pinA.css('color', isPinnedA ? 'var(--SmartThemeQuoteColor)' : 'inherit');
+            $pinA.css('opacity', isPinnedA ? '1' : '0.5');
+            $pinA.attr('title', isPinnedA ? '取消钉选 A' : '钉选 A');
+            
+            $pinB.css('color', isPinnedB ? 'var(--SmartThemeQuoteColor)' : 'inherit');
+            $pinB.css('opacity', isPinnedB ? '1' : '0.5');
+            $pinB.attr('title', isPinnedB ? '取消钉选 B' : '钉选 B');
+
+            const contrastNavTop = localStorage.getItem('zero_contrast_nav_top') === 'true';
+            const contrastNavMiddle = localStorage.getItem('zero_contrast_nav_middle') === 'true';
+            const contrastNavBottom = localStorage.getItem('zero_contrast_nav_bottom') !== 'false';
+
+            const navState = getNavigationState();
 
             const isMatched = pA && pB;
             let contentHtml = '';
@@ -570,7 +780,7 @@ export async function showComparisonDetail(index, allItems) {
                     </div>
 
                     <!-- Collapsible Bar Content -->
-                    <div id="comp-params-container" style="display: none; background: rgba(255,255,255,0.01); border: 1px solid var(--SmartThemeBorderColor); border-radius: 8px; padding: 10px; margin-bottom: 16px; flex-shrink: 0; font-family: var(--mainFontFamily, sans-serif);">
+                    <div id="comp-params-container" style="display: none; background: rgba(255, 255, 255, 0.01); border: 1px solid var(--SmartThemeBorderColor); border-radius: 8px; padding: 10px; margin-bottom: 16px; flex-shrink: 0; font-family: var(--mainFontFamily, sans-serif);">
                         <div style="display: flex; flex-direction: column; gap: 2px;">
                             <!-- Header -->
                             <div style="display: flex; align-items: center; padding: 6px 8px; font-weight: bold; opacity: 0.6; font-size: 11px; border-bottom: 1px solid rgba(255,255,255,0.08); color: var(--SmartThemeBodyColor);">
@@ -630,6 +840,10 @@ export async function showComparisonDetail(index, allItems) {
                         </div>
                     </div>
                 `;
+
+                if (contrastNavTop) {
+                    contentHtml += getNavButtonsHtml(navState.canPrev, navState.canNext, 'margin-bottom: 12px;');
+                }
             }
 
             if (pA) {
@@ -650,6 +864,9 @@ export async function showComparisonDetail(index, allItems) {
                             ${isMatched ? diffHtml(pA.content || '', pB ? pB.content : '') : escapeHtml(pA.content || '(空)')}
                         </div>
                     </div>`;
+                if (contrastNavMiddle) {
+                    contentHtml += getNavButtonsHtml(navState.canPrev, navState.canNext, 'margin-top: 12px; margin-bottom: 6px;');
+                }
             }
             if (pB) {
                 const nameStr = escapeHtml(pB.name || pB.identifier || '未命名');
@@ -674,6 +891,17 @@ export async function showComparisonDetail(index, allItems) {
                 contentHtml = '<div style="text-align: center; opacity: 0.5; padding: 40px;">未选择或未找到有效条目</div>';
             }
             $('#comp-content-area').html(contentHtml);
+
+            const $bottomContainer = $('#comp-nav-bottom-container');
+            if (contrastNavBottom) {
+                $bottomContainer.html(`
+                    <div style="padding: 12px; border-top: 1px solid var(--SmartThemeBorderColor); display: flex; gap: 10px; background: rgba(0,0,0,0.1); flex-shrink: 0;">
+                        ${getNavButtonsHtml(navState.canPrev, navState.canNext)}
+                    </div>
+                `);
+            } else {
+                $bottomContainer.empty();
+            }
         } catch (err) {
             console.error('[Zero] renderDetailContent failed:', err);
             $('#comp-content-area').html(`<div style="padding: 20px; color: #ff5555;">渲染失败: ${err.message}</div>`);
@@ -709,19 +937,21 @@ export async function showComparisonDetail(index, allItems) {
         const val = $(this).val();
         currentIdA = val || null;
         
-        let linkedBId = null;
-        if (currentIdA) {
-            const manualLink = getLink(currentIdA);
-            if (manualLink) {
-                linkedBId = manualLink;
-            } else {
-                const pA = promptsA.find(p => p.identifier === currentIdA);
-                if (pA) {
-                    const pB = promptsB.find(p => (p.name || p.identifier) === (pA.name || pA.identifier));
-                    if (pB && !getLink(currentIdA)) linkedBId = pB.identifier;
+        if (!isPinnedA && !isPinnedB) {
+            let linkedBId = null;
+            if (currentIdA) {
+                const manualLink = getLink(currentIdA);
+                if (manualLink) {
+                    linkedBId = manualLink;
+                } else {
+                    const pA = promptsA.find(p => p.identifier === currentIdA);
+                    if (pA) {
+                        const pB = promptsB.find(p => (p.name || p.identifier) === (pA.name || pA.identifier));
+                        if (pB && !getLink(currentIdA)) linkedBId = pB.identifier;
+                    }
                 }
+                if (linkedBId) currentIdB = linkedBId;
             }
-            if (linkedBId) currentIdB = linkedBId;
         }
         renderDetailContent();
     });
@@ -730,25 +960,27 @@ export async function showComparisonDetail(index, allItems) {
         const val = $(this).val();
         currentIdB = val || null;
         
-        let linkedAId = null;
-        if (currentIdB) {
-            const links = JSON.parse(localStorage.getItem('zero_manual_links') || '{}');
-            const key = `${nameA}::${nameB}`;
-            const pairLinks = links[key] || {};
-            for (const [aId, bId] of Object.entries(pairLinks)) {
-                if (bId === currentIdB) {
-                    linkedAId = aId;
-                    break;
+        if (!isPinnedA && !isPinnedB) {
+            let linkedAId = null;
+            if (currentIdB) {
+                const links = JSON.parse(localStorage.getItem('zero_manual_links') || '{}');
+                const key = `${nameA}::${nameB}`;
+                const pairLinks = links[key] || {};
+                for (const [aId, bId] of Object.entries(pairLinks)) {
+                    if (bId === currentIdB) {
+                        linkedAId = aId;
+                        break;
+                    }
                 }
-            }
-            if (!linkedAId) {
-                const pB = promptsB.find(p => p.identifier === currentIdB);
-                if (pB) {
-                    const pA = promptsA.find(p => (p.name || p.identifier) === (pB.name || pB.identifier));
-                    if (pA) linkedAId = pA.identifier;
+                if (!linkedAId) {
+                    const pB = promptsB.find(p => p.identifier === currentIdB);
+                    if (pB) {
+                        const pA = promptsA.find(p => (p.name || p.identifier) === (pB.name || pB.identifier));
+                        if (pA) linkedAId = pA.identifier;
+                    }
                 }
+                if (linkedAId) currentIdA = linkedAId;
             }
-            if (linkedAId) currentIdA = linkedAId;
         }
         renderDetailContent();
     });
@@ -913,16 +1145,26 @@ export async function showComparisonDetail(index, allItems) {
         }
     });
 
-    $('#prev-comp').on('click', () => {
-        let currentIndex = allItems.findIndex(i => String(i.idA) === String(currentIdA) && String(i.idB) === String(currentIdB));
-        if (currentIndex === -1) currentIndex = index;
-        if (currentIndex > 0) showComparisonDetail(currentIndex - 1, allItems);
+    $('#comparison-overlay').on('click', '.prev-comp-btn', function() {
+        const navState = getNavigationState();
+        navState.prevFn();
     });
 
-    $('#next-comp').on('click', () => {
-        let currentIndex = allItems.findIndex(i => String(i.idA) === String(currentIdA) && String(i.idB) === String(currentIdB));
-        if (currentIndex === -1) currentIndex = index;
-        if (currentIndex < allItems.length - 1) showComparisonDetail(currentIndex + 1, allItems);
+    $('#comparison-overlay').on('click', '.next-comp-btn', function() {
+        const navState = getNavigationState();
+        navState.nextFn();
+    });
+
+    $('#comparison-overlay').on('click', '#comp-pin-a', function() {
+        isPinnedA = !isPinnedA;
+        if (isPinnedA) isPinnedB = false;
+        renderDetailContent();
+    });
+
+    $('#comparison-overlay').on('click', '#comp-pin-b', function() {
+        isPinnedB = !isPinnedB;
+        if (isPinnedB) isPinnedA = false;
+        renderDetailContent();
     });
 }
 

@@ -1649,7 +1649,7 @@ export const HistoryManager = {
 };
 
 const bigramCache = new Map();
-function getBigrams(str) {
+export function getBigrams(str) {
     let cached = bigramCache.get(str);
     if (cached) return cached;
     

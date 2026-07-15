@@ -100,12 +100,13 @@ export const Checker = {
         });
 
         // Analyze variables
+        const treatUninitAsProblem = localStorage.getItem('zero_check_treat_uninit_as_problem') === 'true';
         for (const [name, data] of varMap.entries()) {
             const hasInit = data.init.length > 0;
             const hasSet = data.set.length > 0;
             const hasGet = data.get.length > 0;
 
-            const isProblem = !hasSet || !hasGet || data.init.length > 1;
+            const isProblem = !hasSet || !hasGet || data.init.length > 1 || (!hasInit && treatUninitAsProblem);
 
             const varResult = {
                 name,
@@ -219,6 +220,8 @@ export const Checker = {
      * Renders the Self-Check tab content.
      */
     async render(containerId, presetName) {
+        this.containerId = containerId;
+        this.presetName = presetName;
         const $container = $(`#${containerId}`);
         $container.empty();
 
@@ -287,10 +290,14 @@ export const Checker = {
                     <i id="close-var-init-tip" class="fa-solid fa-xmark interactable" title="不再提示" style="position: absolute; right: 10px; top: 10px; cursor: pointer; opacity: 0.5; font-size: 12px;"></i>
                 </div>
                 `}
-                <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; padding: 4px;">
+                <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; padding: 4px; align-items: center; width: 100%;">
                     <div class="var-filter-btn" data-filter="problem" style="padding: 4px 12px; font-size: 11px; border-radius: 14px; cursor: pointer; background: rgba(255,255,255,0.05); color: inherit; border: 1px solid rgba(255,255,255,0.1);">问题变量</div>
                     <div class="var-filter-btn" data-filter="correct" style="padding: 4px 12px; font-size: 11px; border-radius: 14px; cursor: pointer; background: rgba(255,255,255,0.05); color: inherit; border: 1px solid rgba(255,255,255,0.1);">正确变量</div>
                     <div class="var-filter-btn" data-filter="all" style="padding: 4px 12px; font-size: 11px; border-radius: 14px; cursor: pointer; background: rgba(255,255,255,0.05); color: inherit; border: 1px solid rgba(255,255,255,0.1);">全部变量</div>
+                    <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer; margin-left: auto; user-select: none;">
+                        <input type="checkbox" id="check-treat-uninit-as-problem" class="interactable" style="margin: 0; cursor: pointer;" ${localStorage.getItem('zero_check_treat_uninit_as_problem') === 'true' ? 'checked' : ''}>
+                        <span>无初始化视为问题</span>
+                    </label>
                 </div>
                 <div id="vars-list-container"></div>
             </div>
@@ -382,6 +389,11 @@ export const Checker = {
             $(this).css('background', 'var(--SmartThemeQuoteColor)').css('color', 'white').css('border-color', 'var(--SmartThemeQuoteColor)');
             renderVariables($(this).data('filter'));
             localStorage.setItem('zero_check_var_filter', $(this).data('filter'));
+        });
+
+        $('#check-treat-uninit-as-problem').off('change').on('change', function() {
+            localStorage.setItem('zero_check_treat_uninit_as_problem', $(this).is(':checked') ? 'true' : 'false');
+            Checker.render(Checker.containerId, Checker.presetName);
         });
 
         const lastVarFilter = localStorage.getItem('zero_check_var_filter') || 'problem';
@@ -480,7 +492,7 @@ export const Checker = {
     },
 
     buildVariableRow(v, presetName) {
-        const initBg = v.hasInit ? 'var(--SmartThemeQuoteColor)' : 'var(--SmartThemeBorderColor)';
+        const initBg = v.hasInit ? '#44aa44' : 'var(--SmartThemeBorderColor)';
         const initColor = v.hasInit ? 'white' : 'var(--SmartThemeBodyColor)';
         const initOpacity = v.hasInit ? '1' : '0.8';
         const initText = v.hasInit ? `初始化${v.initCount > 1 ? ` (${v.initCount}!)` : ''}` : '初始化 (可选)';

@@ -778,7 +778,93 @@ function ensurePanel() {
                         </div>
                     </div>
 
-                    <!-- 5. 使用教程 (折叠) -->
+                    <!-- 5. 对照设置 (折叠) -->
+                    <div class="zero-settings-section" style="
+                        display: flex;
+                        flex-direction: column;
+                        background: rgba(255, 255, 255, 0.03);
+                        border: 1px solid var(--SmartThemeBorderColor, #444);
+                        border-radius: 10px;
+                        overflow: hidden;
+                    ">
+                        <div class="zero-settings-header interactable" id="zero-settings-contrast-toggle" style="
+                            display: flex;
+                            align-items: center;
+                            justify-content: space-between;
+                            padding: 14px;
+                            cursor: pointer;
+                            user-select: none;
+                        ">
+                            <div style="font-weight: bold; font-size: 14px; display: flex; align-items: center; gap: 6px;">
+                                <i class="fa-solid fa-code-compare" style="color: var(--SmartThemeQuoteColor);"></i> 对照设置
+                            </div>
+                            <i class="fa-solid fa-chevron-right zero-settings-chevron" style="transition: transform 0.15s; font-size: 12px; opacity: 0.7;"></i>
+                        </div>
+                        <div class="zero-settings-body" id="zero-settings-contrast-body" style="
+                            display: none;
+                            flex-direction: column;
+                            gap: 14px;
+                            padding: 0 14px 14px 14px;
+                        ">
+                            <!-- 内容自动匹配 -->
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px;">
+                                <div style="flex: 1;">
+                                    <strong style="display: block; font-size: 13px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">内容相似度匹配</strong>
+                                    <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">对名称不一致的条目根据文本内容相似度进行自动匹配。</span>
+                                </div>
+                                <label class="zero-switch">
+                                    <input type="checkbox" id="zero-setting-contrast-similarity-enable" class="interactable">
+                                    <span class="zero-slider"></span>
+                                </label>
+                            </div>
+                            <!-- 相似度匹配阈值 -->
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 12px; margin-top: 4px;">
+                                <div style="flex: 1;">
+                                    <strong style="display: block; font-size: 13px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">匹配相似度阈值</strong>
+                                    <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">设定内容相似度自动关联的百分比阈值 (1% - 100%)。</span>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 4px;">
+                                    <input type="number" id="zero-setting-contrast-similarity-threshold" class="interactable" min="1" max="100" step="1" value="80" style="width: 50px; padding: 4px 6px; background: var(--SmartThemeChatTintColor); color: inherit; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; text-align: center; font-size: 12px;">
+                                    <span style="font-size: 12px; opacity: 0.8;">%</span>
+                                </div>
+                            </div>
+                            <!-- 切换键位置设置 (顶部) -->
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 12px; margin-top: 4px;">
+                                <div style="flex: 1;">
+                                    <strong style="display: block; font-size: 13px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">在顶部显示功能键</strong>
+                                    <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">在对比详情的属性对比区域下方显示「上一个」「下一个」切换按钮。</span>
+                                </div>
+                                <label class="zero-switch">
+                                    <input type="checkbox" id="zero-setting-contrast-nav-top" class="interactable">
+                                    <span class="zero-slider"></span>
+                                </label>
+                            </div>
+                            <!-- 切换键位置设置 (中部) -->
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 12px; margin-top: 4px;">
+                                <div style="flex: 1;">
+                                    <strong style="display: block; font-size: 13px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">在中部显示功能键</strong>
+                                    <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">在对比详情的预设 A 内容框下方显示「上一个」「下一个」切换按钮。</span>
+                                </div>
+                                <label class="zero-switch">
+                                    <input type="checkbox" id="zero-setting-contrast-nav-middle" class="interactable">
+                                    <span class="zero-slider"></span>
+                                </label>
+                            </div>
+                            <!-- 切换键位置设置 (底部) -->
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 12px; margin-top: 4px;">
+                                <div style="flex: 1;">
+                                    <strong style="display: block; font-size: 13px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">在底部显示功能键</strong>
+                                    <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">在对比详情的最底部显示「上一个」「下一个」切换栏。</span>
+                                </div>
+                                <label class="zero-switch">
+                                    <input type="checkbox" id="zero-setting-contrast-nav-bottom" class="interactable">
+                                    <span class="zero-slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 6. 使用教程 (折叠) -->
                     <div class="zero-settings-section" style="
                         display: flex;
                         flex-direction: column;
@@ -1116,6 +1202,19 @@ function ensurePanel() {
         });
     });
 
+    $('body').off('click', '#zero-settings-contrast-toggle').on('click', '#zero-settings-contrast-toggle', function() {
+        const $body = $('#zero-settings-contrast-body');
+        const $chevron = $(this).find('.zero-settings-chevron');
+        $body.slideToggle(150, function() {
+            if ($body.is(':visible')) {
+                $body.css('display', 'flex');
+                $chevron.addClass('expanded');
+            } else {
+                $chevron.removeClass('expanded');
+            }
+        });
+    });
+
     $('body').off('click', '#zero-settings-tutorial-toggle').on('click', '#zero-settings-tutorial-toggle', function() {
         const $body = $('#zero-settings-tutorial-body');
         const $chevron = $(this).find('.zero-settings-chevron');
@@ -1291,6 +1390,45 @@ function ensurePanel() {
     });
 
     let contrastSearchTimeout = null;
+
+    // Contrast Settings Event Listeners
+    $('body').off('change', '#zero-setting-contrast-similarity-enable').on('change', '#zero-setting-contrast-similarity-enable', function() {
+        const checked = $(this).is(':checked');
+        localStorage.setItem('zero_contrast_similarity_enable', checked.toString());
+        _contrast.performAutoMatch();
+    });
+
+    $('body').off('input change', '#zero-setting-contrast-similarity-threshold').on('input change', '#zero-setting-contrast-similarity-threshold', function(e) {
+        const rawVal = $(this).val();
+        if (e.type === 'change' || (rawVal !== '' && !isNaN(parseInt(rawVal)))) {
+            let val = parseInt(rawVal);
+            if (isNaN(val) || val < 1) val = 1;
+            if (val > 100) val = 100;
+            if (e.type === 'change') {
+                $(this).val(val);
+            }
+            localStorage.setItem('zero_contrast_similarity_threshold', val.toString());
+            clearTimeout(contrastSearchTimeout);
+            contrastSearchTimeout = setTimeout(() => {
+                _contrast.performAutoMatch();
+            }, 500);
+        }
+    });
+
+    $('body').off('change', '#zero-setting-contrast-nav-top').on('change', '#zero-setting-contrast-nav-top', function() {
+        const checked = $(this).is(':checked');
+        localStorage.setItem('zero_contrast_nav_top', checked.toString());
+    });
+
+    $('body').off('change', '#zero-setting-contrast-nav-middle').on('change', '#zero-setting-contrast-nav-middle', function() {
+        const checked = $(this).is(':checked');
+        localStorage.setItem('zero_contrast_nav_middle', checked.toString());
+    });
+
+    $('body').off('change', '#zero-setting-contrast-nav-bottom').on('change', '#zero-setting-contrast-nav-bottom', function() {
+        const checked = $(this).is(':checked');
+        localStorage.setItem('zero_contrast_nav_bottom', checked.toString());
+    });
     $('body').off('input', '#contrast-search-input').on('input', '#contrast-search-input', function() {
         const query = $(this).val().trim();
         if (query) {
@@ -1865,6 +2003,19 @@ export function renderSettingsTab() {
     const scale = state.snapshotModalScale || 80;
     $('#zero-setting-ui-modal-scale').val(scale);
     $('#zero-setting-ui-modal-scale-val').text(`${scale}%`);
+
+    // Contrast settings
+    const contrastSimilarityEnable = localStorage.getItem('zero_contrast_similarity_enable') === 'true';
+    const contrastSimilarityThreshold = localStorage.getItem('zero_contrast_similarity_threshold') || '80';
+    const contrastNavTop = localStorage.getItem('zero_contrast_nav_top') === 'true';
+    const contrastNavMiddle = localStorage.getItem('zero_contrast_nav_middle') === 'true';
+    const contrastNavBottom = localStorage.getItem('zero_contrast_nav_bottom') !== 'false';
+
+    $('#zero-setting-contrast-similarity-enable').prop('checked', contrastSimilarityEnable);
+    $('#zero-setting-contrast-similarity-threshold').val(contrastSimilarityThreshold);
+    $('#zero-setting-contrast-nav-top').prop('checked', contrastNavTop);
+    $('#zero-setting-contrast-nav-middle').prop('checked', contrastNavMiddle);
+    $('#zero-setting-contrast-nav-bottom').prop('checked', contrastNavBottom);
 }
 
 export async function refreshActiveTab() {
