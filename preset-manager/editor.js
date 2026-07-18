@@ -14,6 +14,9 @@ export async function openQuickEditor(presetName, itemName) {
     const prompt = preset.prompts.find(p => (p.name || p.identifier) === itemName);
     if (!prompt) return;
 
+    let lastSelectionStart = (prompt.content || '').length;
+    let lastSelectionEnd = (prompt.content || '').length;
+
     const isFavoritePreset = presetName.startsWith('★');
     let favNoteHtml = '';
     if (isFavoritePreset) {
@@ -129,6 +132,16 @@ export async function openQuickEditor(presetName, itemName) {
                         </div>
                     </div>
                 </div>
+
+                <!-- 预设变量助手 Section -->
+                <div id="editor-vars-section" style="background: rgba(255,255,255,0.01); border: 1px solid var(--SmartThemeBorderColor); border-radius: 12px; padding: 12px; flex-shrink: 0; margin-top: -4px;">
+                    <div id="toggle-editor-vars" style="font-size: 11px; opacity: 0.6; cursor: pointer; display: flex; align-items: center; gap: 6px; color: var(--SmartThemeBodyColor);">
+                        <i class="fa-solid fa-list-check"></i> 预设变量助手 <i class="fa-solid fa-chevron-right"></i>
+                    </div>
+                    <div id="editor-vars-container" style="display: none; padding-top: 8px;">
+                        <div id="editor-vars-list" style="display: flex; flex-wrap: wrap; gap: 6px; max-height: 80px; overflow-y: auto; padding-right: 4px;"></div>
+                    </div>
+                </div>
             </div>
 
             <!-- Save Action Button -->
@@ -153,6 +166,12 @@ export async function openQuickEditor(presetName, itemName) {
 
     $('body').append(editHtml);
     $('#close-quick-editor').on('click', closeEditor);
+
+    const $textarea = $('#quick-edit-content');
+    $textarea.on('focus keyup click mouseup', function() {
+        lastSelectionStart = this.selectionStart;
+        lastSelectionEnd = this.selectionEnd;
+    });
     
     // --- Auto-resizing Group select width helper ---
     const adjustSelectWidth = ($select) => {
@@ -283,16 +302,19 @@ export async function openQuickEditor(presetName, itemName) {
         const textarea = document.getElementById('quick-edit-content');
         if (!textarea) return;
 
-        const start = textarea.selectionStart;
-        const end = textarea.selectionEnd;
+        const start = lastSelectionStart;
+        const end = lastSelectionEnd;
         const currentVal = textarea.value;
         
-        const pos = (start !== null) ? start : currentVal.length;
-        const posEnd = (end !== null) ? end : currentVal.length;
+        const pos = (start !== null && start !== undefined) ? start : currentVal.length;
+        const posEnd = (end !== null && end !== undefined) ? end : currentVal.length;
 
         textarea.value = currentVal.substring(0, pos) + text + currentVal.substring(posEnd);
         
         const newPos = (offset !== null) ? pos + offset : pos + text.length;
+        
+        lastSelectionStart = newPos;
+        lastSelectionEnd = newPos;
         
         textarea.focus();
         if (textarea.setSelectionRange) {
@@ -355,6 +377,55 @@ export async function openQuickEditor(presetName, itemName) {
     });
 
     renderPhrases();
+
+    // --- Preset Variable Assistant ---
+    $('#toggle-editor-vars').on('click', function() {
+        $('#editor-vars-container').slideToggle(200);
+        $(this).find('i.fa-chevron-right, i.fa-chevron-down').toggleClass('fa-chevron-right fa-chevron-down');
+    });
+
+    const renderEditorVariables = () => {
+        const $list = $('#editor-vars-list');
+        $list.empty();
+        
+        try {
+            const results = Checker.performCheck(preset.prompts);
+            const vars = results.allVars || [];
+            
+            if (vars.length === 0) {
+                $list.html('<div style="font-size: 11px; opacity: 0.5; padding: 4px;">当前预设尚未定义任何变量。可以使用上方的“快捷短语”插入首个变量宏。</div>');
+                return;
+            }
+            
+            vars.sort((a, b) => a.name.localeCompare(b.name)).forEach(v => {
+                const item = $(`
+                    <div style="display: inline-flex; align-items: center; background: rgba(255,255,255,0.04); border: 1px solid var(--SmartThemeBorderColor); border-radius: 6px; padding: 3px 6px; font-size: 11px; gap: 6px;">
+                        <span style="font-weight: bold; color: var(--SmartThemeBodyColor); opacity: 0.9;" title="${v.isGlobal ? '全局变量' : '普通变量'}">${escapeHtml(v.name)}</span>
+                        <span class="var-insert-btn interactable" data-macro="get" title="插入读取宏 {{getvar::${v.name}}}" style="padding: 1px 5px; background: color-mix(in srgb, #2288ff 12%, var(--SmartThemeChatTintColor)); color: color-mix(in srgb, #2288ff 85%, var(--SmartThemeBodyColor)); border-radius: 4px; cursor: pointer; font-size: 10px; font-weight: bold; user-select: none;">+ 读</span>
+                        <span class="var-insert-btn interactable" data-macro="set" title="插入设置宏 {{setvar::${v.name}::}}" style="padding: 1px 5px; background: color-mix(in srgb, #ff8822 12%, var(--SmartThemeChatTintColor)); color: color-mix(in srgb, #ff8822 85%, var(--SmartThemeBodyColor)); border-radius: 4px; cursor: pointer; font-size: 10px; font-weight: bold; user-select: none;">+ 写</span>
+                    </div>
+                `);
+                
+                item.find('.var-insert-btn').on('click', function(e) {
+                    const macroType = $(this).data('macro');
+                    const isGlobal = v.isGlobal;
+                    const macro = macroType === 'get'
+                        ? `{{${isGlobal ? 'getglobalvar' : 'getvar'}::${v.name}}}`
+                        : `{{${isGlobal ? 'setglobalvar' : 'setvar'}::${v.name}::}}`;
+                    
+                    const offset = macroType === 'get' ? macro.length : macro.length - 2;
+                    insertAtCursor(macro, offset);
+                });
+                
+                $list.append(item);
+            });
+        } catch (err) {
+            console.error('[Zero] Render editor variables failed:', err);
+            $list.html('<div style="font-size: 11px; opacity: 0.5; color: #ff5555; padding: 4px;">加载预设变量失败</div>');
+        }
+    };
+    
+    renderEditorVariables();
 
     // --- Favorite Handler ---
     $('#fav-quick-edit').on('click', async () => {

@@ -3,8 +3,8 @@
  * Handles XML tag validation and Variable consistency checks for presets.
  */
 
-import { PresetManager, HistoryManager, getStringSimilarity } from '../qr-snapshot/state.js';
-import { getPresetPrompts, escapeHtml, savePresetWithoutRegexToast } from './utils.js';
+import { PresetManager } from '../qr-snapshot/state.js';
+import { getPresetPrompts, escapeHtml } from './utils.js';
 import { matchSimple, highlightMatchSnippet } from '../qr-snapshot/search-util.js';
 
 export const Checker = {
@@ -13,7 +13,7 @@ export const Checker = {
      * @param {Array} prompts - List of prompt entries.
      */
     performCheck(prompts) {
-        const varMap = new Map(); // name -> { init: [], set: [], get: [], isGlobal: false }
+        const varMap = new Map(); // name -> { init: [], set: [], get: [] }
         const results = {
             xml: [],
             variables: [],
@@ -72,13 +72,11 @@ export const Checker = {
                         parts.push(currentPart);
 
                         const macroType = parts[0]?.trim().toLowerCase();
-                        const isGlobal = macroType === 'setglobalvar' || macroType === 'getglobalvar';
                         if (macroType === 'setvar' || macroType === 'setglobalvar') {
                             const name = parts[1]?.trim();
                             const value = parts.slice(2).join('::');
                             if (name) {
-                                if (!varMap.has(name)) varMap.set(name, { init: [], set: [], get: [], isGlobal: false });
-                                if (isGlobal) varMap.get(name).isGlobal = true;
+                                if (!varMap.has(name)) varMap.set(name, { init: [], set: [], get: [] });
                                 const isInit = !value || value.trim() === '';
                                 if (isInit) {
                                     varMap.get(name).init.push({ entry: p, name: entryName });
@@ -89,8 +87,7 @@ export const Checker = {
                         } else if (macroType === 'getvar' || macroType === 'getglobalvar') {
                             const name = parts[1]?.trim();
                             if (name) {
-                                if (!varMap.has(name)) varMap.set(name, { init: [], set: [], get: [], isGlobal: false });
-                                if (isGlobal) varMap.get(name).isGlobal = true;
+                                if (!varMap.has(name)) varMap.set(name, { init: [], set: [], get: [] });
                                 varMap.get(name).get.push({ entry: p, name: entryName });
                             }
                         }
@@ -120,7 +117,6 @@ export const Checker = {
                 setCount: data.set.length,
                 getCount: data.get.length,
                 occurrences: data,
-                isGlobal: data.isGlobal,
                 isProblem
             };
 
@@ -302,17 +298,6 @@ export const Checker = {
                         <input type="checkbox" id="check-treat-uninit-as-problem" class="interactable" style="margin: 0; cursor: pointer;" ${localStorage.getItem('zero_check_treat_uninit_as_problem') === 'true' ? 'checked' : ''}>
                         <span>无初始化视为问题</span>
                     </label>
-                    <div id="toggle-var-settings" style="font-size: 11px; opacity: 0.6; cursor: pointer; padding: 4px 0; width: 100%; border-top: 1px dashed rgba(255,255,255,0.05); margin-top: 6px; display: flex; justify-content: space-between; align-items: center; user-select: none;">
-                        <span><i class="fa-solid fa-gear"></i> 拼写纠错设置</span>
-                        <i class="chevron fa-solid fa-chevron-down"></i>
-                    </div>
-                    <div id="var-settings-panel" style="display: none; width: 100%; margin-top: 4px; padding: 8px 10px; background: rgba(0,0,0,0.15); border: 1px solid var(--SmartThemeBorderColor); border-radius: 8px;">
-                        <div style="display: flex; gap: 8px; align-items: center; font-size: 11px;">
-                            <span style="opacity: 0.8;">纠错相似度阈值:</span>
-                            <input type="number" id="check-var-similarity-threshold" class="interactable" min="0.1" max="1.0" step="0.05" style="width: 55px; padding: 2px 4px; background: rgba(0,0,0,0.2); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 4px; font-size: 11px; outline: none; text-align: center;" value="${localStorage.getItem('zero_check_var_similarity_threshold') || '0.6'}">
-                            <span style="opacity: 0.5;">(0.1 ~ 1.0，值越高要求越相似)</span>
-                        </div>
-                    </div>
                 </div>
                 <div id="vars-list-container"></div>
             </div>
@@ -392,7 +377,7 @@ export const Checker = {
                 $varBox.html(`<p style="text-align: center; opacity: 0.5; padding: 20px; font-size: 12px;">无${filter === 'problem' ? '问题' : (filter === 'correct' ? '正确' : '')}变量</p>`);
             } else {
                 varsToShow.sort((a, b) => a.name.localeCompare(b.name)).forEach(v => {
-                    $varBox.append(this.buildVariableRow(v, presetName, results.allVars));
+                    $varBox.append(this.buildVariableRow(v, presetName));
                 });
             }
         };
@@ -408,21 +393,6 @@ export const Checker = {
 
         $('#check-treat-uninit-as-problem').off('change').on('change', function() {
             localStorage.setItem('zero_check_treat_uninit_as_problem', $(this).is(':checked') ? 'true' : 'false');
-            Checker.render(Checker.containerId, Checker.presetName);
-        });
-
-        $('#toggle-var-settings').off('click').on('click', function () {
-            const $panel = $('#var-settings-panel');
-            $panel.slideToggle(200);
-            $(this).find('i.chevron').toggleClass('fa-chevron-down fa-chevron-up');
-        });
-
-        $('#check-var-similarity-threshold').off('change').on('change', function() {
-            let val = parseFloat($(this).val());
-            if (isNaN(val) || val < 0.1) val = 0.1;
-            if (val > 1.0) val = 1.0;
-            $(this).val(val);
-            localStorage.setItem('zero_check_var_similarity_threshold', val.toString());
             Checker.render(Checker.containerId, Checker.presetName);
         });
 
@@ -521,7 +491,7 @@ export const Checker = {
         });
     },
 
-    buildVariableRow(v, presetName, allVars) {
+    buildVariableRow(v, presetName) {
         const initBg = v.hasInit ? '#44aa44' : 'var(--SmartThemeBorderColor)';
         const initColor = v.hasInit ? 'white' : 'var(--SmartThemeBodyColor)';
         const initOpacity = v.hasInit ? '1' : '0.8';
@@ -543,35 +513,8 @@ export const Checker = {
             </div>
         `;
 
-        // 查找拼写纠错建议
-        let bestCand = null;
-        let highestSimilarity = -1;
-        const threshold = parseFloat(localStorage.getItem('zero_check_var_similarity_threshold') || '0.6');
-        
-        if (!v.hasSet && v.hasGet && allVars) {
-            allVars.forEach(cand => {
-                if (cand.name === v.name || !cand.hasSet) return;
-                const sim = getStringSimilarity(v.name, cand.name);
-                if (sim >= threshold && sim > highestSimilarity) {
-                    highestSimilarity = sim;
-                    bestCand = cand;
-                }
-            });
-        }
-
-        const typoHtml = bestCand ? `
-            <div class="var-typo-banner" style="font-size: 11px; margin-top: 6px; padding: 6px 10px; background: color-mix(in srgb, #ff8822 10%, var(--SmartThemeChatTintColor)); border: 1px solid color-mix(in srgb, #ff8822 25%, var(--SmartThemeBorderColor)); border-radius: 6px; display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--SmartThemeBodyColor);">
-                <span style="opacity: 0.85; text-align: left;">
-                    <i class="fa-solid fa-triangle-exclamation" style="color: color-mix(in srgb, #ff8822 85%, var(--SmartThemeBodyColor)); margin-right: 4px;"></i>
-                    未发现设置宏。拼写建议：<strong>${escapeHtml(bestCand.name)}</strong> (相似度 ${Math.round(highestSimilarity * 100)}%)
-                </span>
-                <button class="var-replace-btn interactable" data-from="${escapeHtml(v.name)}" data-to="${escapeHtml(bestCand.name)}" style="background: var(--SmartThemeQuoteColor); border: none; border-radius: 4px; color: white; padding: 2px 6px; font-size: 10px; cursor: pointer; font-weight: bold; flex-shrink: 0;">替换</button>
-            </div>
-        ` : '';
-
         const occurrences = [];
-        ['init', 'set', 'get'].forEach(type => {
-            const items = v.occurrences[type] || [];
+        Object.entries(v.occurrences).forEach(([type, items]) => {
             items.forEach(occ => {
                 occurrences.push({ type, ...occ });
             });
@@ -588,26 +531,9 @@ export const Checker = {
             <div class="check-var-row" style="padding: 10px; background: rgba(255,255,255,0.03); border-radius: 8px; margin-bottom: 8px; border-left: 3px solid ${v.isProblem ? '#ffaa33' : '#55ff55'};">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <div style="font-size: 13px; font-weight: bold; color: ${v.isProblem ? '#ffaa33' : 'inherit'}">${escapeHtml(v.name)}</div>
-                    <div style="display: flex; gap: 6px; align-items: center;">
-                        ${v.initCount > 1 ? `<button class="var-clean-init-btn interactable" title="清理冗余的初始化宏，仅保留最早条目中的那一个" style="background: color-mix(in srgb, #ff4444 10%, var(--SmartThemeChatTintColor)); border: 1px solid color-mix(in srgb, #ff4444 30%, var(--SmartThemeBorderColor)); border-radius: 4px; color: color-mix(in srgb, #ff4444 85%, var(--SmartThemeBodyColor)); cursor: pointer; padding: 2px 6px; font-size: 10px;"><i class="fa-solid fa-trash-can"></i> 优化</button>` : ''}
-                        ${!v.hasInit ? `<button class="var-quick-init-btn interactable" title="快速初始化该变量" style="background: color-mix(in srgb, #44aa44 10%, var(--SmartThemeChatTintColor)); border: 1px solid color-mix(in srgb, #44aa44 30%, var(--SmartThemeBorderColor)); border-radius: 4px; color: color-mix(in srgb, #44aa44 85%, var(--SmartThemeBodyColor)); cursor: pointer; padding: 2px 6px; font-size: 10px;"><i class="fa-solid fa-wand-magic-sparkles"></i> 初始化</button>` : ''}
-                        <button class="var-quick-add-btn interactable" title="在其他条目中增加此变量" style="background: rgba(125,125,125,0.1); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; color: var(--SmartThemeBodyColor); cursor: pointer; padding: 2px 6px; font-size: 10px;"><i class="fa-solid fa-plus"></i> 注入</button>
-                    </div>
+                    <button class="var-quick-add-btn interactable" title="在其他条目中增加此变量" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; color: inherit; cursor: pointer; padding: 2px 6px; font-size: 10px;"><i class="fa-solid fa-plus"></i> 注入</button>
                 </div>
                 ${statusHtml}
-                ${typoHtml}
-                
-                <!-- 初始化配置折叠面板 -->
-                ${!v.hasInit ? `
-                <div class="var-init-panel" style="display: none; margin-top: 8px; padding: 10px; background: rgba(0,0,0,0.2); border: 1px solid var(--SmartThemeBorderColor); border-radius: 8px; color: var(--SmartThemeBodyColor);">
-                    <div style="font-size: 11px; opacity: 0.7; margin-bottom: 6px;">选择初始化目标条目：</div>
-                    <div style="display: flex; gap: 8px; align-items: center; width: 100%;">
-                        <select class="var-init-select interactable" style="flex: 1; background: rgba(0,0,0,0.25); border: 1px solid var(--SmartThemeBorderColor); color: inherit; padding: 4px 8px; border-radius: 6px; font-size: 12px; height: 28px; outline: none; min-width: 0;"></select>
-                        <button class="var-init-confirm-btn interactable" style="padding: 4px 10px; background: var(--SmartThemeQuoteColor); border: none; border-radius: 6px; color: white; cursor: pointer; font-size: 11px; font-weight: bold; height: 28px; flex-shrink: 0;">确认</button>
-                    </div>
-                </div>
-                ` : ''}
-
                 <div class="var-occ-list" style="margin-top: 8px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 4px;">
                     ${occHtml}
                 </div>
@@ -631,216 +557,13 @@ export const Checker = {
             }
         });
 
-        // 绑定一键初始化展开逻辑
-        if (!v.hasInit) {
-            row.find('.var-quick-init-btn').on('click', () => {
-                const $panel = row.find('.var-init-panel');
-                $panel.slideToggle(200);
-                if ($panel.is(':visible')) {
-                    const $select = row.find('.var-init-select');
-                    $select.empty();
-
-                    const promptInitCounts = this._lastPrompts.map(p => {
-                        const content = p.content || '';
-                        const matches = content.match(/\{\{(?:setvar|setglobalvar)::[^:]+::\s*\}\}/g);
-                        return {
-                            prompt: p,
-                            count: matches ? matches.length : 0
-                        };
-                    });
-
-                    let recommendedIdx = 0;
-                    let maxCount = -1;
-                    promptInitCounts.forEach((pic, idx) => {
-                        if (pic.count > maxCount) {
-                            maxCount = pic.count;
-                            recommendedIdx = idx;
-                        }
-                    });
-
-                    promptInitCounts.forEach((pic, idx) => {
-                        const p = pic.prompt;
-                        const name = p.name || p.identifier || `Entry ${idx + 1}`;
-                        let suffix = '';
-                        if (pic.count > 0) {
-                            suffix = ` (已初始化 ${pic.count} 个变量)`;
-                        }
-                        if (idx === recommendedIdx) {
-                            suffix += pic.count > 0 ? ' [推荐]' : ' [推荐 - 默认首选]';
-                        }
-
-                        const opt = $('<option></option>')
-                            .val(p.identifier)
-                            .text(`${name}${suffix}`)
-                            .prop('selected', idx === recommendedIdx);
-                        $select.append(opt);
-                    });
-                }
-            });
-
-            // 绑定确认初始化保存逻辑
-            row.find('.var-init-confirm-btn').on('click', async () => {
-                const targetId = row.find('.var-init-select').val();
-                if (!targetId) return;
-
-                try {
-                    const pm = SillyTavern.getContext().getPresetManager('openai');
-                    if (!pm) {
-                        toastr.error('无法获取预设管理器');
-                        return;
-                    }
-                    const preset = pm.getCompletionPresetByName(presetName);
-                    if (!preset) return;
-
-                    const targetPrompt = preset.prompts.find(p => p.identifier === targetId);
-                    if (!targetPrompt) {
-                        toastr.error('无法定位选中的条目');
-                        return;
-                    }
-
-                    HistoryManager.record();
-
-                    const newContent = this.getSmartInsertContent(targetPrompt.content || '', v.name, v.isGlobal, true);
-                    targetPrompt.content = newContent;
-
-                    const isActive = pm.getSelectedPresetName() === presetName;
-                    await savePresetWithoutRegexToast(pm, presetName, preset, { skipUpdate: !isActive });
-
-                    toastr.success(`已在条目 "${targetPrompt.name || targetPrompt.identifier}" 中智能完成变量初始化`);
-
-                    this.render(this.containerId, presetName);
-                    window.dispatchEvent(new CustomEvent('zero-content-updated', { detail: { presetName, itemName: targetPrompt.name || targetPrompt.identifier } }));
-                } catch (e) {
-                    console.error('[Zero] Auto init failed:', e);
-                    toastr.error('自动初始化失败: ' + e.message);
-                }
-            });
-        }
-
-        // 绑定冗余初始化清理逻辑
-        if (v.initCount > 1) {
-            row.find('.var-clean-init-btn').on('click', async () => {
-                try {
-                    const pm = SillyTavern.getContext().getPresetManager('openai');
-                    if (!pm) {
-                        toastr.error('无法获取预设管理器');
-                        return;
-                    }
-                    const preset = pm.getCompletionPresetByName(presetName);
-                    if (!preset) return;
-
-                    const occurrences = v.occurrences.init;
-                    if (occurrences.length <= 1) return;
-
-                    const promptIndices = new Map();
-                    preset.prompts.forEach((p, idx) => {
-                        promptIndices.set(p.identifier, idx);
-                    });
-
-                    occurrences.sort((a, b) => {
-                        const idxA = promptIndices.has(a.entry.identifier) ? promptIndices.get(a.entry.identifier) : 9999;
-                        const idxB = promptIndices.has(b.entry.identifier) ? promptIndices.get(b.entry.identifier) : 9999;
-                        return idxA - idxB;
-                    });
-
-                    const keepEntry = occurrences[0].entry;
-                    const removeEntries = occurrences.slice(1).map(o => o.entry);
-
-                    HistoryManager.record();
-
-                    const escapedName = v.name.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-                    const cleanRegex = new RegExp(`\\{\\{(?:setvar|setglobalvar)::${escapedName}::\\s*\\}}\\s*\\n?`, 'g');
-
-                    let cleanedCount = 0;
-                    removeEntries.forEach(entryToClean => {
-                        const promptInPreset = preset.prompts.find(p => p.identifier === entryToClean.identifier);
-                        if (promptInPreset) {
-                            const original = promptInPreset.content || '';
-                            const cleaned = original.replace(cleanRegex, '');
-                            if (cleaned !== original) {
-                                promptInPreset.content = cleaned;
-                                cleanedCount++;
-                            }
-                        }
-                    });
-
-                    if (cleanedCount > 0) {
-                        const isActive = pm.getSelectedPresetName() === presetName;
-                        await savePresetWithoutRegexToast(pm, presetName, preset, { skipUpdate: !isActive });
-
-                        toastr.success(`已清理 ${cleanedCount} 处冗余初始化，仅保留了最早执行的那个`);
-
-                        this.render(this.containerId, presetName);
-                        window.dispatchEvent(new CustomEvent('zero-content-updated', { detail: { presetName, itemName: keepEntry.name || keepEntry.identifier } }));
-                    } else {
-                        toastr.info('未发现需要清理的冗余初始化宏');
-                    }
-                } catch (e) {
-                    console.error('[Zero] Clean inits failed:', e);
-                    toastr.error('优化清理失败: ' + e.message);
-                }
-            });
-        }
-
-        // 绑定拼写建议一键替换逻辑
-        if (bestCand) {
-            row.find('.var-replace-btn').on('click', async (e) => {
-                const fromName = $(e.currentTarget).data('from');
-                const toName = $(e.currentTarget).data('to');
-                if (!fromName || !toName) return;
-
-                try {
-                    const pm = SillyTavern.getContext().getPresetManager('openai');
-                    if (!pm) {
-                        toastr.error('无法获取预设管理器');
-                        return;
-                    }
-                    const preset = pm.getCompletionPresetByName(presetName);
-                    if (!preset) return;
-
-                    HistoryManager.record();
-
-                    const escapedName = fromName.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-                    const macroRegex = new RegExp(`(\\{\\{(?:setvar|setglobalvar|getvar|getglobalvar)::)${escapedName}(\\b|::|\\})`, 'g');
-
-                    let replacedCount = 0;
-                    preset.prompts.forEach(p => {
-                        const original = p.content || '';
-                        const replaced = original.replace(macroRegex, `$1${toName}$2`);
-                        if (replaced !== original) {
-                            p.content = replaced;
-                            replacedCount++;
-                        }
-                    });
-
-                    if (replacedCount > 0) {
-                        const isActive = pm.getSelectedPresetName() === presetName;
-                        await savePresetWithoutRegexToast(pm, presetName, preset, { skipUpdate: !isActive });
-
-                        toastr.success(`已成功替换 ${replacedCount} 处变量名 "${fromName}" 为 "${toName}"`);
-
-                        this.render(this.containerId, presetName);
-                        window.dispatchEvent(new CustomEvent('zero-content-updated', { detail: { presetName, itemName: fromName } }));
-                    } else {
-                        toastr.info('未在任何条目中发现匹配的变量宏');
-                    }
-                } catch (err) {
-                    console.error('[Zero] Replace variable name failed:', err);
-                    toastr.error('替换失败: ' + err.message);
-                }
-            });
-        }
-
         const renderInjectList = (filter = '') => {
             const $results = row.find('.var-inject-results');
             $results.empty();
             const lowerFilter = filter.toLowerCase();
 
             const existingEntries = new Set();
-            ['init', 'set', 'get'].forEach(type => {
-                const list = v.occurrences[type] || [];
-                list.forEach(o => existingEntries.add(o.name));
-            });
+            Object.values(v.occurrences).forEach(list => list.forEach(o => existingEntries.add(o.name)));
 
             this._lastPrompts.forEach(p => {
                 const name = p.name || p.identifier;
@@ -848,53 +571,12 @@ export const Checker = {
                 if (filter && !name.toLowerCase().includes(lowerFilter) && !(p.content || '').toLowerCase().includes(lowerFilter)) return;
 
                 const item = $(`
-                    <div class="inject-entry-item" style="padding: 6px 8px; background: rgba(255,255,255,0.03); border-radius: 6px; font-size: 11px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; gap: 8px;">
-                        <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
-                        <div style="display: flex; gap: 4px; flex-shrink: 0;">
-                            <button class="inject-read-btn interactable" title="智能注入读取宏" style="padding: 2px 6px; background: color-mix(in srgb, #2288ff 10%, var(--SmartThemeChatTintColor)); border: 1px solid color-mix(in srgb, #2288ff 30%, var(--SmartThemeBorderColor)); border-radius: 4px; color: color-mix(in srgb, #2288ff 85%, var(--SmartThemeBodyColor)); cursor: pointer; font-size: 10px;">+ 读取</button>
-                            <button class="inject-set-btn interactable" title="智能注入设置宏" style="padding: 2px 6px; background: color-mix(in srgb, #ff8822 10%, var(--SmartThemeChatTintColor)); border: 1px solid color-mix(in srgb, #ff8822 30%, var(--SmartThemeBorderColor)); border-radius: 4px; color: color-mix(in srgb, #ff8822 85%, var(--SmartThemeBodyColor)); cursor: pointer; font-size: 10px;">+ 设置</button>
-                            <button class="inject-edit-btn interactable" title="打开编辑器手动修改" style="padding: 2px 6px; background: rgba(125,125,125,0.1); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; color: var(--SmartThemeBodyColor); cursor: pointer; font-size: 10px;"><i class="fa-solid fa-pencil"></i></button>
-                        </div>
+                    <div class="inject-entry-item interactable" style="padding: 4px 8px; background: rgba(255,255,255,0.03); border-radius: 4px; cursor: pointer; font-size: 11px; display: flex; justify-content: space-between; align-items: center;">
+                        <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">${escapeHtml(name)}</span>
+                        <i class="fa-solid fa-pencil" style="opacity: 0.5;"></i>
                     </div>
                 `);
-
-                const doInject = async (isSet) => {
-                    try {
-                        const pm = SillyTavern.getContext().getPresetManager('openai');
-                        if (!pm) {
-                            toastr.error('无法获取预设管理器');
-                            return;
-                        }
-                        const preset = pm.getCompletionPresetByName(presetName);
-                        if (!preset) return;
-
-                        const targetPrompt = preset.prompts.find(pr => pr.identifier === p.identifier);
-                        if (!targetPrompt) {
-                            toastr.error('无法定位目标条目');
-                            return;
-                        }
-
-                        HistoryManager.record();
-
-                        const newContent = this.getSmartInsertContent(targetPrompt.content || '', v.name, v.isGlobal, isSet);
-                        targetPrompt.content = newContent;
-
-                        const isActive = pm.getSelectedPresetName() === presetName;
-                        await savePresetWithoutRegexToast(pm, presetName, preset, { skipUpdate: !isActive });
-
-                        toastr.success(`已在条目 "${name}" 中智能注入${isSet ? '设置' : '读取'}宏`);
-
-                        this.render(this.containerId, presetName);
-                        window.dispatchEvent(new CustomEvent('zero-content-updated', { detail: { presetName, itemName: name } }));
-                    } catch (e) {
-                        console.error('[Zero] Auto inject failed:', e);
-                        toastr.error('注入失败: ' + e.message);
-                    }
-                };
-
-                item.find('.inject-read-btn').on('click', () => doInject(false));
-                item.find('.inject-set-btn').on('click', () => doInject(true));
-                item.find('.inject-edit-btn').on('click', () => this.openEditor(presetName, name));
+                item.on('click', () => this.openEditor(presetName, name));
                 $results.append(item);
             });
 
@@ -908,80 +590,6 @@ export const Checker = {
         });
 
         return row;
-    },
-
-    getSmartInsertContent(content, varName, isGlobal, isSet) {
-        const macroType = isGlobal 
-            ? (isSet ? 'setglobalvar' : 'getglobalvar') 
-            : (isSet ? 'setvar' : 'getvar');
-            
-        const macro = isSet 
-            ? `{{${macroType}::${varName}::}}` 
-            : `{{${macroType}::${varName}}}`;
-            
-        if (isSet) {
-            // 1. 尝试插入到最后一个 setvar/setglobalvar 的下一行
-            const setRegex = /\{\{(?:setvar|setglobalvar)::[^}]+\}\}/g;
-            let match;
-            let lastMatchEnd = -1;
-            while ((match = setRegex.exec(content)) !== null) {
-                lastMatchEnd = match.index + match[0].length;
-            }
-            
-            if (lastMatchEnd !== -1) {
-                const prefix = content.substring(0, lastMatchEnd);
-                const suffix = content.substring(lastMatchEnd);
-                const needsNewlineBefore = !prefix.endsWith('\n');
-                const needsNewlineAfter = !suffix.startsWith('\n');
-                
-                return prefix + 
-                       (needsNewlineBefore ? '\n' : '') + 
-                       macro + 
-                       (needsNewlineAfter ? '\n' : '') + 
-                       suffix;
-            }
-            
-            // 2. 尝试插入到开头的首个 HTML/XML 标签的内部第一行
-            const openTagRegex = /^\s*<([a-zA-Z0-9_-]+)(?:\s+[^>]*)?>/;
-            const tagMatch = content.match(openTagRegex);
-            if (tagMatch) {
-                const insertIndex = tagMatch.index + tagMatch[0].length;
-                const prefix = content.substring(0, insertIndex);
-                const suffix = content.substring(insertIndex);
-                const needsNewlineBefore = !prefix.endsWith('\n');
-                const needsNewlineAfter = !suffix.startsWith('\n');
-                
-                return prefix + 
-                       (needsNewlineBefore ? '\n' : '') + 
-                       macro + 
-                       (needsNewlineAfter ? '\n' : '') + 
-                       suffix;
-            }
-            
-            // 3. 回退：直接在条目最开头插入
-            return macro + (content ? '\n' + content : '');
-        } else {
-            // 1. 尝试插入到末尾的闭合标签内部（如 </system> 或 </user>）
-            const closeTagRegex = /(<\/([a-zA-Z0-9_-]+)>\s*)$/;
-            const tagMatch = content.match(closeTagRegex);
-            if (tagMatch) {
-                const insertIndex = tagMatch.index;
-                const prefix = content.substring(0, insertIndex);
-                const suffix = content.substring(insertIndex);
-                const needsNewlineBefore = !prefix.endsWith('\n');
-                const needsNewlineAfter = !suffix.startsWith('\n');
-                
-                return prefix + 
-                       (needsNewlineBefore ? '\n' : '') + 
-                       macro + 
-                       (needsNewlineAfter ? '\n' : '') + 
-                       suffix;
-            }
-            
-            // 2. 回退：直接追加在最末尾
-            const needsNewlineBefore = content && !content.endsWith('\n');
-            return content + (needsNewlineBefore ? '\n' : '') + macro;
-        }
     },
 
     openEditor(presetName, itemName) {
