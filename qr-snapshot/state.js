@@ -132,7 +132,7 @@ export const PresetManager = {
         return { names, active };
     },
 
-    async switchPreset(name) {
+    async switchPreset(name, options = {}) {
         const selectEl = document.getElementById('settings_preset_openai');
         if (!selectEl) return false;
         const opt = Array.from(selectEl.options).find(o => o.textContent.trim() === name);
@@ -146,6 +146,11 @@ export const PresetManager = {
         
         _preset = null;
         _presetNames = null;
+
+        if (!options.skipLinkage && typeof window.triggerZeroApiLinkage === 'function') {
+            window.triggerZeroApiLinkage(name);
+        }
+
         return true;
     },
 
