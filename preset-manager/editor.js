@@ -99,6 +99,14 @@ export async function openQuickEditor(presetName, itemName) {
                         <label for="edit-prompt-forbid-overrides" style="font-size: 12px; cursor: pointer; user-select: none; opacity: 0.8;">禁止覆盖</label>
                     </div>
                     ${favNoteHtml}
+                    <!-- Regex Binding Button -->
+                    <div style="width: 100%; display: flex; align-items: center; gap: 10px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.05); margin-top: 4px;">
+                        <label style="font-size: 11px; opacity: 0.7;">正则绑定:</label>
+                        <button id="edit-prompt-bind-regex-btn" class="interactable" type="button" style="padding: 4px 10px; background: rgba(255,255,255,0.08); border: 1px solid var(--SmartThemeBorderColor); border-radius: 6px; color: inherit; cursor: pointer; font-size: 12px; display: flex; align-items: center; gap: 6px;">
+                            <i class="fa-solid fa-link" style="color: var(--SmartThemeQuoteColor);"></i>
+                            <span id="edit-prompt-bind-regex-text">绑定预设正则 (${Array.isArray(prompt.bound_regex_ids) ? prompt.bound_regex_ids.length : 0})</span>
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -441,6 +449,14 @@ export async function openQuickEditor(presetName, itemName) {
         };
         const { showCollectModal } = await import('./utils.js');
         await showCollectModal(currentItem, presetName);
+    });
+
+    $('#edit-prompt-bind-regex-btn').on('click', async () => {
+        const { showBindRegexModal } = await import('./utils.js');
+        await showBindRegexModal(prompt, presetName, (checkedIds) => {
+            prompt.bound_regex_ids = checkedIds;
+            $('#edit-prompt-bind-regex-text').text(`绑定预设正则 (${checkedIds.length})`);
+        });
     });
 
     // --- Save Handler ---

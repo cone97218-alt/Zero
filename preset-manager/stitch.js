@@ -1,4 +1,4 @@
-import { getPresetPrompts, escapeHtml, debounce, savePresetWithoutRegexToast } from './utils.js';
+import { getPresetPrompts, escapeHtml, debounce, savePresetWithoutRegexToast, getPresetRegexScripts, showBindRegexModal } from './utils.js';
 import { HistoryManager, UiStateManager, GroupManager } from '../qr-snapshot/state.js';
 import { matchStitch, highlightText as highlightTextUtil } from '../qr-snapshot/search-util.js';
 
@@ -135,6 +135,11 @@ export async function renderStitchList(forceRefresh = true) {
         const pm = SillyTavern.getContext().getPresetManager('openai');
         const presetListObj = pm ? pm.getPresetList() : null;
         const currentPresetNames = presetListObj ? (pm.isKeyedApi() ? (presetListObj.preset_names || []) : Object.keys(presetListObj.preset_names || {})) : [];
+
+        const srcPresetObj = pm ? pm.getCompletionPresetByName(effectiveName) : null;
+        const regexListA = srcPresetObj ? getPresetRegexScripts(srcPresetObj) : [];
+        const regexMapA = new Map();
+        regexListA.forEach(r => regexMapA.set(String(r.id || r.scriptName), r.scriptName || r.id));
         
         $list.empty();
         
@@ -146,34 +151,47 @@ export async function renderStitchList(forceRefresh = true) {
             return;
         }
 
+        const badgeMode = UiStateManager.get().stitchRegexBadgeMode || 'bound_only';
         const rowParts = [];
         promptsA.forEach((pA, index) => {
             const nameStr = highlightText(pA.name || pA.identifier || '未命名', 'name');
+            const boundIds = Array.isArray(pA.bound_regex_ids) ? pA.bound_regex_ids : [];
+
+            let regexBadgeHtml = '';
+            if (badgeMode === 'all') {
+                if (boundIds.length > 0) {
+                    const boundNames = boundIds.map(id => regexMapA.get(String(id)) || id);
+                    const boundTitle = `已绑定 ${boundIds.length} 个预设正则:\n` + boundNames.join('\n');
+                    regexBadgeHtml = `<span class="stitch-bound-regex-badge interactable" data-prompt-id="${escapeHtml(pA.identifier)}" data-preset="${escapeHtml(effectiveName)}" style="background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor); color: var(--SmartThemeQuoteColor); padding: 1px 6px; border-radius: 4px; font-size: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;" title="${escapeHtml(boundTitle)} (点击管理绑定正则)"><i class="fa-solid fa-link"></i> 正则 (${boundIds.length}): ${escapeHtml(boundNames.slice(0, 2).join(', '))}${boundNames.length > 2 ? '...' : ''}</span>`;
+                } else {
+                    regexBadgeHtml = `<span class="stitch-bound-regex-badge interactable" data-prompt-id="${escapeHtml(pA.identifier)}" data-preset="${escapeHtml(effectiveName)}" style="background: rgba(255,255,255,0.03); border: 1px dashed var(--SmartThemeBorderColor); color: var(--SmartThemeEmColor); padding: 1px 6px; border-radius: 4px; font-size: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 3px; opacity: 0.7;" title="点击绑定预设正则"><i class="fa-solid fa-link"></i> 绑定正则</span>`;
+                }
+            } else if (badgeMode === 'bound_only') {
+                if (boundIds.length > 0) {
+                    const boundNames = boundIds.map(id => regexMapA.get(String(id)) || id);
+                    const boundTitle = `已绑定 ${boundIds.length} 个预设正则:\n` + boundNames.join('\n');
+                    regexBadgeHtml = `<span class="stitch-bound-regex-badge interactable" data-prompt-id="${escapeHtml(pA.identifier)}" data-preset="${escapeHtml(effectiveName)}" style="background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor); color: var(--SmartThemeQuoteColor); padding: 1px 6px; border-radius: 4px; font-size: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;" title="${escapeHtml(boundTitle)} (点击管理绑定正则)"><i class="fa-solid fa-link"></i> 正则 (${boundIds.length}): ${escapeHtml(boundNames.slice(0, 2).join(', '))}${boundNames.length > 2 ? '...' : ''}</span>`;
+                }
+            }
             
-            let metaHtml = '';
-            if (pA.fav_origin_preset || pA.fav_note) {
+            let metaHtml = '<div class="stitch-item-meta" style="font-size: 11px; margin-top: 4px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; opacity: 0.85;">';
+            if (pA.fav_origin_preset) {
                 let badgeColor = 'rgba(123, 140, 222, 0.15)';
                 let badgeTextColor = '#9fb3f5';
                 let originText = pA.fav_origin_preset;
-                
-                if (pA.fav_origin_preset) {
-                    const exists = currentPresetNames.includes(pA.fav_origin_preset);
-                    if (!exists) {
-                        badgeColor = 'rgba(255, 255, 255, 0.05)';
-                        badgeTextColor = 'rgba(255, 255, 255, 0.4)';
-                        originText = `${pA.fav_origin_preset} (已删除)`;
-                    }
+                const exists = currentPresetNames.includes(pA.fav_origin_preset);
+                if (!exists) {
+                    badgeColor = 'rgba(255, 255, 255, 0.05)';
+                    badgeTextColor = 'rgba(255, 255, 255, 0.4)';
+                    originText = `${pA.fav_origin_preset} (已删除)`;
                 }
-                
-                metaHtml = `<div class="stitch-item-meta" style="font-size: 11px; margin-top: 4px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; opacity: 0.85;">`;
-                if (pA.fav_origin_preset) {
-                    metaHtml += `<span style="background: ${badgeColor}; color: ${badgeTextColor}; padding: 1px 6px; border-radius: 4px; font-size: 10px; display: inline-flex; align-items: center; gap: 4px;"><i class="fa-solid fa-map-pin"></i> ${highlightText(originText, 'origin')}</span>`;
-                }
-                if (pA.fav_note) {
-                    metaHtml += `<span style="color: var(--SmartThemeBodyColor); opacity: 0.6; display: inline-flex; align-items: center; gap: 4px;"><i class="fa-solid fa-tag"></i> 备注: ${highlightText(pA.fav_note, 'note')}</span>`;
-                }
-                metaHtml += `</div>`;
+                metaHtml += `<span style="background: ${badgeColor}; color: ${badgeTextColor}; padding: 1px 6px; border-radius: 4px; font-size: 10px; display: inline-flex; align-items: center; gap: 4px;"><i class="fa-solid fa-map-pin"></i> ${highlightText(originText, 'origin')}</span>`;
             }
+            if (pA.fav_note) {
+                metaHtml += `<span style="color: var(--SmartThemeBodyColor); opacity: 0.6; display: inline-flex; align-items: center; gap: 4px;"><i class="fa-solid fa-tag"></i> 备注: ${highlightText(pA.fav_note, 'note')}</span>`;
+            }
+            metaHtml += regexBadgeHtml;
+            metaHtml += `</div>`;
 
             rowParts.push(`
                 <div class="stitch-row interactable" style="
@@ -213,6 +231,9 @@ export async function renderStitchList(forceRefresh = true) {
                             flex-direction: column;
                             overflow: hidden;
                         ">
+                            <div class="stitch-bind-regex-btn interactable" data-index="${index}" style="padding: 8px 12px; cursor: pointer; font-size: 12px; color: var(--SmartThemeQuoteColor); display: flex; align-items: center; gap: 8px; hover: background: rgba(255,255,255,0.05);">
+                                <i class="fa-solid fa-link" style="width: 14px;"></i> 绑定正则
+                            </div>
                             <div class="stitch-edit-btn interactable" data-index="${index}" style="padding: 8px 12px; cursor: pointer; font-size: 12px; display: flex; align-items: center; gap: 8px; hover: background: rgba(255,255,255,0.05);">
                                 <i class="fa-solid fa-pencil" style="width: 14px;"></i> 编辑
                             </div>
@@ -251,6 +272,34 @@ export async function renderStitchList(forceRefresh = true) {
             `);
         });
         $list.html(rowParts.join(''));
+
+        // Bind regex modal click handler for badge
+        $('.stitch-bound-regex-badge').off('click').on('click', async function(e) {
+            e.stopPropagation();
+            const promptId = String($(this).data('prompt-id'));
+            const presetName = String($(this).data('preset') || effectiveName);
+            const presetObj = pm ? pm.getCompletionPresetByName(presetName) : null;
+            if (!presetObj || !Array.isArray(presetObj.prompts)) return;
+            const targetPrompt = presetObj.prompts.find(p => String(p.identifier) === promptId);
+            if (targetPrompt) {
+                await showBindRegexModal(targetPrompt, presetName, () => {
+                    renderStitchList(true);
+                });
+            }
+        });
+
+        // Dropdown menu bind regex handler
+        $('.stitch-bind-regex-btn').off('click').on('click', async function(e) {
+            e.stopPropagation();
+            $('.stitch-action-dropdown').hide();
+            const idx = parseInt($(this).data('index'));
+            const targetPrompt = promptsA[idx];
+            if (targetPrompt) {
+                await showBindRegexModal(targetPrompt, effectiveName, () => {
+                    renderStitchList(true);
+                });
+            }
+        });
 
         // Toggle item contents (Accordion style - one open at a time)
         $('.stitch-row-expand-trigger').off('click').on('click', function(e) {
@@ -351,6 +400,17 @@ export async function performStitch(itemsA, targetName, position) {
                         tgtGroup = GroupManager.create(targetName, srcGroup.name);
                     }
                     GroupManager.assign(targetName, tgtGroup.id, [cloneA.identifier]);
+                }
+
+                // Auto-migrate bound regexes if enabled
+                const { UiStateManager } = await import('../qr-snapshot/state.js');
+                const autoMigrate = UiStateManager.get().autoMigrateBoundRegex !== false;
+                if (autoMigrate && Array.isArray(itemA.bound_regex_ids) && itemA.bound_regex_ids.length > 0) {
+                    const srcPresetObj = pm.getCompletionPresetByName(sourcePresetName);
+                    if (srcPresetObj) {
+                        const { migrateBoundRegexes } = await import('./utils.js');
+                        migrateBoundRegexes(srcPresetObj, targetPreset, itemA.bound_regex_ids);
+                    }
                 }
             }
         }
@@ -710,6 +770,11 @@ export async function renderTargetBPeek() {
             promptsB = promptsB.filter(p => matchStitch(p, queryLower, activeFilters));
         }
 
+        const tgtPresetObj = pm ? pm.getCompletionPresetByName(nameB) : null;
+        const regexListB = tgtPresetObj ? getPresetRegexScripts(tgtPresetObj) : [];
+        const regexMapB = new Map();
+        regexListB.forEach(r => regexMapB.set(String(r.id || r.scriptName), r.scriptName || r.id));
+
         $list.empty();
 
         if (promptsB.length === 0) {
@@ -754,9 +819,29 @@ export async function renderTargetBPeek() {
                 </div>
             `;
 
+            const badgeMode = UiStateManager.get().stitchRegexBadgeMode || 'bound_only';
             const peekParts = [firstInsertRow];
             promptsB.forEach((pB, index) => {
                 const nameStr = highlightText(pB.name || pB.identifier || '未命名', 'name');
+                const boundIdsB = Array.isArray(pB.bound_regex_ids) ? pB.bound_regex_ids : [];
+
+                let regexBadgeHtmlB = '';
+                if (badgeMode === 'all') {
+                    if (boundIdsB.length > 0) {
+                        const boundNamesB = boundIdsB.map(id => regexMapB.get(String(id)) || id);
+                        const boundTitleB = `已绑定 ${boundIdsB.length} 个预设正则:\n` + boundNamesB.join('\n');
+                        regexBadgeHtmlB = `<span class="stitch-peek-bound-regex-badge interactable" data-prompt-id="${escapeHtml(pB.identifier)}" data-preset="${escapeHtml(nameB)}" style="background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor); color: var(--SmartThemeQuoteColor); padding: 1px 5px; border-radius: 4px; font-size: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;" title="${escapeHtml(boundTitleB)} (点击管理绑定正则)"><i class="fa-solid fa-link"></i> 正则 (${boundIdsB.length})</span>`;
+                    } else {
+                        regexBadgeHtmlB = `<span class="stitch-peek-bound-regex-badge interactable" data-prompt-id="${escapeHtml(pB.identifier)}" data-preset="${escapeHtml(nameB)}" style="background: rgba(255,255,255,0.03); border: 1px dashed var(--SmartThemeBorderColor); color: var(--SmartThemeEmColor); padding: 1px 5px; border-radius: 4px; font-size: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 3px; opacity: 0.7;" title="点击绑定预设正则"><i class="fa-solid fa-link"></i> 正则</span>`;
+                    }
+                } else if (badgeMode === 'bound_only') {
+                    if (boundIdsB.length > 0) {
+                        const boundNamesB = boundIdsB.map(id => regexMapB.get(String(id)) || id);
+                        const boundTitleB = `已绑定 ${boundIdsB.length} 个预设正则:\n` + boundNamesB.join('\n');
+                        regexBadgeHtmlB = `<span class="stitch-peek-bound-regex-badge interactable" data-prompt-id="${escapeHtml(pB.identifier)}" data-preset="${escapeHtml(nameB)}" style="background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor); color: var(--SmartThemeQuoteColor); padding: 1px 5px; border-radius: 4px; font-size: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;" title="${escapeHtml(boundTitleB)} (点击管理绑定正则)"><i class="fa-solid fa-link"></i> 正则 (${boundIdsB.length})</span>`;
+                    }
+                }
+
                 peekParts.push(`
                     <div class="stitch-peek-row interactable" data-index="${index}" style="
                         padding: 6px 10px;
@@ -771,6 +856,7 @@ export async function renderTargetBPeek() {
                     ">
                         <span class="stitch-peek-expand-trigger" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">${nameStr}</span>
                         <div style="display: flex; align-items: center; gap: 4px;">
+                            ${regexBadgeHtmlB}
                             <i class="fa-solid fa-plus stitch-peek-insert-btn interactable" title="在此处下方插入已勾选的条目" data-id="${pB.identifier}" style="padding: 4px 8px; cursor: pointer; opacity: 0.6; font-size: 13px;"></i>
                             <i class="fa-solid fa-chevron-down stitch-peek-expand-trigger" style="padding: 4px; font-size: 10px; opacity: 0.5;"></i>
                         </div>
@@ -791,6 +877,20 @@ export async function renderTargetBPeek() {
                 `);
             });
             $list.html(peekParts.join(''));
+
+            $('.stitch-peek-bound-regex-badge').off('click').on('click', async function(e) {
+                e.stopPropagation();
+                const promptId = String($(this).data('prompt-id'));
+                const presetName = String($(this).data('preset') || nameB);
+                const presetObj = pm ? pm.getCompletionPresetByName(presetName) : null;
+                if (!presetObj || !Array.isArray(presetObj.prompts)) return;
+                const targetPrompt = presetObj.prompts.find(p => String(p.identifier) === promptId);
+                if (targetPrompt) {
+                    await showBindRegexModal(targetPrompt, presetName, () => {
+                        renderTargetBPeek();
+                    });
+                }
+            });
         }
 
         // Toggle item contents (Accordion style - one open at a time)

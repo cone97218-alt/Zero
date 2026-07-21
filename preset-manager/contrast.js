@@ -421,7 +421,8 @@ export function renderMatchResults(matched, onlyA, onlyB, allItems, manualMatche
 
         const p = item.a || item.b;
         let metaHtml = '';
-        if (p && (p.fav_origin_preset || p.fav_note)) {
+        const hasMeta = p && (p.fav_origin_preset || p.fav_note || (Array.isArray(p.bound_regex_ids) && p.bound_regex_ids.length > 0));
+        if (hasMeta) {
             const isOriginFilterActive = !queryLower || activeFilters.includes('origin');
             const isNoteFilterActive = !queryLower || activeFilters.includes('note');
             
@@ -433,6 +434,9 @@ export function renderMatchResults(matched, onlyA, onlyB, allItems, manualMatche
             if (p.fav_note) {
                 const highlightedNote = queryLower ? highlightTextUtil(p.fav_note, query, isNoteFilterActive) : escapeHtml(p.fav_note);
                 metaHtml += `<span style="color: var(--SmartThemeBodyColor); opacity: 0.6; display: inline-flex; align-items: center; gap: 4px;"><i class="fa-solid fa-tag"></i> 备注: ${highlightedNote}</span>`;
+            }
+            if (Array.isArray(p.bound_regex_ids) && p.bound_regex_ids.length > 0) {
+                metaHtml += `<span style="background: rgba(74,144,226,0.15); border: 1px solid rgba(74,144,226,0.3); color: var(--SmartThemeQuoteColor); padding: 1px 6px; border-radius: 4px; font-size: 10px; display: inline-flex; align-items: center; gap: 3px;" title="已绑定 ${p.bound_regex_ids.length} 个预设正则"><i class="fa-solid fa-link"></i> 正则 (${p.bound_regex_ids.length})</span>`;
             }
             metaHtml += `</div>`;
         }
@@ -855,6 +859,7 @@ export async function showComparisonDetail(index, allItems) {
                              <div style="display: flex; gap: 8px;">
                                 ${isMatched ? `<button class="zero-overwrite-btn interactable" data-direction="b-to-a" title="用 B 覆盖 A" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;"><i class="fa-solid fa-file-import"></i></button>` : ''}
                                 ${typeof window.translate === 'function' && pA.content ? `<button class="zero-trans-btn interactable" data-target="a" data-original="${escapeHtml(pA.content)}" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="翻译内容"><i class="fa-solid fa-language"></i></button>` : ''}
+                                <button class="zero-bind-regex-btn interactable" data-side="a" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: ${pA.bound_regex_ids?.length ? 'var(--SmartThemeQuoteColor)' : 'inherit'}; cursor: pointer;" title="绑定预设正则"><i class="fa-solid fa-link"></i></button>
                                 <button class="zero-fav-btn interactable" data-side="a" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="收藏"><i class="fa-solid fa-star" style="color: var(--SmartThemeQuoteColor);"></i></button>
                                 <button class="zero-edit-btn interactable" data-preset="${nameA}" data-item="${nameStr}" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="修改"><i class="fa-solid fa-pencil"></i></button>
                                 <button class="zero-copy-btn interactable" data-text="${escapeHtml(pA.content)}" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="复制"><i class="fa-solid fa-copy"></i></button>
@@ -877,6 +882,7 @@ export async function showComparisonDetail(index, allItems) {
                              <div style="display: flex; gap: 8px;">
                                 ${isMatched ? `<button class="zero-overwrite-btn interactable" data-direction="a-to-b" title="用 A 覆盖 B" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;"><i class="fa-solid fa-file-import"></i></button>` : ''}
                                 ${typeof window.translate === 'function' && pB.content ? `<button class="zero-trans-btn interactable" data-target="b" data-original="${escapeHtml(pB.content)}" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="翻译内容"><i class="fa-solid fa-language"></i></button>` : ''}
+                                <button class="zero-bind-regex-btn interactable" data-side="b" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: ${pB.bound_regex_ids?.length ? 'var(--SmartThemeQuoteColor)' : 'inherit'}; cursor: pointer;" title="绑定预设正则"><i class="fa-solid fa-link"></i></button>
                                 <button class="zero-fav-btn interactable" data-side="b" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="收藏"><i class="fa-solid fa-star" style="color: var(--SmartThemeQuoteColor);"></i></button>
                                 <button class="zero-edit-btn interactable" data-preset="${nameB}" data-item="${nameStr}" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="修改"><i class="fa-solid fa-pencil"></i></button>
                                 <button class="zero-copy-btn interactable" data-text="${escapeHtml(pB.content)}" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="复制"><i class="fa-solid fa-copy"></i></button>
@@ -1061,6 +1067,22 @@ export async function showComparisonDetail(index, allItems) {
         openQuickEditor(presetName, itemName);
     });
 
+    $('#comparison-overlay').on('click', '.zero-bind-regex-btn', async function() {
+        const side = $(this).data('side');
+        const isA = side === 'a';
+        const targetId = isA ? currentIdA : currentIdB;
+        const list = isA ? promptsA : promptsB;
+        const prompt = list.find(p => String(p.identifier) === String(targetId));
+        if (!prompt) return;
+
+        const targetPreset = isA ? nameA : nameB;
+        const { showBindRegexModal } = await import("./utils.js");
+        await showBindRegexModal(prompt, targetPreset, () => {
+            renderDetailContent();
+            if (typeof performAutoMatch === 'function') performAutoMatch();
+        });
+    });
+
     $('#comparison-overlay').on('click', '.zero-fav-btn', async function() {
         const side = $(this).data('side');
         const isA = side === 'a';
@@ -1106,8 +1128,20 @@ export async function showComparisonDetail(index, allItems) {
         tgtPrompt.injection_depth = srcPrompt.injection_depth;
         tgtPrompt.injection_order = srcPrompt.injection_order;
         tgtPrompt.forbid_overrides = srcPrompt.forbid_overrides;
+        tgtPrompt.bound_regex_ids = Array.isArray(srcPrompt.bound_regex_ids) ? [...srcPrompt.bound_regex_ids] : [];
 
         try {
+            // Auto-migrate bound regexes if enabled
+            const { UiStateManager } = await import('../qr-snapshot/state.js');
+            const autoMigrate = UiStateManager.get().autoMigrateBoundRegex !== false;
+            if (autoMigrate && Array.isArray(srcPrompt.bound_regex_ids) && srcPrompt.bound_regex_ids.length > 0) {
+                const { migrateBoundRegexes } = await import('./utils.js');
+                const migratedCount = migrateBoundRegexes(srcPresetObj, tgtPresetObj, srcPrompt.bound_regex_ids);
+                if (migratedCount > 0) {
+                    console.log(`[Zero] Auto-migrated ${migratedCount} bound regexes to ${tgtPreset}`);
+                }
+            }
+
             // Sync group
             const srcGroups = GroupManager.get(srcPreset);
             const srcGroup = srcGroups.find(g => g.ids.includes(srcId));
@@ -1136,6 +1170,7 @@ export async function showComparisonDetail(index, allItems) {
                 p.injection_depth = srcPrompt.injection_depth;
                 p.injection_order = srcPrompt.injection_order;
                 p.forbid_overrides = srcPrompt.forbid_overrides;
+                p.bound_regex_ids = Array.isArray(srcPrompt.bound_regex_ids) ? [...srcPrompt.bound_regex_ids] : [];
             }
             
             renderDetailContent();

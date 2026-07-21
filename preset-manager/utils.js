@@ -461,3 +461,625 @@ export async function savePresetWithoutRegexToast(pm, presetName, presetData, op
         }
     }
 }
+
+// ── Preset Regex Helper Functions ──────────────────────────────────────────────
+
+export function getPresetRegexScripts(presetNameOrObj) {
+    try {
+        let presetObj = presetNameOrObj;
+        if (typeof presetNameOrObj === 'string') {
+            const pm = SillyTavern.getContext().getPresetManager('openai');
+            presetObj = pm?.getCompletionPresetByName(presetNameOrObj);
+        }
+        if (!presetObj) return [];
+        if (!presetObj.extensions) presetObj.extensions = {};
+        if (!Array.isArray(presetObj.extensions.regex_scripts)) {
+            presetObj.extensions.regex_scripts = [];
+        }
+        return presetObj.extensions.regex_scripts;
+    } catch (e) {
+        console.error('[Zero] getPresetRegexScripts failed:', e);
+        return [];
+    }
+}
+
+export function migrateBoundRegexes(srcPresetObj, tgtPresetObj, boundIds) {
+    if (!srcPresetObj || !tgtPresetObj || !Array.isArray(boundIds) || boundIds.length === 0) return 0;
+
+    const srcRegexes = getPresetRegexScripts(srcPresetObj);
+    if (srcRegexes.length === 0) return 0;
+
+    if (!tgtPresetObj.extensions) tgtPresetObj.extensions = {};
+    if (!Array.isArray(tgtPresetObj.extensions.regex_scripts)) {
+        tgtPresetObj.extensions.regex_scripts = [];
+    }
+    const tgtRegexes = tgtPresetObj.extensions.regex_scripts;
+
+    let count = 0;
+    for (const boundId of boundIds) {
+        const srcRegex = srcRegexes.find(r => r && (String(r.id) === String(boundId) || String(r.scriptName) === String(boundId)));
+        if (!srcRegex) continue;
+
+        const existingIdx = tgtRegexes.findIndex(r => r && (
+            (srcRegex.id && String(r.id) === String(srcRegex.id)) ||
+            (srcRegex.scriptName && String(r.scriptName) === String(srcRegex.scriptName))
+        ));
+
+        const clonedRegex = JSON.parse(JSON.stringify(srcRegex));
+        if (existingIdx !== -1) {
+            tgtRegexes[existingIdx] = clonedRegex;
+        } else {
+            tgtRegexes.push(clonedRegex);
+        }
+        count++;
+    }
+    return count;
+}
+
+export async function showBindRegexModal(promptOrPrompts, presetName, onSavedCallback) {
+    if (!promptOrPrompts || !presetName) return;
+    const prompts = Array.isArray(promptOrPrompts) ? promptOrPrompts : [promptOrPrompts];
+    if (prompts.length === 0) return;
+
+    try {
+        const pm = SillyTavern.getContext().getPresetManager('openai');
+        if (!pm) {
+            toastr.error('未找到预设管理器');
+            return;
+        }
+
+        const presetObj = pm.getCompletionPresetByName(presetName);
+        if (!presetObj) {
+            toastr.error(`未找到预设: ${presetName}`);
+            return;
+        }
+
+        const regexScripts = getPresetRegexScripts(presetObj);
+        const firstPrompt = prompts[0];
+        const currentBoundIds = new Set(Array.isArray(firstPrompt.bound_regex_ids) ? firstPrompt.bound_regex_ids : []);
+
+        const modalId = 'zero-bind-regex-modal';
+        $(`#${modalId}`).remove();
+
+        const isBatch = prompts.length > 1;
+        const displayNameText = isBatch
+            ? `选中的 ${prompts.length} 个条目`
+            : escapeHtml(firstPrompt.name || firstPrompt.identifier || '未命名条目');
+
+        const $panel = $('#zero-preset-manager-panel');
+        let top = 0, left = 0, width = '100vw', height = '100vh';
+        let isFixedCoords = false;
+        if ($panel.length) {
+            const rect = $panel[0].getBoundingClientRect();
+            top = rect.top;
+            left = rect.left;
+            width = rect.width;
+            height = rect.height;
+            isFixedCoords = true;
+        }
+
+        const regexRowsHtml = regexScripts.length > 0 ? regexScripts.map(script => {
+            const scriptId = script.id || script.scriptName;
+            const isChecked = currentBoundIds.has(scriptId);
+            const scriptTitle = escapeHtml(script.scriptName || script.id || '未命名正则');
+            const patternStr = escapeHtml(script.findRegex || '');
+            const isDisabled = script.disabled === true;
+
+            return `
+                <label class="zero-regex-bind-row interactable" style="
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    padding: 10px 12px;
+                    background: rgba(255,255,255,0.03);
+                    border: 1px solid rgba(255,255,255,0.06);
+                    border-radius: 8px;
+                    font-size: 13px;
+                    cursor: pointer;
+                    margin-bottom: 6px;
+                    transition: background 0.15s;
+                    ${isDisabled ? 'opacity: 0.6;' : ''}
+                ">
+                    <input type="checkbox" class="zero-bind-checkbox" value="${escapeHtml(scriptId)}" ${isChecked ? 'checked' : ''} style="cursor: pointer;" />
+                    <div style="flex: 1; overflow: hidden; display: flex; flex-direction: column; gap: 2px;">
+                        <div style="font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; align-items: center; gap: 6px;">
+                            <span>${scriptTitle}</span>
+                            ${isDisabled ? '<span style="font-size: 10px; opacity: 0.7; background: rgba(255,255,255,0.1); padding: 1px 4px; border-radius: 4px;">已禁用</span>' : ''}
+                        </div>
+                        <div style="font-size: 11px; opacity: 0.6; font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                            ${patternStr}
+                        </div>
+                    </div>
+                </label>
+            `;
+        }).join('') : `
+            <div style="text-align: center; padding: 20px 0; opacity: 0.6; font-size: 13px;">
+                <i class="fa-solid fa-code" style="font-size: 24px; margin-bottom: 8px; display: block; opacity: 0.4;"></i>
+                预设「${escapeHtml(presetName)}」尚未包含任何预设正则脚本。
+            </div>
+        `;
+
+        const modalHtml = `
+            <div id="${modalId}" style="
+                position: fixed;
+                top: ${isFixedCoords ? top + 'px' : '0'};
+                left: ${isFixedCoords ? left + 'px' : '0'};
+                width: ${isFixedCoords ? width + 'px' : '100vw'};
+                height: ${isFixedCoords ? height + 'px' : '100vh'};
+                background: rgba(0,0,0,0.7);
+                backdrop-filter: blur(4px);
+                z-index: 30005;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 20px;
+                font-family: var(--mainFontFamily, sans-serif);
+                color: var(--SmartThemeBodyColor, #dcdcd2);
+            ">
+                <div style="
+                    background: var(--SmartThemeBlurTintColor, #171717);
+                    border: 1px solid var(--SmartThemeBorderColor, #444);
+                    border-radius: 16px;
+                    width: 100%;
+                    max-width: 440px;
+                    display: flex;
+                    flex-direction: column;
+                    box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+                    overflow: hidden;
+                    max-height: 85vh;
+                ">
+                    <!-- Header -->
+                    <div style="
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                        padding: 16px 20px;
+                        border-bottom: 1px solid var(--SmartThemeBorderColor, #444);
+                    ">
+                        <div style="font-weight: bold; font-size: 15px; display: flex; align-items: center; gap: 8px;">
+                            <i class="fa-solid fa-link" style="color: var(--SmartThemeQuoteColor);"></i>
+                            <span>正则绑定设置</span>
+                        </div>
+                        <div class="close-bind-modal interactable" style="cursor: pointer; opacity: 0.8; font-size: 16px;">
+                            <i class="fa-solid fa-xmark"></i>
+                        </div>
+                    </div>
+
+                    <!-- Target prompt badge -->
+                    <div style="padding: 12px 20px 0 20px;">
+                        <div style="font-size: 12px; opacity: 0.7; margin-bottom: 4px;">目标条目：</div>
+                        <div style="
+                            font-size: 13px; font-weight: bold; padding: 8px 12px;
+                            background: rgba(255,255,255,0.05); border-radius: 6px;
+                            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+                        ">
+                            ${displayNameText}
+                        </div>
+                    </div>
+
+                    <!-- Body -->
+                    <div style="padding: 16px 20px; flex: 1; overflow-y: auto; display: flex; flex-direction: column;">
+                        <div style="font-size: 12px; opacity: 0.7; margin-bottom: 8px;">勾选要绑定的预设正则：</div>
+                        <div style="display: flex; flex-direction: column;">
+                            ${regexRowsHtml}
+                        </div>
+                    </div>
+
+                    <!-- Footer -->
+                    <div style="
+                        padding: 14px 20px;
+                        border-top: 1px solid var(--SmartThemeBorderColor, #444);
+                        display: flex;
+                        justify-content: flex-end;
+                        gap: 10px;
+                        background: rgba(0,0,0,0.15);
+                    ">
+                        <button class="close-bind-modal interactable" style="
+                            padding: 8px 16px; border: none; border-radius: 6px;
+                            background: rgba(255,255,255,0.1); color: inherit; cursor: pointer; font-size: 13px;
+                        ">取消</button>
+                        <button id="save-regex-binding-btn" class="interactable" style="
+                            padding: 8px 20px; border: none; border-radius: 6px;
+                            background: var(--SmartThemeQuoteColor, #4a90e2); color: white; cursor: pointer; font-size: 13px; font-weight: bold;
+                        ">确认保存</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        $('body').append(modalHtml);
+
+        $(`#${modalId}`).find('.close-bind-modal').on('click', () => {
+            $(`#${modalId}`).remove();
+        });
+
+        $(`#${modalId}`).find('#save-regex-binding-btn').on('click', async () => {
+            const checkedIds = [];
+            $(`#${modalId}`).find('.zero-bind-checkbox:checked').each(function() {
+                checkedIds.push($(this).val());
+            });
+
+            for (const p of prompts) {
+                const targetInPreset = presetObj.prompts.find(x => x.identifier === p.identifier);
+                if (targetInPreset) {
+                    targetInPreset.bound_regex_ids = [...checkedIds];
+                }
+                p.bound_regex_ids = [...checkedIds];
+            }
+
+            const isActive = pm.getSelectedPresetName() === presetName;
+            await savePresetWithoutRegexToast(pm, presetName, presetObj, { skipUpdate: !isActive });
+            toastr.success(`已更新正则绑定 (${checkedIds.length} 个正则)`);
+            $(`#${modalId}`).remove();
+            if (typeof onSavedCallback === 'function') onSavedCallback(checkedIds);
+        });
+
+    } catch (e) {
+        console.error('[Zero] showBindRegexModal error:', e);
+        toastr.error('打开绑定框失败');
+    }
+}
+
+export async function showBindPromptToRegexModal(regexScript, presetName, onSavedCallback) {
+    if (!presetName || !regexScript) return;
+    try {
+        const pm = SillyTavern.getContext().getPresetManager('openai');
+        const presetObj = pm.getCompletionPresetByName(presetName);
+        if (!presetObj) {
+            toastr.error('未找到指定的预设');
+            return;
+        }
+
+        const scriptId = String(regexScript.id || regexScript.scriptName);
+        const scriptTitle = escapeHtml(regexScript.scriptName || regexScript.id || '未命名正则');
+        const prompts = presetObj.prompts || [];
+
+        const modalId = 'zero-bind-prompt-to-regex-modal';
+        $(`#${modalId}`).remove();
+
+        const promptRowsHtml = prompts.map((p, idx) => {
+            const pId = p.identifier;
+            const pName = escapeHtml(p.name || p.identifier || `条目 ${idx + 1}`);
+            const pRole = p.role || 'user';
+            const isChecked = Array.isArray(p.bound_regex_ids) && p.bound_regex_ids.includes(scriptId);
+
+            return `
+                <label class="interactable zero-prompt-item-row" style="
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    padding: 5px 8px;
+                    background: rgba(255,255,255,0.03);
+                    border: 1px solid rgba(255,255,255,0.06);
+                    border-radius: 6px;
+                    font-size: 12px;
+                    cursor: pointer;
+                    margin-bottom: 3px;
+                ">
+                    <input type="checkbox" class="zero-prompt-bind-cb interactable" data-index="${idx}" value="${escapeHtml(pId)}" ${isChecked ? 'checked' : ''} style="cursor: pointer; flex-shrink: 0;" />
+                    <div style="flex: 1; overflow: hidden; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                        <span style="font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${pName}</span>
+                        <span style="font-size: 10px; opacity: 0.6; background: rgba(255,255,255,0.08); padding: 1px 4px; border-radius: 4px; flex-shrink: 0;">${pRole}</span>
+                    </div>
+                </label>
+            `;
+        }).join('');
+
+        const modalHtml = `
+            <div id="${modalId}" style="
+                position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+                background: rgba(0,0,0,0.7); backdrop-filter: blur(4px);
+                z-index: 30005; display: flex; align-items: center; justify-content: center;
+                padding: 16px; font-family: var(--mainFontFamily, sans-serif); color: var(--SmartThemeBodyColor, #dcdcd2);
+            ">
+                <div style="
+                    background: var(--SmartThemeBlurTintColor, #171717); border: 1px solid var(--SmartThemeBorderColor, #444);
+                    border-radius: 12px; width: 100%; max-width: 440px; display: flex; flex-direction: column;
+                    box-shadow: 0 8px 30px rgba(0,0,0,0.5); overflow: hidden; max-height: 80vh;
+                ">
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--SmartThemeBorderColor, #444);">
+                        <div style="font-weight: bold; font-size: 14px; display: flex; align-items: center; gap: 8px;">
+                            <i class="fa-solid fa-link" style="color: var(--SmartThemeQuoteColor);"></i>
+                            <span>预设正则绑定条目 (${escapeHtml(presetName)})</span>
+                        </div>
+                        <div class="close-modal interactable" style="cursor: pointer; opacity: 0.8; font-size: 15px;"><i class="fa-solid fa-xmark"></i></div>
+                    </div>
+                    <div style="padding: 10px 16px 0 16px;">
+                        <div style="font-size: 11px; opacity: 0.7; margin-bottom: 3px;">正则脚本：</div>
+                        <div style="font-size: 12px; font-weight: bold; padding: 6px 10px; background: rgba(255,255,255,0.05); border-radius: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                            ${scriptTitle}
+                        </div>
+                    </div>
+                    <div style="padding: 8px 16px 0 16px; flex-shrink: 0;">
+                        <input type="text" id="zero-prompt-search-input" class="interactable" placeholder="搜索条目名称..." style="width: 100%; box-sizing: border-box; padding: 5px 8px; background: var(--SmartThemeChatTintColor); color: inherit; border: 1px solid var(--SmartThemeBorderColor); border-radius: 6px; font-size: 12px;">
+                    </div>
+                    <div id="zero-prompt-list-container" style="padding: 8px 16px; flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 2px;">
+                        ${promptRowsHtml}
+                    </div>
+                    <div style="padding: 10px 16px; border-top: 1px solid var(--SmartThemeBorderColor, #444); display: flex; justify-content: space-between; align-items: center; background: transparent;">
+                        <div style="display: flex; gap: 4px;">
+                            <button id="zero-prompt-select-all" class="interactable" title="全选" style="width: 28px; height: 28px; padding: 0; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; background: rgba(255,255,255,0.05); color: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 12px;"><i class="fa-solid fa-check-double"></i></button>
+                            <button id="zero-prompt-select-invert" class="interactable" title="反选" style="width: 28px; height: 28px; padding: 0; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; background: rgba(255,255,255,0.05); color: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 12px;"><i class="fa-solid fa-right-left"></i></button>
+                            <button id="zero-prompt-select-range" class="interactable" title="连选 (勾选起始和结束条目后点击)" style="width: 28px; height: 28px; padding: 0; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; background: rgba(255,255,255,0.05); color: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 12px;"><i class="fa-solid fa-arrows-up-down"></i></button>
+                        </div>
+                        <div style="display: flex; gap: 8px;">
+                            <button class="close-modal interactable" style="padding: 6px 14px; border: none; border-radius: 6px; background: rgba(255,255,255,0.1); color: inherit; cursor: pointer; font-size: 12px;">取消</button>
+                            <button id="save-prompt-binding-btn" class="interactable" style="padding: 6px 16px; border: none; border-radius: 6px; background: var(--SmartThemeQuoteColor, #4a90e2); color: white; cursor: pointer; font-size: 12px; font-weight: bold;">保存绑定</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        $('body').append(modalHtml);
+
+        const $modal = $(`#${modalId}`);
+        $modal.find('.close-modal').on('click', () => $modal.remove());
+
+        $modal.find('#zero-prompt-search-input').on('input', function() {
+            const q = $(this).val().trim().toLowerCase();
+            $modal.find('.zero-prompt-item-row').each(function() {
+                const text = $(this).text().toLowerCase();
+                $(this).toggle(text.includes(q));
+            });
+        });
+
+        $modal.find('#zero-prompt-select-all').on('click', function() {
+            $modal.find('.zero-prompt-item-row:visible .zero-prompt-bind-cb').prop('checked', true);
+        });
+
+        $modal.find('#zero-prompt-select-invert').on('click', function() {
+            $modal.find('.zero-prompt-item-row:visible .zero-prompt-bind-cb').each(function() {
+                $(this).prop('checked', !$(this).is(':checked'));
+            });
+        });
+
+        $modal.find('#zero-prompt-select-range').on('click', function() {
+            const $checked = $modal.find('.zero-prompt-bind-cb:checked');
+            if ($checked.length < 2) {
+                toastr.info('请先勾选起始和结束条目');
+                return;
+            }
+            const indexes = $checked.map(function() { return parseInt($(this).data('index')); }).get();
+            const start = Math.min(...indexes);
+            const end = Math.max(...indexes);
+            for (let i = start; i <= end; i++) {
+                $modal.find(`.zero-prompt-bind-cb[data-index="${i}"]`).prop('checked', true);
+            }
+        });
+
+        $modal.find('#save-prompt-binding-btn').on('click', async () => {
+            const checkedPromptIds = new Set();
+            $modal.find('.zero-prompt-bind-cb:checked').each(function() {
+                checkedPromptIds.add($(this).val());
+            });
+
+            let count = 0;
+            presetObj.prompts.forEach(p => {
+                if (!Array.isArray(p.bound_regex_ids)) p.bound_regex_ids = [];
+                const has = p.bound_regex_ids.includes(scriptId);
+                const shouldHave = checkedPromptIds.has(p.identifier);
+
+                if (shouldHave && !has) {
+                    p.bound_regex_ids.push(scriptId);
+                    count++;
+                } else if (!shouldHave && has) {
+                    p.bound_regex_ids = p.bound_regex_ids.filter(id => id !== scriptId);
+                    count++;
+                }
+            });
+
+            const isActive = pm.getSelectedPresetName() === presetName;
+            await savePresetWithoutRegexToast(pm, presetName, presetObj, { skipUpdate: !isActive });
+            toastr.success(`已保存关联的 ${checkedPromptIds.size} 个条目`);
+            $modal.remove();
+            if (typeof onSavedCallback === 'function') onSavedCallback(Array.from(checkedPromptIds));
+        });
+
+    } catch (e) {
+        console.error('[Zero] showBindPromptToRegexModal error:', e);
+        toastr.error('打开绑定面板失败');
+    }
+}
+
+export async function showStandaloneRegexManagerModal(nameA, nameB, onMigratedCallback) {
+    if (!nameA || !nameB) {
+        toastr.info('请先选择源预设与目标预设');
+        return;
+    }
+    const pm = SillyTavern.getContext().getPresetManager('openai');
+    const srcPresetObj = pm.getCompletionPresetByName(nameA);
+    const tgtPresetObj = pm.getCompletionPresetByName(nameB);
+    if (!srcPresetObj || !tgtPresetObj) {
+        toastr.error('无法定位选中的预设');
+        return;
+    }
+
+    const srcRegexes = getPresetRegexScripts(srcPresetObj);
+    const tgtRegexes = getPresetRegexScripts(tgtPresetObj);
+
+    const modalId = 'zero-standalone-regex-modal';
+    $(`#${modalId}`).remove();
+
+    const $panel = $('#zero-preset-manager-panel');
+    let top = 0, left = 0, width = '100vw', height = '100vh';
+    let isFixedCoords = false;
+    if ($panel.length) {
+        const rect = $panel[0].getBoundingClientRect();
+        top = rect.top;
+        left = rect.left;
+        width = rect.width;
+        height = rect.height;
+        isFixedCoords = true;
+    }
+
+    const tgtRegexSet = new Set(tgtRegexes.map(r => String(r.id || r.scriptName)));
+
+    const srcRowsHtml = srcRegexes.length > 0 ? srcRegexes.map(script => {
+        const scriptId = script.id || script.scriptName;
+        const existsInTgt = tgtRegexSet.has(String(scriptId));
+        const scriptTitle = escapeHtml(script.scriptName || script.id || '未命名正则');
+        const patternStr = escapeHtml(script.findRegex || '');
+
+        return `
+            <label class="interactable" style="
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                padding: 10px 12px;
+                background: rgba(255,255,255,0.03);
+                border: 1px solid rgba(255,255,255,0.06);
+                border-radius: 8px;
+                font-size: 13px;
+                cursor: pointer;
+                margin-bottom: 6px;
+            ">
+                <input type="checkbox" class="zero-migrate-regex-checkbox" value="${escapeHtml(scriptId)}" style="cursor: pointer;" />
+                <div style="flex: 1; overflow: hidden; display: flex; flex-direction: column; gap: 2px;">
+                    <div style="font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; align-items: center; gap: 8px;">
+                        <span>${scriptTitle}</span>
+                        ${existsInTgt ? '<span style="font-size: 10px; color: var(--SmartThemeQuoteColor); background: rgba(74,144,226,0.15); padding: 1px 6px; border-radius: 4px;">目标中已存在</span>' : ''}
+                    </div>
+                    <div style="font-size: 11px; opacity: 0.6; font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                        ${patternStr}
+                    </div>
+                </div>
+            </label>
+        `;
+    }).join('') : `
+        <div style="text-align: center; padding: 20px 0; opacity: 0.6; font-size: 13px;">
+            源预设「${escapeHtml(nameA)}」暂无预设正则脚本。
+        </div>
+    `;
+
+    const modalHtml = `
+        <div id="${modalId}" style="
+            position: fixed;
+            top: ${isFixedCoords ? top + 'px' : '0'};
+            left: ${isFixedCoords ? left + 'px' : '0'};
+            width: ${isFixedCoords ? width + 'px' : '100vw'};
+            height: ${isFixedCoords ? height + 'px' : '100vh'};
+            background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(4px);
+            z-index: 30005;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            font-family: var(--mainFontFamily, sans-serif);
+            color: var(--SmartThemeBodyColor, #dcdcd2);
+        ">
+            <div style="
+                background: var(--SmartThemeBlurTintColor, #171717);
+                border: 1px solid var(--SmartThemeBorderColor, #444);
+                border-radius: 16px;
+                width: 100%;
+                max-width: 480px;
+                display: flex;
+                flex-direction: column;
+                box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+                overflow: hidden;
+                max-height: 85vh;
+            ">
+                <!-- Header -->
+                <div style="
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: 16px 20px;
+                    border-bottom: 1px solid var(--SmartThemeBorderColor, #444);
+                ">
+                    <div style="font-weight: bold; font-size: 15px; display: flex; align-items: center; gap: 8px;">
+                        <i class="fa-solid fa-code-compare" style="color: var(--SmartThemeQuoteColor);"></i>
+                        <span>独立正则迁移</span>
+                    </div>
+                    <div class="close-standalone-modal interactable" style="cursor: pointer; opacity: 0.8; font-size: 16px;">
+                        <i class="fa-solid fa-xmark"></i>
+                    </div>
+                </div>
+
+                <!-- Source -> Target Subtitle -->
+                <div style="padding: 12px 20px 0 20px; display: flex; align-items: center; gap: 8px; font-size: 13px;">
+                    <div style="font-weight: bold; color: var(--SmartThemeQuoteColor); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">
+                        ${escapeHtml(nameA)}
+                    </div>
+                    <i class="fa-solid fa-arrow-right" style="opacity: 0.5;"></i>
+                    <div style="font-weight: bold; color: var(--SmartThemeQuoteColor); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">
+                        ${escapeHtml(nameB)}
+                    </div>
+                </div>
+
+                <!-- Body -->
+                <div style="padding: 16px 20px; flex: 1; overflow-y: auto; display: flex; flex-direction: column;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <div style="font-size: 12px; opacity: 0.7;">勾选需要迁移的正则脚本：</div>
+                        <button id="select-all-standalone-regex" class="interactable" style="background: none; border: none; color: var(--SmartThemeQuoteColor); font-size: 11px; cursor: pointer;">全选</button>
+                    </div>
+                    <div style="display: flex; flex-direction: column;">
+                        ${srcRowsHtml}
+                    </div>
+                </div>
+
+                <!-- Footer -->
+                <div style="
+                    padding: 14px 20px;
+                    border-top: 1px solid var(--SmartThemeBorderColor, #444);
+                    display: flex;
+                    justify-content: flex-end;
+                    gap: 10px;
+                    background: rgba(0,0,0,0.15);
+                ">
+                    <button class="close-standalone-modal interactable" style="
+                        padding: 8px 16px; border: none; border-radius: 6px;
+                        background: rgba(255,255,255,0.1); color: inherit; cursor: pointer; font-size: 13px;
+                    ">关闭</button>
+                    <button id="exec-standalone-regex-migrate-btn" class="interactable" style="
+                        padding: 8px 20px; border: none; border-radius: 6px;
+                        background: var(--SmartThemeQuoteColor, #4a90e2); color: white; cursor: pointer; font-size: 13px; font-weight: bold;
+                    ">迁移选中正则</button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    $('body').append(modalHtml);
+
+    $(`#${modalId}`).find('.close-standalone-modal').on('click', () => {
+        $(`#${modalId}`).remove();
+    });
+
+    $(`#${modalId}`).find('#select-all-standalone-regex').on('click', function() {
+        const $boxes = $(`#${modalId}`).find('.zero-migrate-regex-checkbox');
+        const allChecked = $boxes.length === $boxes.filter(':checked').length;
+        $boxes.prop('checked', !allChecked);
+    });
+
+    $(`#${modalId}`).find('#exec-standalone-regex-migrate-btn').on('click', async () => {
+        const checkedIds = [];
+        $(`#${modalId}`).find('.zero-migrate-regex-checkbox:checked').each(function() {
+            checkedIds.push($(this).val());
+        });
+
+        if (checkedIds.length === 0) {
+            toastr.info('请先勾选需要迁移的正则');
+            return;
+        }
+
+        try {
+            const count = migrateBoundRegexes(srcPresetObj, tgtPresetObj, checkedIds);
+            if (count > 0) {
+                const isActive = pm.getSelectedPresetName() === nameB;
+                await savePresetWithoutRegexToast(pm, nameB, tgtPresetObj, { skipUpdate: !isActive });
+                toastr.success(`已将 ${count} 个正则脚本成功迁移至「${nameB}」`);
+                $(`#${modalId}`).remove();
+                if (typeof onMigratedCallback === 'function') onMigratedCallback(count);
+            } else {
+                toastr.info('未发现可迁移的正则');
+            }
+        } catch (err) {
+            console.error('[Zero] Standalone regex migration failed:', err);
+            toastr.error('正则迁移失败');
+        }
+    });
+}
+

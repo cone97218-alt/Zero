@@ -14,6 +14,7 @@ let _stitch   = null;
 let _manage   = null;
 let _checker  = null;
 let _editor   = null;
+let _regex    = null;
 let _modulesLoaded = false;
 
 // ── 选项卡渲染缓存（避免切换 Tab 重复渲染 DOM） ──────────────────────────────
@@ -45,12 +46,13 @@ export function applyAvoidStatusbar() {
 
 async function loadModules() {
     if (_modulesLoaded) return;
-    [_contrast, _stitch, _manage, _checker, _editor] = await Promise.all([
+    [_contrast, _stitch, _manage, _checker, _editor, _regex] = await Promise.all([
         import('./contrast.js'),
         import('./stitch.js'),
         import('./manage.js'),
         import('./checker.js'),
         import('./editor.js'),
+        import('./regex-tab.js'),
     ]);
     _modulesLoaded = true;
 }
@@ -109,6 +111,7 @@ export async function populatePresetSelects() {
         $checkS.html(buildOptionsHtml(false));
 
         if (_contrast) _contrast.pruneManualLinks(list.names);
+        if (_regex) _regex.populateRegexSelects(list);
         
         const lastA = localStorage.getItem('zero_last_a');
         const lastB = localStorage.getItem('zero_last_b');
@@ -167,6 +170,7 @@ function ensurePanel() {
                 <div style="display: flex; flex: 1;">
                     <div class="zero-tab-link active" data-tab="contrast" style="padding: 10px 12px; font-size: 13px; cursor: pointer; border-bottom: 2px solid var(--SmartThemeBorderColor, #444);">对照</div>
                     <div class="zero-tab-link" data-tab="stitch" style="padding: 10px 12px; font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent;">缝合</div>
+                    <div class="zero-tab-link" data-tab="regex" style="padding: 10px 12px; font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent;">正则</div>
                     <div class="zero-tab-link" data-tab="check" style="padding: 10px 12px; font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent;">自查</div>
                     <div class="zero-tab-link" data-tab="manage" style="padding: 10px 12px; font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent;">管理</div>
                     <div class="zero-tab-link" data-tab="settings" style="padding: 10px 12px; font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent;">设置</div>
@@ -359,6 +363,51 @@ function ensurePanel() {
                             </div>
                             <div id="stitch-peek-list" style="display: flex; flex-direction: column; gap: 6px;"></div>
                         </div>
+                    </div>
+                </div>
+
+                <!-- Regex Tab -->
+                <div id="zero-tab-regex" class="zero-tab-content" style="padding: 12px; display: none; flex-direction: column; gap: 12px; position: relative; flex: 1; overflow: hidden; height: 100%;">
+                    <div class="regex-setup" style="display: flex; flex-direction: column; gap: 8px; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 8px; flex-shrink: 0;">
+                        <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+                            <span style="font-size: 12px; opacity: 0.7; width: 60px; flex-shrink: 0;">预设 A:</span>
+                            <select id="regex-preset-source" class="interactable" style="flex: 1; min-width: 0; padding: 4px; background: var(--SmartThemeChatTintColor); color: inherit; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px;"></select>
+                            <button id="regex-swap-btn" class="interactable" title="互换预设 A 与 B" style="width: 28px; height: 28px; padding: 0; background: rgba(255,255,255,0.05); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; color: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                                <i class="fa-solid fa-right-left fa-rotate-90"></i>
+                            </button>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+                            <span style="font-size: 12px; opacity: 0.7; width: 60px; flex-shrink: 0;">预设 B:</span>
+                            <select id="regex-preset-target" class="interactable" style="flex: 1; min-width: 0; padding: 4px; background: var(--SmartThemeChatTintColor); color: inherit; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px;"></select>
+                            <button id="regex-refresh-btn" class="interactable" title="刷新列表" style="width: 28px; height: 28px; padding: 0; background: rgba(255,255,255,0.05); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; color: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                                <i class="fa-solid fa-rotate"></i>
+                            </button>
+                        </div>
+                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 4px;">
+                            <select id="regex-filter-select" class="interactable" style="flex: 1; min-width: 0; padding: 4px 8px; height: 28px !important; box-sizing: border-box !important; background: var(--SmartThemeChatTintColor); color: inherit; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; font-size: 12px;">
+                                <option value="all">全部</option>
+                                <option value="onlyA">仅 A 有</option>
+                                <option value="onlyB">仅 B 有</option>
+                                <option value="both">都有</option>
+                            </select>
+                            <div style="display: flex; gap: 4px; flex-shrink: 0;">
+                                <button id="regex-select-all" class="interactable" title="全选" style="width: 28px; height: 28px; padding: 0; background: rgba(255,255,255,0.05); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; color: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 12px;">
+                                    <i class="fa-solid fa-check-double"></i>
+                                </button>
+                                <button id="regex-select-invert" class="interactable" title="反选" style="width: 28px; height: 28px; padding: 0; background: rgba(255,255,255,0.05); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; color: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 12px;">
+                                    <i class="fa-solid fa-right-left"></i>
+                                </button>
+                                <button id="regex-select-range" class="interactable" title="连选 (勾选起始和结束项目后点击)" style="width: 28px; height: 28px; padding: 0; background: rgba(255,255,255,0.05); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; color: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 12px;">
+                                    <i class="fa-solid fa-arrows-up-down"></i>
+                                </button>
+                            </div>
+                            <button id="regex-migrate-selected-btn" class="interactable" title="迁移选中正则" style="width: 28px; height: 28px; padding: 0; background: var(--SmartThemeQuoteColor); color: white; border: none; border-radius: 4px; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                                <i class="fa-solid fa-file-export"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div id="regex-list" style="display: flex; flex-direction: column; gap: 6px; flex: 1; min-height: 0; max-height: 550px; overflow-y: auto !important; -webkit-overflow-scrolling: touch;">
+                        <p style="text-align: center; opacity: 0.5; font-size: 12px; margin-top: 20px;">请选择预设并管理正则</p>
                     </div>
                 </div>
 
@@ -566,6 +615,29 @@ function ensurePanel() {
                                     <input type="checkbox" id="zero-setting-stitch-collapse-b" class="interactable">
                                     <span class="zero-slider"></span>
                                 </label>
+                            </div>
+                            <!-- 自动迁移绑定的预设正则 -->
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 12px; margin-top: 4px;">
+                                <div style="flex: 1;">
+                                    <strong style="display: block; font-size: 13px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">自动迁移绑定的预设正则</strong>
+                                    <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">在跨预设缝合或覆盖条目时，自动将条目所绑定的预设正则脚本同步迁移至目标预设。</span>
+                                </div>
+                                <label class="zero-switch">
+                                    <input type="checkbox" id="zero-setting-stitch-auto-migrate-regex" class="interactable">
+                                    <span class="zero-slider"></span>
+                                </label>
+                            </div>
+                            <!-- 缝合界面正则绑定 Badge 展示模式 -->
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 12px; margin-top: 4px;">
+                                <div style="flex: 1;">
+                                    <strong style="display: block; font-size: 13px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">缝合界面绑定正则展示模式</strong>
+                                    <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">控制缝合 Tab 列表中提示词条目旁正则绑定 Badge 的展示策略。</span>
+                                </div>
+                                <select id="zero-setting-stitch-regex-badge-mode" class="interactable" style="padding: 4px 8px; font-size: 12px; background: var(--SmartThemeChatTintColor); color: inherit; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; flex-shrink: 0;">
+                                    <option value="bound_only">仅展示已绑定 (默认)</option>
+                                    <option value="all">全部展示 (含未绑定虚线按钮)</option>
+                                    <option value="none">不展示</option>
+                                </select>
                             </div>
                         </div>
                     </div>
@@ -1099,6 +1171,19 @@ function ensurePanel() {
                     if (_stitch && typeof _stitch.restorePeekScroll === 'function') _stitch.restorePeekScroll();
                 }
             }
+            else if (tab === 'regex') {
+                if (!renderedTabs.has('regex')) {
+                    populatePresetSelects().then(() => {
+                        if (_regex) {
+                            _regex.initRegexTab();
+                            _regex.renderRegexList();
+                        }
+                        renderedTabs.add('regex');
+                    });
+                } else {
+                    if (_regex) _regex.renderRegexList();
+                }
+            }
             else if (tab === 'check') {
                 if (!renderedTabs.has('check')) {
                     populatePresetSelects().then(() => {
@@ -1333,6 +1418,21 @@ function ensurePanel() {
         toastr.success(checked ? '已开启缝合成功后自动折叠' : '已关闭缝合成功后自动折叠');
     });
 
+    $('body').off('change', '#zero-setting-stitch-auto-migrate-regex').on('change', '#zero-setting-stitch-auto-migrate-regex', function() {
+        const checked = $(this).is(':checked');
+        UiStateManager.save({ autoMigrateBoundRegex: checked });
+        toastr.success(checked ? '已开启缝合条目时自动迁移正则' : '已关闭缝合条目时自动迁移正则');
+    });
+
+    $('body').off('change', '#zero-setting-stitch-regex-badge-mode').on('change', '#zero-setting-stitch-regex-badge-mode', function() {
+        const val = $(this).val();
+        UiStateManager.save({ stitchRegexBadgeMode: val });
+        toastr.success('已更新缝合界面绑定正则展示模式');
+        if ($('#zero-tab-stitch').is(':visible')) {
+            import('./stitch.js').then(m => m.renderStitchList(true));
+        }
+    });
+
     $('body').off('change', '#zero-setting-ui-tab-size').on('change', '#zero-setting-ui-tab-size', function() {
         const val = $(this).val();
         UiStateManager.save({ tabTitleSize: val });
@@ -1375,6 +1475,18 @@ function ensurePanel() {
     $('#contrast-auto-match').on('click', () => _contrast.performAutoMatch());
     $('#contrast-start').on('click', () => _contrast.startComparison());
     $('#manage-manual-matches').on('click', () => _contrast.showManualLinksManager());
+    $('#contrast-standalone-regex').on('click', async () => {
+        const nameA = $('#contrast-preset-a').val();
+        const nameB = $('#contrast-preset-b').val();
+        const { showStandaloneRegexManagerModal } = await import('./utils.js');
+        showStandaloneRegexManagerModal(nameA, nameB, () => _contrast.performAutoMatch());
+    });
+
+    const autoMigrateInit = UiStateManager.get().autoMigrateBoundRegex !== false;
+    $('#contrast-auto-migrate-regex-toggle').prop('checked', autoMigrateInit);
+    $('#contrast-auto-migrate-regex-toggle').on('change', function() {
+        UiStateManager.save({ autoMigrateBoundRegex: $(this).is(':checked') });
+    });
 
     $('#contrast-preset-a').on('change', function() {
         $('#contrast-search-input').val('');
@@ -1985,6 +2097,8 @@ export function renderSettingsTab() {
 
     // Stitch switches
     $('#zero-setting-stitch-collapse-b').prop('checked', state.collapseTargetBOnStitch === true);
+    $('#zero-setting-stitch-auto-migrate-regex').prop('checked', state.autoMigrateBoundRegex !== false);
+    $('#zero-setting-stitch-regex-badge-mode').val(state.stitchRegexBadgeMode || 'bound_only');
 
     // UI switches
     $('#zero-setting-ui-search-anim').prop('checked', state.searchBarAnimation !== false);
@@ -2034,6 +2148,11 @@ export async function refreshActiveTab() {
         if (_stitch && typeof _stitch.renderStitchList === 'function') {
             await _stitch.renderStitchList();
         }
+    } else if (tab === 'regex') {
+        await populatePresetSelects();
+        if (_regex && typeof _regex.renderRegexList === 'function') {
+            await _regex.renderRegexList();
+        }
     } else if (tab === 'check') {
         await populatePresetSelects();
         if (_checker && _checker.Checker && typeof _checker.Checker.render === 'function') {
@@ -2073,6 +2192,7 @@ export function applyTabSettings() {
     const tabMeta = {
         contrast: { text: '对照', icon: '<i class="fa-solid fa-code-compare"></i>' },
         stitch: { text: '缝合', icon: '<i class="fa-solid fa-scissors"></i>' },
+        regex: { text: '正则', icon: '<i class="fa-solid fa-terminal"></i>' },
         check: { text: '自查', icon: '<i class="fa-solid fa-stethoscope"></i>' },
         manage: { text: '管理', icon: '<i class="fa-solid fa-list-ul"></i>' },
         settings: { text: '设置', icon: '<i class="fa-solid fa-gear"></i>' }
