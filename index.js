@@ -1,5 +1,5 @@
 import { openUI } from './qr-snapshot/ui.js';
-import { preloadOpenai, PresetManager } from './qr-snapshot/state.js';
+import { preloadOpenai, PresetManager, UiStateManager } from './qr-snapshot/state.js';
 import { init as initPresetManager } from './preset-manager/main.js';
 import { initPresetPerformanceOptimizer } from './qr-snapshot/performance.js';
 
@@ -199,6 +199,54 @@ if (event_types.PRESET_CHANGED) {
     });
 }
 
+// ── Slash Commands Registration ─────────────────────────────────────────────
+export async function registerZeroSlashCommands() {
+    try {
+        const ctx = SillyTavern.getContext();
+        let SlashCommand = null;
+        let SlashCommandParser = null;
+
+        if (ctx.SlashCommand && ctx.SlashCommandParser) {
+            SlashCommand = ctx.SlashCommand;
+            SlashCommandParser = ctx.SlashCommandParser;
+        } else {
+            const scModule = await import('/scripts/slash-commands/SlashCommand.js');
+            const scpModule = await import('/scripts/slash-commands/SlashCommandParser.js');
+            SlashCommand = scModule.SlashCommand;
+            SlashCommandParser = scpModule.SlashCommandParser;
+        }
+
+        if (!SlashCommand || !SlashCommandParser) return;
+
+        // 1. Snapshot Modal command
+        SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+            name: 'zero-snapshot',
+            aliases: ['zero-qr', 'zerosnapshot', 'zero-snapshots'],
+            helpString: '打开 Zero 快照管理弹窗',
+            callback: () => {
+                openUI();
+                return '';
+            },
+        }));
+
+        // 2. Preset Manager Panel command
+        SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+            name: 'zero-preset',
+            aliases: ['zero-presets', 'zeropreset', 'zero-preset-manager'],
+            helpString: '打开 Zero 预设管理面板',
+            callback: async () => {
+                const { showPanel } = await import('./preset-manager/main.js');
+                showPanel();
+                return '';
+            },
+        }));
+
+        console.log('[Zero] Slash commands /zero-snapshot and /zero-preset registered successfully');
+    } catch (e) {
+        console.warn('[Zero] Failed to register slash commands:', e);
+    }
+}
+
 // ── UI Buttons Injection ────────────────────────────────────────────────────
 function createButton() {
     const btn = document.createElement('div');
@@ -217,6 +265,12 @@ function createButton() {
 }
 
 function injectButton() {
+    const enabled = UiStateManager.get().injectQrBarButton !== false;
+    if (!enabled) {
+        const existing = document.getElementById(BTN_ID);
+        if (existing) existing.remove();
+        return;
+    }
     if (document.getElementById(BTN_ID)) return;
     const btnContainer = document.querySelector('#qr--bar .qr--buttons');
     if (btnContainer) {
@@ -230,6 +284,12 @@ function injectButton() {
 }
 
 function injectWithRetry(attempts = 0) {
+    const enabled = UiStateManager.get().injectQrBarButton !== false;
+    if (!enabled) {
+        const existing = document.getElementById(BTN_ID);
+        if (existing) existing.remove();
+        return;
+    }
     if (document.getElementById(BTN_ID)) return;
     if (attempts > 15) return;
     injectButton();
@@ -238,7 +298,23 @@ function injectWithRetry(attempts = 0) {
     }
 }
 
+window.updateZeroQrBarButtonInjection = () => {
+    const enabled = UiStateManager.get().injectQrBarButton !== false;
+    if (enabled) {
+        injectWithRetry();
+    } else {
+        const existing = document.getElementById(BTN_ID);
+        if (existing) existing.remove();
+    }
+};
+
 const observer = new MutationObserver(() => {
+    const enabled = UiStateManager.get().injectQrBarButton !== false;
+    if (!enabled) {
+        const existing = document.getElementById(BTN_ID);
+        if (existing) existing.remove();
+        return;
+    }
     if (!document.getElementById(BTN_ID) && document.querySelector('#qr--bar .qr--buttons')) {
         injectButton();
     }
@@ -249,9 +325,10 @@ eventSource.on(event_types.APP_READY, () => {
     injectWithRetry();
     initPresetManager();
     initPresetPerformanceOptimizer(eventSource, event_types);
+    registerZeroSlashCommands();
     observer.observe(document.body, { childList: true, subtree: true });
 });
 eventSource.on(event_types.CHAT_CHANGED, injectButton);
 
-console.log('[Zero] Preset Manager extension loaded with API Config Manager linkage support');
+console.log('[Zero] Preset Manager extension loaded with API Config Manager linkage & Slash Commands support');
 

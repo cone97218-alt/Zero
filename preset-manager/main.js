@@ -687,10 +687,34 @@ function ensurePanel() {
                             <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px;">
                                 <div style="flex: 1;">
                                     <strong style="display: block; font-size: 13px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">搜索框展开动画</strong>
-                                    <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">在相机栏界面，点击搜索图标展开搜索框时显示平滑 of 过渡动画。</span>
+                                    <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">在相机栏界面，点击搜索图标展开搜索框时显示平滑过渡动画。</span>
                                 </div>
                                 <label class="zero-switch">
                                     <input type="checkbox" id="zero-setting-ui-search-anim" class="interactable">
+                                    <span class="zero-slider"></span>
+                                </label>
+                            </div>
+
+                            <!-- 注入 QR 侧边栏按钮 -->
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 12px; margin-top: 4px;">
+                                <div style="flex: 1;">
+                                    <strong style="display: block; font-size: 13px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">注入 QR 侧边栏按钮</strong>
+                                    <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">在聊天框底部 QR 栏注入相机图标按钮。关闭后仍可随时输入命令 <code>/zero-snapshot</code> 打开。</span>
+                                </div>
+                                <label class="zero-switch">
+                                    <input type="checkbox" id="zero-setting-ui-inject-qr" class="interactable">
+                                    <span class="zero-slider"></span>
+                                </label>
+                            </div>
+
+                            <!-- 注入魔法棒扩展菜单 -->
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 12px; margin-top: 4px;">
+                                <div style="flex: 1;">
+                                    <strong style="display: block; font-size: 13px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">注入魔法棒扩展菜单</strong>
+                                    <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">在顶部魔法棒（扩展菜单）列表中注入「预设管理」快捷选项。关闭后仍可输入命令 <code>/zero-preset</code> 打开。</span>
+                                </div>
+                                <label class="zero-switch">
+                                    <input type="checkbox" id="zero-setting-ui-inject-extmenu" class="interactable">
                                     <span class="zero-slider"></span>
                                 </label>
                             </div>
@@ -1477,6 +1501,22 @@ function ensurePanel() {
         toastr.success(checked ? '已开启预设迁移内容对比' : '已关闭预设迁移内容对比（加载将更快速）');
     });
 
+    $('body').off('change', '#zero-setting-ui-inject-qr').on('change', '#zero-setting-ui-inject-qr', function() {
+        const checked = $(this).is(':checked');
+        UiStateManager.save({ injectQrBarButton: checked });
+        if (typeof window.updateZeroQrBarButtonInjection === 'function') {
+            window.updateZeroQrBarButtonInjection();
+        }
+        toastr.success(checked ? '已开启 QR 侧边栏按钮注入' : '已关闭 QR 侧边栏按钮注入');
+    });
+
+    $('body').off('change', '#zero-setting-ui-inject-extmenu').on('change', '#zero-setting-ui-inject-extmenu', function() {
+        const checked = $(this).is(':checked');
+        UiStateManager.save({ injectExtensionMenu: checked });
+        injectExtensionButton();
+        toastr.success(checked ? '已开启魔法棒扩展菜单注入' : '已关闭魔法棒扩展菜单注入');
+    });
+
     // 解耦模式单选卡片点击
     $('body').off('click', '.zero-settings-option-card').on('click', '.zero-settings-option-card', function() {
         const val = $(this).data('val') === true;
@@ -2064,6 +2104,11 @@ export function closePanel() {
 }
 
 export function injectExtensionButton() {
+    const enabled = UiStateManager.get().injectExtensionMenu !== false;
+    if (!enabled) {
+        $(`#${BTN_ID}`).remove();
+        return;
+    }
     if ($(`#${BTN_ID}`).length) return;
 
     const btnHtml = `
@@ -2095,6 +2140,11 @@ export function init() {
     }, 2000);
     
     const observer = new MutationObserver(() => {
+        const enabled = UiStateManager.get().injectExtensionMenu !== false;
+        if (!enabled) {
+            $(`#${BTN_ID}`).remove();
+            return;
+        }
         if (!$(`#${BTN_ID}`).length && $('#extensionsMenu.options-content').length) {
             injectExtensionButton();
         }
@@ -2125,6 +2175,8 @@ export function renderSettingsTab() {
     $('#zero-setting-ui-search-anim').prop('checked', state.searchBarAnimation !== false);
     $('#zero-setting-ui-avoid-statusbar').prop('checked', state.avoidStatusbar !== false);
     $('#zero-setting-migrate-compare').prop('checked', state.migrateContentCompare !== false);
+    $('#zero-setting-ui-inject-qr').prop('checked', state.injectQrBarButton !== false);
+    $('#zero-setting-ui-inject-extmenu').prop('checked', state.injectExtensionMenu !== false);
 
     // Tab Bar switches
     $('#zero-setting-ui-tab-style').val(state.tabTitleStyle || 'text');
