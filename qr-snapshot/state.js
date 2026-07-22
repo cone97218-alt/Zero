@@ -179,6 +179,10 @@ export const PresetManager = {
             const p = _preset.prompts.find(x => x.identifier === identifier);
             if (p) p.enabled = enabled;
         }
+
+        import('../preset-manager/utils.js').then(m => m.syncBoundRegexOnPromptToggle([{ identifier, enabled }])).catch(e => {
+            console.warn('[Zero] Failed to sync bound regex on togglePrompt:', e);
+        });
     },
 
     /** Batch update from a Map<identifier, enabled> */
@@ -216,6 +220,10 @@ export const PresetManager = {
                 }
             }
         }
+
+        import('../preset-manager/utils.js').then(m => m.syncBoundRegexOnPromptToggle(toggleMap)).catch(e => {
+            console.warn('[Zero] Failed to sync bound regex on batchToggleMap:', e);
+        });
     },
 
     invalidate() { _preset = null; _presetNames = null; },

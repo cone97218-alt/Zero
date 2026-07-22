@@ -639,6 +639,18 @@ function ensurePanel() {
                                     <option value="none">不展示</option>
                                 </select>
                             </div>
+                            <!-- 开关条目时同步开关关联正则 -->
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 12px; margin-top: 4px;">
+                                <div style="flex: 1;">
+                                    <strong style="display: block; font-size: 13px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">开关条目时同步开关关联正则</strong>
+                                    <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">在开启或关闭提示词条目时，自动同步开启或禁用与其绑定的预设正则脚本。</span>
+                                    <span style="display: block; font-size: 10px; color: #ffab00; margin-top: 3px; line-height: 1.3;"><i class="fa-solid fa-triangle-exclamation"></i> 备注：动态开关正则有可能导致聊天记录展示变化或特定替换规则暂停，请谨慎使用。</span>
+                                </div>
+                                <label class="zero-switch">
+                                    <input type="checkbox" id="zero-setting-stitch-auto-toggle-regex" class="interactable">
+                                    <span class="zero-slider"></span>
+                                </label>
+                            </div>
                         </div>
                     </div>
                     
@@ -1168,6 +1180,7 @@ function ensurePanel() {
                         if (_stitch && typeof _stitch.restorePeekScroll === 'function') _stitch.restorePeekScroll();
                     });
                 } else {
+                    if (_stitch && typeof _stitch.renderStitchList === 'function') _stitch.renderStitchList(false);
                     if (_stitch && typeof _stitch.restorePeekScroll === 'function') _stitch.restorePeekScroll();
                 }
             }
@@ -1428,9 +1441,16 @@ function ensurePanel() {
         const val = $(this).val();
         UiStateManager.save({ stitchRegexBadgeMode: val });
         toastr.success('已更新缝合界面绑定正则展示模式');
-        if ($('#zero-tab-stitch').is(':visible')) {
-            import('./stitch.js').then(m => m.renderStitchList(true));
+        renderedTabs.delete('stitch');
+        if (_stitch && typeof _stitch.renderStitchList === 'function') {
+            _stitch.renderStitchList(false);
         }
+    });
+
+    $('body').off('change', '#zero-setting-stitch-auto-toggle-regex').on('change', '#zero-setting-stitch-auto-toggle-regex', function() {
+        const checked = $(this).is(':checked');
+        UiStateManager.save({ autoToggleBoundRegex: checked });
+        toastr.success(checked ? '已开启开关条目时同步开关关联正则' : '已关闭开关条目时同步开关关联正则');
     });
 
     $('body').off('change', '#zero-setting-ui-tab-size').on('change', '#zero-setting-ui-tab-size', function() {
@@ -2099,6 +2119,7 @@ export function renderSettingsTab() {
     $('#zero-setting-stitch-collapse-b').prop('checked', state.collapseTargetBOnStitch === true);
     $('#zero-setting-stitch-auto-migrate-regex').prop('checked', state.autoMigrateBoundRegex !== false);
     $('#zero-setting-stitch-regex-badge-mode').val(state.stitchRegexBadgeMode || 'bound_only');
+    $('#zero-setting-stitch-auto-toggle-regex').prop('checked', state.autoToggleBoundRegex !== false);
 
     // UI switches
     $('#zero-setting-ui-search-anim').prop('checked', state.searchBarAnimation !== false);

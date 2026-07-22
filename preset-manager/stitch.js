@@ -174,7 +174,8 @@ export async function renderStitchList(forceRefresh = true) {
                 }
             }
             
-            let metaHtml = '<div class="stitch-item-meta" style="font-size: 11px; margin-top: 4px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; opacity: 0.85;">';
+            let metaHtml = '';
+            const metaParts = [];
             if (pA.fav_origin_preset) {
                 let badgeColor = 'rgba(123, 140, 222, 0.15)';
                 let badgeTextColor = '#9fb3f5';
@@ -185,13 +186,17 @@ export async function renderStitchList(forceRefresh = true) {
                     badgeTextColor = 'rgba(255, 255, 255, 0.4)';
                     originText = `${pA.fav_origin_preset} (已删除)`;
                 }
-                metaHtml += `<span style="background: ${badgeColor}; color: ${badgeTextColor}; padding: 1px 6px; border-radius: 4px; font-size: 10px; display: inline-flex; align-items: center; gap: 4px;"><i class="fa-solid fa-map-pin"></i> ${highlightText(originText, 'origin')}</span>`;
+                metaParts.push(`<span style="background: ${badgeColor}; color: ${badgeTextColor}; padding: 1px 6px; border-radius: 4px; font-size: 10px; display: inline-flex; align-items: center; gap: 4px;"><i class="fa-solid fa-map-pin"></i> ${highlightText(originText, 'origin')}</span>`);
             }
             if (pA.fav_note) {
-                metaHtml += `<span style="color: var(--SmartThemeBodyColor); opacity: 0.6; display: inline-flex; align-items: center; gap: 4px;"><i class="fa-solid fa-tag"></i> 备注: ${highlightText(pA.fav_note, 'note')}</span>`;
+                metaParts.push(`<span style="color: var(--SmartThemeBodyColor); opacity: 0.6; display: inline-flex; align-items: center; gap: 4px;"><i class="fa-solid fa-tag"></i> 备注: ${highlightText(pA.fav_note, 'note')}</span>`);
             }
-            metaHtml += regexBadgeHtml;
-            metaHtml += `</div>`;
+            if (regexBadgeHtml) {
+                metaParts.push(regexBadgeHtml);
+            }
+            if (metaParts.length > 0) {
+                metaHtml = `<div class="stitch-item-meta" style="font-size: 11px; margin-top: 4px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; opacity: 0.85;">${metaParts.join('')}</div>`;
+            }
 
             rowParts.push(`
                 <div class="stitch-row interactable" style="
@@ -754,6 +759,7 @@ export async function renderTargetBPeek() {
     $list.html('<p style="text-align: center; padding: 10px; font-size: 11px; opacity: 0.6;"><i class="fa-solid fa-spinner fa-spin"></i> 加载中...</p>');
 
     try {
+        const pm = SillyTavern.getContext().getPresetManager('openai');
         let promptsB = await getPresetPrompts(nameB);
         const query = $('#stitch-peek-search-input').val()?.trim();
         const queryLower = query?.toLowerCase();

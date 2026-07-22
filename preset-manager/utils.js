@@ -1083,3 +1083,102 @@ export async function showStandaloneRegexManagerModal(nameA, nameB, onMigratedCa
     });
 }
 
+const _debouncedRegexSave = debounce(async (pm, targetPresetName, presetObj, isActive) => {
+    try {
+        await savePresetWithoutRegexToast(pm, targetPresetName, presetObj, { skipUpdate: !isActive });
+    } catch (e) {
+        console.warn('[Zero] Debounced regex save failed:', e);
+    }
+}, 150);
+
+/**
+ * Sync bound regex disabled states when prompt entries are toggled (enabled/disabled)
+ * @param {Array<{identifier: string, enabled: boolean}>|Map<string, boolean>} toggledItems
+ * @param {string} [presetName]
+ */
+export async function syncBoundRegexOnPromptToggle(toggledItems, presetName = '') {
+    try {
+        const { UiStateManager } = await import('../qr-snapshot/state.js');
+        const state = UiStateManager.get();
+        if (state.autoToggleBoundRegex === false) return;
+
+        const pm = SillyTavern.getContext().getPresetManager('openai');
+        if (!pm) return;
+
+        const targetPresetName = presetName || pm.getSelectedPresetName();
+        if (!targetPresetName) return;
+
+        const presetObj = pm.getCompletionPresetByName(targetPresetName);
+        if (!presetObj || !Array.isArray(presetObj.prompts)) return;
+
+        const regexScripts = getPresetRegexScripts(presetObj);
+        if (!Array.isArray(regexScripts) || regexScripts.length === 0) return;
+
+        const togglesMap = new Map();
+        if (toggledItems instanceof Map) {
+            toggledItems.forEach((enabled, id) => togglesMap.set(String(id), !!enabled));
+        } else if (Array.isArray(toggledItems)) {
+            toggledItems.forEach(item => {
+                if (item && item.identifier !== undefined) {
+                    togglesMap.set(String(item.identifier), !!item.enabled);
+                }
+            });
+        }
+
+        if (togglesMap.size === 0) return;
+
+        const promptEnabledMap = new Map();
+        presetObj.prompts.forEach(p => {
+            const idStr = String(p.identifier);
+            if (togglesMap.has(idStr)) {
+                promptEnabledMap.set(idStr, togglesMap.get(idStr));
+            } else {
+                promptEnabledMap.set(idStr, p.enabled !== false);
+            }
+        });
+
+        const regexToPromptsMap = new Map();
+        presetObj.prompts.forEach(p => {
+            if (Array.isArray(p.bound_regex_ids) && p.bound_regex_ids.length > 0) {
+                p.bound_regex_ids.forEach(rId => {
+                    const rIdStr = String(rId);
+                    if (!regexToPromptsMap.has(rIdStr)) {
+                        regexToPromptsMap.set(rIdStr, []);
+                    }
+                    regexToPromptsMap.get(rIdStr).push(p);
+                });
+            }
+        });
+
+        let regexChanged = false;
+
+        regexScripts.forEach(script => {
+            const scriptIdStr = String(script.id || script.scriptName);
+            const boundPrompts = regexToPromptsMap.get(scriptIdStr);
+            if (!boundPrompts || boundPrompts.length === 0) return;
+
+            const hasAnyEnabledBoundPrompt = boundPrompts.some(p => {
+                const idStr = String(p.identifier);
+                return promptEnabledMap.get(idStr) === true;
+            });
+
+            const shouldBeDisabled = !hasAnyEnabledBoundPrompt;
+
+            if (script.disabled !== shouldBeDisabled) {
+                script.disabled = shouldBeDisabled;
+                regexChanged = true;
+            }
+        });
+
+        if (regexChanged) {
+            const isActive = pm.getSelectedPresetName() === targetPresetName;
+            if ($('#zero-tab-regex').is(':visible')) {
+                import('./regex-tab.js').then(m => m.renderRegexList());
+            }
+            _debouncedRegexSave(pm, targetPresetName, presetObj, isActive);
+        }
+    } catch (e) {
+        console.error('[Zero] syncBoundRegexOnPromptToggle failed:', e);
+    }
+}
+
