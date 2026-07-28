@@ -1453,16 +1453,18 @@ export async function showInjectVariableModal(promptOrName, presetName = '', onS
         // 1. Update the passed prompt object
         prompt.content = newContent;
 
-        const pId = prompt.identifier || prompt.name;
-        const pName = prompt.name || prompt.identifier;
+        const pId = prompt.identifier;
+        const pName = prompt.name;
 
-        // 2. Find and update ALL matching prompt objects inside presetObj.prompts (Crucial for pm.savePreset)
+        // 2. Find and update the exact target prompt object inside presetObj.prompts (Crucial for pm.savePreset)
         if (presetObj && Array.isArray(presetObj.prompts)) {
-            presetObj.prompts.forEach(p => {
-                if (p.identifier === pId || p.name === pName || p.identifier === pName || p.name === pId) {
-                    p.content = newContent;
-                }
-            });
+            let targetPrompt = pId ? presetObj.prompts.find(p => p.identifier === pId) : null;
+            if (!targetPrompt && pName) {
+                targetPrompt = presetObj.prompts.find(p => p.name === pName);
+            }
+            if (targetPrompt) {
+                targetPrompt.content = newContent;
+            }
         }
 
         // 3. Sync to ST promptManager so in-memory character prompt content updates permanently

@@ -913,7 +913,7 @@ function setupEntriesDelegation(panel) {
                 if (ic) ic.innerHTML = '<i class="fa-solid fa-circle-check"></i>';
             } else if (action.dataset.action === 'edit') {
                 import('../preset-manager/editor.js').then(m => {
-                    m.openQuickEditor(_currentPreset.name, prompt.name || prompt.identifier);
+                    m.openQuickEditor(_currentPreset.name, prompt.identifier || prompt.name);
                 });
             }
             return;
@@ -1046,7 +1046,7 @@ function showEntryContextMenu(panel, entry, prompt) {
             showContentPreview(_currentModal, prompt);
         } else if (act === 'edit') {
             import('../preset-manager/editor.js').then(m => {
-                m.openQuickEditor(_currentPreset.name, prompt.name || prompt.identifier);
+                m.openQuickEditor(_currentPreset.name, prompt.identifier || prompt.name);
             });
         }
     });
@@ -3174,8 +3174,9 @@ async function openNativeEditor(identifier) {
         const promptManager = openai.promptManager;
         if (!promptManager) { toastr.error('找不到预设编辑器'); return; }
         const ctx = SillyTavern.getContext();
-        const prompts = ctx.chatCompletionSettings?.prompts;
-        const prompt = prompts?.find(p => p.identifier === identifier);
+        const prompt = (typeof promptManager.getPromptById === 'function' && promptManager.getPromptById(identifier)) ||
+            (ctx.chatCompletionSettings?.prompts?.find(p => p.identifier === identifier)) ||
+            (Array.isArray(promptManager.prompts) && promptManager.prompts.find(p => p.identifier === identifier));
         if (!prompt) { toastr.error('找不到该条目'); return; }
 
         promptManager.clearEditForm();
@@ -3201,6 +3202,28 @@ async function openNativeEditor(identifier) {
                             overlay.style.opacity = '1';
                             overlay.style.pointerEvents = 'auto';
                             try {
+                                const pm = SillyTavern.getContext().getPresetManager('openai');
+                                if (pm) {
+                                    const presetName = pm.getSelectedPresetName();
+                                    const presetObj = pm.getCompletionPresetByName(presetName);
+                                    if (presetObj && Array.isArray(presetObj.prompts)) {
+                                        const updatedPrompt = (typeof promptManager.getPromptById === 'function' && promptManager.getPromptById(identifier)) ||
+                                            (Array.isArray(promptManager.prompts) && promptManager.prompts.find(x => x.identifier === identifier));
+                                        if (updatedPrompt) {
+                                            const targetP = presetObj.prompts.find(x => x.identifier === identifier) ||
+                                                presetObj.prompts.find(x => x.name === updatedPrompt.name);
+                                            if (targetP) {
+                                                targetP.content = updatedPrompt.content;
+                                                targetP.name = updatedPrompt.name;
+                                                targetP.role = updatedPrompt.role;
+                                            }
+                                            const { savePresetWithoutRegexToast } = await import('../preset-manager/utils.js');
+                                            await savePresetWithoutRegexToast(pm, presetName, presetObj, { skipUpdate: false });
+                                        }
+                                    }
+                                }
+
+                                PresetManager.invalidate();
                                 const p = await PresetManager.load();
                                 if (p) {
                                     const panel = overlay.querySelector('.zero-panel.active');

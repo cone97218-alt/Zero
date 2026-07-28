@@ -11,7 +11,9 @@ export async function openQuickEditor(presetName, itemName) {
     const preset = pm.getCompletionPresetByName(presetName);
     if (!preset) return;
     
-    const prompt = preset.prompts.find(p => (p.name || p.identifier) === itemName);
+    const prompt = preset.prompts.find(p => p.identifier === itemName) ||
+                   preset.prompts.find(p => p.name === itemName) ||
+                   preset.prompts.find(p => (p.name || p.identifier) === itemName);
     if (!prompt) return;
 
     let lastSelectionStart = (prompt.content || '').length;
