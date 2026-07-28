@@ -1194,3 +1194,318 @@ export async function syncBoundRegexOnPromptToggle(toggledItems = null, presetNa
     }
 }
 
+export async function showInjectVariableModal(promptOrName, presetName = '', onSaveCallback = null) {
+    let prompt = typeof promptOrName === 'object' ? promptOrName : null;
+    let pm = null;
+    try {
+        pm = SillyTavern.getContext().getPresetManager('openai');
+    } catch (e) {}
+
+    if (!pm) {
+        toastr.error('未找到预设管理器');
+        return;
+    }
+
+    if (!presetName) {
+        presetName = pm.getSelectedPresetName() || '';
+    }
+
+    const presetObj = pm.getCompletionPresetByName(presetName);
+    if (!presetObj) {
+        toastr.error(`未找到预设「${presetName}」`);
+        return;
+    }
+
+    if (!prompt && typeof promptOrName === 'string') {
+        prompt = presetObj.prompts.find(p => p.identifier === promptOrName || p.name === promptOrName);
+    }
+
+    if (!prompt) {
+        toastr.error('未找到指定的 Prompt 条目');
+        return;
+    }
+
+    const rawName = prompt.name || prompt.identifier || 'var_1';
+    let defaultVar = rawName.trim()
+        .replace(/\s+/g, '_')
+        .replace(/[^\w\u4e00-\u9fa5_-]/g, '')
+        .toLowerCase();
+    if (!defaultVar) defaultVar = 'var_1';
+
+    const modalId = 'zero-inject-var-modal';
+    $(`#${modalId}`).remove();
+
+    const originalContent = prompt.content || '';
+
+    const modalHtml = `
+        <div id="${modalId}" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.85); z-index: 21000; display: flex; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box;">
+            <div style="background: var(--SmartThemeBlurTintColor, #1f1f1f); border: 1px solid var(--SmartThemeBorderColor, #444); border-radius: 14px; width: 100%; max-width: 680px; display: flex; flex-direction: column; max-height: 90vh; overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,0.6);">
+                <!-- Header -->
+                <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--SmartThemeBorderColor, #333); flex-shrink: 0;">
+                    <div style="display: flex; align-items: center; gap: 8px; font-weight: bold; font-size: 14px; color: var(--SmartThemeBodyColor);">
+                        <i class="fa-solid fa-code" style="color: var(--SmartThemeQuoteColor);"></i>
+                        <span>注入变量包裹与插入</span>
+                        <span style="font-size: 11px; opacity: 0.6; font-weight: normal;">(目标: ${escapeHtml(prompt.name || prompt.identifier)})</span>
+                    </div>
+                    <div id="close-inject-var-modal" class="interactable" style="cursor: pointer; padding: 4px 8px; opacity: 0.7;"><i class="fa-solid fa-xmark"></i></div>
+                </div>
+
+                <!-- Body -->
+                <div style="padding: 16px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 14px;">
+                    <!-- Collapsible Settings Header (Default Collapsed) -->
+                    <div id="toggle-inject-settings-btn" class="interactable" style="cursor: pointer; padding: 10px 14px; background: rgba(255,255,255,0.04); border: 1px solid var(--SmartThemeBorderColor, #444); border-radius: 8px; font-size: 12px; display: flex; align-items: center; justify-content: space-between; user-select: none; flex-shrink: 0;">
+                        <div style="display: flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden;">
+                            <i class="fa-solid fa-sliders" style="color: var(--SmartThemeQuoteColor); flex-shrink: 0;"></i>
+                            <span style="font-weight: bold; color: var(--SmartThemeBodyColor); flex-shrink: 0;">变量注入设置</span>
+                            <span style="font-size: 11px; opacity: 0.85; font-weight: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">(名称: <span id="summary-var-name" style="color: var(--SmartThemeQuoteColor); font-weight: bold; background: transparent; padding: 0;">${escapeHtml(defaultVar)}</span> | 语法: <span id="summary-var-type" style="color: var(--SmartThemeQuoteColor); font-weight: bold; background: transparent; padding: 0;">setvar</span>)</span>
+                        </div>
+                        <i class="chevron fa-solid fa-chevron-right" style="transition: transform 0.2s ease; font-size: 11px; opacity: 0.7; margin-left: 8px; flex-shrink: 0;"></i>
+                    </div>
+
+                    <!-- Collapsible Settings Body (Hidden by default) -->
+                    <div id="inject-settings-container" style="display: none; flex-direction: column; gap: 12px; padding: 12px; background: rgba(255,255,255,0.02); border: 1px solid var(--SmartThemeBorderColor, #444); border-radius: 8px; flex-shrink: 0;">
+                        <!-- Variable Name Input -->
+                        <div style="display: flex; flex-direction: column; gap: 6px;">
+                            <label style="font-size: 12px; font-weight: bold; color: var(--SmartThemeBodyColor);">变量名称 (Variable Name):</label>
+                            <input type="text" id="zero-inject-var-name-input" class="interactable" value="${escapeHtml(defaultVar)}" placeholder="输入变量标识符..." style="width: 100%; padding: 8px 10px; background: rgba(0,0,0,0.15); border: 1px solid var(--SmartThemeBorderColor, #444); color: inherit; border-radius: 6px; font-size: 13px; box-sizing: border-box;">
+                        </div>
+
+                        <!-- Macro Type Selection -->
+                        <div style="display: flex; flex-direction: column; gap: 6px;">
+                            <label style="font-size: 12px; font-weight: bold; color: var(--SmartThemeBodyColor);">变量语法 / 宏类型:</label>
+                            <select id="zero-inject-var-type-select" class="interactable" style="width: 100%; padding: 8px 10px; background: rgba(0,0,0,0.15); border: 1px solid var(--SmartThemeBorderColor, #444); color: inherit; border-radius: 6px; font-size: 12px; box-sizing: border-box;">
+                                <option value="setvar" selected>setvar :: 局部变量赋值 ( {{setvar::变量名::内容}} )</option>
+                                <option value="setglobalvar">setglobalvar :: 全局变量赋值 ( {{setglobalvar::变量名::内容}} )</option>
+                                <option value="getvar">getvar :: 局部变量读取 ( {{getvar::变量名}} )</option>
+                                <option value="getglobalvar">getglobalvar :: 全局变量读取 ( {{getglobalvar::变量名}} )</option>
+                            </select>
+                        </div>
+
+                        <!-- SET Options (Auto Wrap Checkbox) -->
+                        <div id="zero-inject-set-options" style="display: flex; align-items: center; gap: 8px; font-size: 12px; margin-top: 2px;">
+                            <input type="checkbox" id="zero-inject-var-wrap-check" checked style="cursor: pointer;">
+                            <label for="zero-inject-var-wrap-check" style="cursor: pointer; user-select: none;">自动包裹全条目文字 (把现有文字保存在变量值内部)</label>
+                        </div>
+
+                        <!-- GET Options (Position Choice) -->
+                        <div id="zero-inject-get-options" style="display: none; flex-direction: column; gap: 6px; font-size: 12px;">
+                            <label style="font-weight: bold; color: var(--SmartThemeBodyColor);">读取宏插入位置:</label>
+                            <div style="display: flex; gap: 14px; align-items: center; flex-wrap: wrap;">
+                                <label style="cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                                    <input type="radio" name="zero-get-pos" value="cursor" checked style="accent-color: var(--SmartThemeQuoteColor);"> 🎯 光标 / 选中文本位置
+                                </label>
+                                <label style="cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                                    <input type="radio" name="zero-get-pos" value="top" style="accent-color: var(--SmartThemeQuoteColor);"> ⬆️ 文本最顶部
+                                </label>
+                                <label style="cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                                    <input type="radio" name="zero-get-pos" value="bottom" style="accent-color: var(--SmartThemeQuoteColor);"> ⬇️ 文本最底部
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Text Area with Insert at Cursor Button (Enlarged, max 500px, internal scroll) -->
+                    <div style="display: flex; flex-direction: column; gap: 6px; flex: 1;">
+                        <div style="display: flex; align-items: center; justify-content: space-between;">
+                            <label style="font-size: 12px; opacity: 0.85; font-weight: bold;">条目文本内容编辑与定位区:</label>
+                            <button id="zero-inject-var-insert-cursor-btn" class="interactable" style="display: none; padding: 4px 10px; font-size: 11px; border-radius: 6px; background: rgba(123,140,222,0.25); color: var(--SmartThemeQuoteColor); border: 1px solid rgba(123,140,222,0.4); cursor: pointer;"><i class="fa-solid fa-i-cursor" style="margin-right: 4px;"></i> 插入到下方选定光标处</button>
+                        </div>
+                        <textarea id="zero-inject-var-editor-textarea" class="interactable" style="width: 100%; min-height: 220px; max-height: 500px; height: 320px; padding: 12px; background: rgba(0,0,0,0.15); border: 1px solid var(--SmartThemeBorderColor, #444); border-radius: 8px; font-size: 13px; font-family: monospace; color: inherit; box-sizing: border-box; resize: vertical; overflow-y: auto; line-height: 1.5;">${escapeHtml(originalContent)}</textarea>
+                    </div>
+
+                    <!-- Result Preview Area (Max 500px, internal scroll) -->
+                    <div style="display: flex; flex-direction: column; gap: 6px; flex-shrink: 0;">
+                        <label style="font-size: 11px; opacity: 0.65; font-weight: bold;">生成结果预览:</label>
+                        <div id="zero-inject-var-preview" style="padding: 10px 12px; background: rgba(0,0,0,0.15); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; font-size: 12px; font-family: monospace; min-height: 60px; max-height: 500px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; color: var(--SmartThemeQuoteColor, #7b8cde);">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Footer -->
+                <div style="display: flex; justify-content: flex-end; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--SmartThemeBorderColor, #333); background: rgba(0,0,0,0.1); flex-shrink: 0;">
+                    <button id="cancel-inject-var-btn" class="interactable" style="padding: 8px 16px; border: none; border-radius: 6px; background: rgba(255,255,255,0.1); color: inherit; cursor: pointer; font-size: 12px;">取消</button>
+                    <button id="confirm-inject-var-btn" class="interactable" style="padding: 8px 18px; border: none; border-radius: 6px; background: var(--SmartThemeQuoteColor, #7b8cde); color: white; cursor: pointer; font-size: 12px; font-weight: bold;"><i class="fa-solid fa-bolt" style="margin-right: 4px;"></i> 确认注入</button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    $('body').append(modalHtml);
+
+    // Collapsible Settings Toggle
+    $('#toggle-inject-settings-btn').on('click', function() {
+        const $container = $('#inject-settings-container');
+        const $chevron = $(this).find('.chevron');
+        const isVisible = $container.is(':visible');
+        if (isVisible) {
+            $container.slideUp(180);
+            $chevron.css('transform', 'rotate(0deg)');
+        } else {
+            $container.slideDown(180);
+            $chevron.css('transform', 'rotate(90deg)');
+        }
+    });
+
+    const updateTypeVisibility = () => {
+        const varType = $('#zero-inject-var-type-select').val();
+        const varName = $('#zero-inject-var-name-input').val().trim() || defaultVar;
+        const isSet = varType === 'setvar' || varType === 'setglobalvar';
+
+        $('#summary-var-name').text(varName);
+        $('#summary-var-type').text(varType);
+
+        if (isSet) {
+            $('#zero-inject-set-options').show();
+            $('#zero-inject-get-options').hide();
+            $('#zero-inject-var-insert-cursor-btn').hide();
+        } else {
+            $('#zero-inject-set-options').hide();
+            $('#zero-inject-get-options').css('display', 'flex');
+            $('#zero-inject-var-insert-cursor-btn').show();
+        }
+        updatePreview();
+    };
+
+    const getGeneratedContent = () => {
+        const varName = $('#zero-inject-var-name-input').val().trim() || defaultVar;
+        const varType = $('#zero-inject-var-type-select').val();
+        const currentText = $('#zero-inject-var-editor-textarea').val();
+
+        if (varType === 'setvar' || varType === 'setglobalvar') {
+            const shouldWrap = $('#zero-inject-var-wrap-check').is(':checked');
+            return shouldWrap ? `{{${varType}::${varName}::${currentText}}}` : `{{${varType}::${varName}::}}\n${currentText}`;
+        } else {
+            const pos = $('input[name="zero-get-pos"]:checked').val();
+            const macro = `{{${varType}::${varName}}}`;
+            if (pos === 'top') {
+                return `${macro}\n${currentText}`;
+            } else if (pos === 'bottom') {
+                return `${currentText}\n${macro}`;
+            } else {
+                return currentText;
+            }
+        }
+    };
+
+    const updatePreview = () => {
+        const result = getGeneratedContent();
+        $('#zero-inject-var-preview').text(result);
+    };
+
+    const doInsertAtCursor = () => {
+        const varName = $('#zero-inject-var-name-input').val().trim() || defaultVar;
+        const varType = $('#zero-inject-var-type-select').val();
+        const macro = `{{${varType}::${varName}}}`;
+        
+        const $textarea = $('#zero-inject-var-editor-textarea');
+        const el = $textarea[0];
+        const start = el.selectionStart !== undefined ? el.selectionStart : el.value.length;
+        const end = el.selectionEnd !== undefined ? el.selectionEnd : el.value.length;
+        const val = el.value;
+
+        const newVal = val.slice(0, start) + macro + val.slice(end);
+        $textarea.val(newVal);
+        el.focus();
+        el.setSelectionRange(start + macro.length, start + macro.length);
+        updatePreview();
+    };
+
+    updateTypeVisibility();
+
+    $('#zero-inject-var-type-select').on('change', updateTypeVisibility);
+    $('#zero-inject-var-name-input, #zero-inject-var-wrap-check, input[name="zero-get-pos"]').on('input change', updatePreview);
+    $('#zero-inject-var-editor-textarea').on('input', updatePreview);
+    $('#zero-inject-var-insert-cursor-btn').on('click', doInsertAtCursor);
+
+    $('#close-inject-var-modal, #cancel-inject-var-btn').on('click', () => {
+        $(`#${modalId}`).remove();
+    });
+
+    $('#confirm-inject-var-btn').on('click', async function() {
+        const varName = $('#zero-inject-var-name-input').val().trim();
+        if (!varName) {
+            toastr.warning('请输入有效的变量名称');
+            return;
+        }
+
+        const varType = $('#zero-inject-var-type-select').val();
+        let newContent = '';
+
+        if (varType === 'getvar' || varType === 'getglobalvar') {
+            const pos = $('input[name="zero-get-pos"]:checked').val();
+            if (pos === 'cursor') {
+                const currentText = $('#zero-inject-var-editor-textarea').val();
+                const macro = `{{${varType}::${varName}}}`;
+                if (!currentText.includes(macro)) {
+                    doInsertAtCursor();
+                }
+                newContent = $('#zero-inject-var-editor-textarea').val();
+            } else {
+                newContent = getGeneratedContent();
+            }
+        } else {
+            newContent = getGeneratedContent();
+        }
+
+        const { HistoryManager, PresetManager } = await import('../qr-snapshot/state.js');
+        HistoryManager.record();
+
+        // 1. Update the passed prompt object
+        prompt.content = newContent;
+
+        const pId = prompt.identifier || prompt.name;
+        const pName = prompt.name || prompt.identifier;
+
+        // 2. Find and update ALL matching prompt objects inside presetObj.prompts (Crucial for pm.savePreset)
+        if (presetObj && Array.isArray(presetObj.prompts)) {
+            presetObj.prompts.forEach(p => {
+                if (p.identifier === pId || p.name === pName || p.identifier === pName || p.name === pId) {
+                    p.content = newContent;
+                }
+            });
+        }
+
+        // 3. Sync to ST promptManager so in-memory character prompt content updates permanently
+        try {
+            const openai = await import('/scripts/openai.js');
+            const promptManager = openai?.promptManager;
+            if (promptManager) {
+                const stPrompt = (typeof promptManager.getPromptById === 'function' && promptManager.getPromptById(pId)) ||
+                    (Array.isArray(promptManager.prompts) && promptManager.prompts.find(x => x.identifier === pId || x.name === pName));
+                if (stPrompt) {
+                    stPrompt.content = newContent;
+                }
+                promptManager.saveServiceSettings?.();
+                if (typeof promptManager.renderDebounced === 'function') {
+                    promptManager.renderDebounced();
+                } else {
+                    promptManager.render?.();
+                }
+            }
+        } catch (e) {
+            console.warn('[Zero] Failed to sync to promptManager:', e);
+        }
+
+        // 4. Save preset file/storage
+        const isActive = pm.getSelectedPresetName() === presetName;
+        await savePresetWithoutRegexToast(pm, presetName, presetObj, { skipUpdate: !isActive });
+
+        // 5. Force invalidate and reload Zero's PresetManager state cache once
+        let freshPreset = null;
+        if (PresetManager) {
+            PresetManager.invalidate?.();
+            freshPreset = await PresetManager.load?.();
+        }
+
+        $(`#${modalId}`).remove();
+        toastr.success(`已成功为条目「${prompt.name || prompt.identifier}」注入变量 ${varName}`);
+
+        window.dispatchEvent(new CustomEvent('zero-content-updated'));
+
+        if (typeof onSaveCallback === 'function') {
+            onSaveCallback(freshPreset);
+        }
+    });
+}
+
+

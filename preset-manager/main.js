@@ -223,6 +223,7 @@ function ensurePanel() {
                         <div style="display: flex; gap: 8px; margin-top: 4px;">
                             <button id="contrast-auto-match" class="interactable" style="flex: 1; padding: 6px; font-size: 12px; background: var(--SmartThemeBorderColor); color: inherit; border: none; border-radius: 4px;">自动匹配</button>
                             <button id="manage-manual-matches" class="interactable" title="管理手动匹配记录" style="width: 36px; padding: 6px; font-size: 12px; background: rgba(255,255,255,0.05); color: inherit; border: none; border-radius: 4px;"><i class="fa-solid fa-list-check"></i></button>
+                            <button id="contrast-summary-btn" class="interactable" title="变化总结" style="width: 36px; padding: 6px; font-size: 12px; background: rgba(255,255,255,0.08); color: inherit; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; display: flex; align-items: center; justify-content: center;"><i class="fa-solid fa-file-contract"></i></button>
                             <button id="contrast-start" class="interactable" style="flex: 1; padding: 6px; font-size: 12px; background: var(--SmartThemeQuoteColor, #7b8cde); color: white; border: none; border-radius: 4px;">开始对比</button>
                         </div>
                     </div>
@@ -573,6 +574,30 @@ function ensurePanel() {
                                     <input type="checkbox" id="zero-setting-migrate-compare" class="interactable">
                                     <span class="zero-slider"></span>
                                 </label>
+                            </div>
+                            <!-- Snapshot Entry Action Icons Customization -->
+                            <div style="border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 12px; margin-top: 4px; display: flex; flex-direction: column; gap: 8px;">
+                                <div>
+                                    <strong style="display: block; font-size: 13px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">快照条目快捷图标自定义</strong>
+                                    <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">勾选需要在快照面板条目行右侧显示的快捷图标。长按或右键可召出包含完整功能的菜单。</span>
+                                </div>
+                                <div id="zero-setting-snapshot-actions-group" style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px;">
+                                    <label style="display: flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer; user-select: none;">
+                                        <input type="checkbox" class="zero-snapshot-action-cb interactable" value="inject-var"> <i class="fa-solid fa-code" style="color: var(--SmartThemeQuoteColor);"></i> 注入变量
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer; user-select: none;">
+                                        <input type="checkbox" class="zero-snapshot-action-cb interactable" value="folder"> <i class="fa-solid fa-folder-open" style="color: var(--SmartThemeQuoteColor);"></i> 分组管理
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer; user-select: none;">
+                                        <input type="checkbox" class="zero-snapshot-action-cb interactable" value="multi-select"> <i class="fa-solid fa-square-check" style="color: var(--SmartThemeQuoteColor);"></i> 多选模式
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer; user-select: none;">
+                                        <input type="checkbox" class="zero-snapshot-action-cb interactable" value="preview"> <i class="fa-solid fa-eye" style="color: var(--SmartThemeQuoteColor);"></i> 预览内容
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer; user-select: none;">
+                                        <input type="checkbox" class="zero-snapshot-action-cb interactable" value="edit"> <i class="fa-solid fa-pencil" style="color: var(--SmartThemeQuoteColor);"></i> 编辑器打开
+                                    </label>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1108,6 +1133,46 @@ function ensurePanel() {
                             </div>
                         </div>
                     </div>
+
+                    <!-- 8. 拓展热更新与运维 (折叠) -->
+                    <div class="zero-settings-section" style="
+                        display: flex;
+                        flex-direction: column;
+                        background: rgba(255, 255, 255, 0.03);
+                        border: 1px solid var(--SmartThemeBorderColor, #444);
+                        border-radius: 10px;
+                        overflow: hidden;
+                    ">
+                        <div class="zero-settings-header interactable" id="zero-settings-reload-toggle" style="
+                            display: flex;
+                            align-items: center;
+                            justify-content: space-between;
+                            padding: 14px;
+                            cursor: pointer;
+                            user-select: none;
+                        ">
+                            <div style="font-weight: bold; font-size: 14px; display: flex; align-items: center; gap: 6px;">
+                                <i class="fa-solid fa-rotate" style="color: var(--SmartThemeQuoteColor);"></i> 拓展热更新与重载
+                            </div>
+                            <i class="fa-solid fa-chevron-right zero-settings-chevron" style="transition: transform 0.15s; font-size: 12px; opacity: 0.7;"></i>
+                        </div>
+                        <div class="zero-settings-body" id="zero-settings-reload-body" style="
+                            display: none;
+                            flex-direction: column;
+                            gap: 14px;
+                            padding: 0 14px 14px 14px;
+                        ">
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-top: 8px;">
+                                <div style="flex: 1;">
+                                    <strong style="display: block; font-size: 13px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">无缝热重载 Zero 拓展</strong>
+                                    <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">在酒馆中更新或修改本拓展后，无需按 F5 刷新整个网页。点击此按钮或在聊天框输入 <code style="background: transparent; color: var(--SmartThemeQuoteColor);">/zero-reload</code> 即可瞬间热更新 Zero 拓展。</span>
+                                </div>
+                                <button id="zero-trigger-hot-reload-btn" class="interactable" style="padding: 8px 14px; font-size: 12px; font-weight: bold; border-radius: 6px; background: rgba(123, 140, 222, 0.2); color: var(--SmartThemeQuoteColor); border: 1px solid rgba(123, 140, 222, 0.4); cursor: pointer; white-space: nowrap;">
+                                    <i class="fa-solid fa-bolt" style="margin-right: 4px;"></i> ⚡ 立即热更新
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1443,6 +1508,29 @@ function ensurePanel() {
         });
     });
 
+    // 子折叠：热更新与重载设置
+    $('body').off('click', '#zero-settings-reload-toggle').on('click', '#zero-settings-reload-toggle', function() {
+        const $body = $('#zero-settings-reload-body');
+        const $chevron = $(this).find('.zero-settings-chevron');
+        $body.slideToggle(150, function() {
+            if ($body.is(':visible')) {
+                $body.css('display', 'flex');
+                $chevron.addClass('expanded');
+            } else {
+                $chevron.removeClass('expanded');
+            }
+        });
+    });
+
+    // 触发热更新按钮
+    $('body').off('click', '#zero-trigger-hot-reload-btn').on('click', '#zero-trigger-hot-reload-btn', async function() {
+        if (typeof window.Zero?.reload === 'function') {
+            await window.Zero.reload();
+        } else {
+            toastr.error('热重载未就绪');
+        }
+    });
+
     // 通知开关监听
     $('body').off('change', '#zero-setting-toast-switch').on('change', '#zero-setting-toast-switch', function() {
         const checked = $(this).is(':checked');
@@ -1582,6 +1670,15 @@ function ensurePanel() {
         toastr.success(checked ? '已开启魔法棒扩展菜单注入' : '已关闭魔法棒扩展菜单注入');
     });
 
+    $('body').off('change', '.zero-snapshot-action-cb').on('change', '.zero-snapshot-action-cb', function() {
+        const selected = [];
+        $('.zero-snapshot-action-cb:checked').each(function() {
+            selected.push($(this).val());
+        });
+        UiStateManager.save({ entryActions: selected });
+        toastr.success('已更新快照条目快捷图标配置');
+    });
+
     // 解耦模式单选卡片点击
     $('body').off('click', '.zero-settings-option-card').on('click', '.zero-settings-option-card', function() {
         const val = $(this).data('val') === true;
@@ -1599,6 +1696,7 @@ function ensurePanel() {
 
     $('#contrast-auto-match').on('click', () => _contrast.performAutoMatch());
     $('#contrast-start').on('click', () => _contrast.startComparison());
+    $('#contrast-summary-btn').on('click', () => _contrast.showContrastSummaryModal());
     $('#manage-manual-matches').on('click', () => _contrast.showManualLinksManager());
     $('#contrast-standalone-regex').on('click', async () => {
         const nameA = $('#contrast-preset-a').val();
@@ -2274,6 +2372,13 @@ export function renderSettingsTab() {
     $('#zero-setting-migrate-compare').prop('checked', state.migrateContentCompare !== false);
     $('#zero-setting-ui-inject-qr').prop('checked', state.injectQrBarButton !== false);
     $('#zero-setting-ui-inject-extmenu').prop('checked', state.injectExtensionMenu !== false);
+
+    // Snapshot Entry Action Icons
+    const entryActions = state.entryActions || ['inject-var', 'folder', 'preview'];
+    $('.zero-snapshot-action-cb').each(function() {
+        const val = $(this).val();
+        $(this).prop('checked', entryActions.includes(val));
+    });
 
     // Tab Bar switches
     $('#zero-setting-ui-tab-style').val(state.tabTitleStyle || 'text');

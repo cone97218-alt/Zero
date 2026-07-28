@@ -485,6 +485,27 @@ export async function openQuickEditor(presetName, itemName) {
         prompt.forbid_overrides = forbidOverrides;
         prompt.content = newContent;
 
+        // Sync to ST promptManager so in-memory character prompt content updates permanently
+        try {
+            import('/scripts/openai.js').then(openai => {
+                const promptManager = openai?.promptManager;
+                if (promptManager) {
+                    const stPrompt = promptManager.getPromptById(prompt.identifier);
+                    if (stPrompt) {
+                        stPrompt.content = newContent;
+                        stPrompt.name = name;
+                        stPrompt.role = role;
+                    }
+                    if (typeof promptManager.saveServiceSettings === 'function') {
+                        promptManager.saveServiceSettings();
+                    }
+                    if (typeof promptManager.renderDebounced === 'function') {
+                        promptManager.renderDebounced();
+                    }
+                }
+            }).catch(() => {});
+        } catch (e) {}
+
         if (isFavoritePreset) {
             const newFavNote = $('#edit-prompt-fav-note').val().trim();
             if (newFavNote) {
@@ -503,8 +524,14 @@ export async function openQuickEditor(presetName, itemName) {
             }
 
             const isActive = pm.getSelectedPresetName() === presetName;
-            savePresetWithoutRegexToast(pm, presetName, preset, { skipUpdate: !isActive }).then(() => {
+            savePresetWithoutRegexToast(pm, presetName, preset, { skipUpdate: !isActive }).then(async () => {
                 import('./utils.js').then(m => m.syncBoundRegexOnPromptToggle(null, presetName)).catch(() => {});
+                try {
+                    const { PresetManager } = await import('../qr-snapshot/state.js');
+                    if (PresetManager && typeof PresetManager.load === 'function') {
+                        await PresetManager.load();
+                    }
+                } catch (e) {}
             }).catch(err => {
                 console.error('[Zero] Background save failed:', err);
                 toastr.error('背景保存失败');

@@ -116,12 +116,30 @@ function showPrompt(modal, msg, defaultVal, onOk) {
 function entryHTML(p) {
     const id = esc(p.identifier);
     const name = esc(p.name || p.identifier);
+    const actions = UiStateManager.get().entryActions || ['inject-var', 'folder', 'preview'];
+
+    let actionBtnsHtml = '';
+    if (actions.includes('inject-var')) {
+        actionBtnsHtml += `<button class="zero-icon-btn zero-inline-action" data-action="inject-var" title="注入变量包裹"><i class="fa-solid fa-code"></i></button>`;
+    }
+    if (actions.includes('folder')) {
+        actionBtnsHtml += `<button class="zero-icon-btn zero-inline-action" data-action="folder" title="分组管理"><i class="fa-solid fa-folder-open"></i></button>`;
+    }
+    if (actions.includes('multi-select')) {
+        actionBtnsHtml += `<button class="zero-icon-btn zero-inline-action" data-action="multi-select" title="多选模式"><i class="fa-solid fa-square-check"></i></button>`;
+    }
+    if (actions.includes('preview')) {
+        actionBtnsHtml += `<button class="zero-icon-btn zero-inline-action" data-action="preview" title="预览"><i class="fa-solid fa-eye"></i></button>`;
+    }
+    if (actions.includes('edit')) {
+        actionBtnsHtml += `<button class="zero-icon-btn zero-inline-action" data-action="edit" title="在编辑器中打开"><i class="fa-solid fa-pencil"></i></button>`;
+    }
+
     return `<div class="zero-entry" data-id="${id}">` +
         `<div class="zero-sel-check"><i class="fa-solid fa-circle"></i></div>` +
         `<span class="zero-entry-name${p.enabled ? '' : ' disabled'}">${name}</span>` +
         `<div class="zero-entry-inline">` +
-            `<button class="zero-icon-btn zero-inline-action" data-action="folder" title="分组"><i class="fa-solid fa-folder-open"></i></button>` +
-            `<button class="zero-icon-btn zero-inline-action" data-action="preview" title="预览"><i class="fa-solid fa-eye"></i></button>` +
+            actionBtnsHtml +
         `</div>` +
         `<label class="zero-switch"><input type="checkbox"${p.enabled ? ' checked' : ''}><span class="zero-slider"></span></label>` +
     `</div>`;
@@ -882,6 +900,21 @@ function setupEntriesDelegation(panel) {
                 showGroupAssignMenu(_currentModal, panel, _currentPreset, prompt, currentGroup, isUngrouped);
             } else if (action.dataset.action === 'preview') {
                 showContentPreview(_currentModal, prompt);
+            } else if (action.dataset.action === 'inject-var') {
+                import('../preset-manager/utils.js').then(m => {
+                    m.showInjectVariableModal(prompt, _currentPreset.name, (freshPreset) => {
+                        renderModalContent(_currentModal, freshPreset || _currentPreset);
+                    });
+                });
+            } else if (action.dataset.action === 'multi-select') {
+                enterMultiSelect(panel, _currentPreset, _currentModal, id);
+                entry.classList.add('selected');
+                const ic = entry.querySelector('.zero-sel-check');
+                if (ic) ic.innerHTML = '<i class="fa-solid fa-circle-check"></i>';
+            } else if (action.dataset.action === 'edit') {
+                import('../preset-manager/editor.js').then(m => {
+                    m.openQuickEditor(_currentPreset.name, prompt.name || prompt.identifier);
+                });
             }
             return;
         }
@@ -904,18 +937,16 @@ function setupEntriesDelegation(panel) {
             if (e.target.closest('.zero-switch') || e.target.closest('.zero-inline-action')) return;
             e.preventDefault();
             const id = entry.dataset.id;
-            if (!msActive) {
-                enterMultiSelect(panel, _currentPreset, _currentModal, id);
-                entry.classList.add('selected');
-                const ic = entry.querySelector('.zero-sel-check');
-                if (ic) ic.innerHTML = '<i class="fa-solid fa-circle-check"></i>';
-            } else {
+            const prompt = _promptMap.get(id);
+            if (!msActive && prompt) {
+                showEntryContextMenu(panel, entry, prompt);
+            } else if (msActive) {
                 toggleEntrySelection(id, entry, entry.querySelector('.zero-sel-check'));
             }
         }
     });
 
-    // Long-press for multi-select
+    // Long-press for entry actions
     let lpTimer = null, lpCancelled = false;
     panel.addEventListener('touchstart', (e) => {
         const entry = e.target.closest('.zero-entry');
@@ -925,16 +956,100 @@ function setupEntriesDelegation(panel) {
         lpTimer = setTimeout(() => {
             if (!lpCancelled) {
                 const id = entry.dataset.id;
-                enterMultiSelect(panel, _currentPreset, _currentModal, id);
-                entry.classList.add('selected');
-                const ic = entry.querySelector('.zero-sel-check');
-                if (ic) ic.innerHTML = '<i class="fa-solid fa-circle-check"></i>';
+                const prompt = _promptMap.get(id);
+                if (prompt) {
+                    showEntryContextMenu(panel, entry, prompt);
+                }
                 if (navigator.vibrate) navigator.vibrate(15);
             }
-        }, 500);
+        }, 450);
     }, { passive: true });
     panel.addEventListener('touchmove', () => { lpCancelled = true; clearTimeout(lpTimer); }, { passive: true });
     panel.addEventListener('touchend', () => clearTimeout(lpTimer));
+}
+
+function showEntryContextMenu(panel, entry, prompt) {
+    const modalId = 'zero-entry-context-menu-modal';
+    $(`#${modalId}`).remove();
+
+    const name = prompt ? (prompt.name || prompt.identifier) : '条目';
+    const menuHtml = `
+        <div id="${modalId}" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); z-index: 20050; display: flex; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box;">
+            <div style="background: var(--SmartThemeBlurTintColor, #1f1f1f); border: 1px solid var(--SmartThemeBorderColor, #444); border-radius: 12px; width: 100%; max-width: 300px; padding: 14px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); display: flex; flex-direction: column; gap: 8px;">
+                <div style="font-size: 13px; font-weight: bold; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.08); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--SmartThemeBodyColor); opacity: 0.9;">
+                    ${esc(name)}
+                </div>
+                
+                <div class="zero-ctx-item interactable" data-act="inject-var" style="padding: 10px 12px; font-size: 13px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.04);">
+                    <i class="fa-solid fa-code" style="color: var(--SmartThemeQuoteColor); width: 16px;"></i>
+                    <span>注入变量 (自动包裹)</span>
+                </div>
+
+                <div class="zero-ctx-item interactable" data-act="folder" style="padding: 10px 12px; font-size: 13px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.04);">
+                    <i class="fa-solid fa-folder-open" style="color: var(--SmartThemeQuoteColor); width: 16px;"></i>
+                    <span>分组管理</span>
+                </div>
+
+                <div class="zero-ctx-item interactable" data-act="multi-select" style="padding: 10px 12px; font-size: 13px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.04);">
+                    <i class="fa-solid fa-square-check" style="color: var(--SmartThemeQuoteColor); width: 16px;"></i>
+                    <span>进入多选模式</span>
+                </div>
+
+                <div class="zero-ctx-item interactable" data-act="preview" style="padding: 10px 12px; font-size: 13px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.04);">
+                    <i class="fa-solid fa-eye" style="color: var(--SmartThemeQuoteColor); width: 16px;"></i>
+                    <span>预览条目内容</span>
+                </div>
+
+                <div class="zero-ctx-item interactable" data-act="edit" style="padding: 10px 12px; font-size: 13px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.04);">
+                    <i class="fa-solid fa-pencil" style="color: var(--SmartThemeQuoteColor); width: 16px;"></i>
+                    <span>在编辑器中打开</span>
+                </div>
+
+                <button id="close-zero-ctx-menu" class="interactable" style="margin-top: 4px; padding: 8px; border: none; border-radius: 6px; background: rgba(255,255,255,0.08); color: inherit; cursor: pointer; font-size: 12px;">取消</button>
+            </div>
+        </div>
+    `;
+
+    $('body').append(menuHtml);
+
+    $(`#${modalId}`).on('click', (e) => {
+        if (e.target.id === modalId || e.target.id === 'close-zero-ctx-menu' || $(e.target).closest('#close-zero-ctx-menu').length) {
+            $(`#${modalId}`).remove();
+        }
+    });
+
+    $(`#${modalId} .zero-ctx-item`).on('click', function() {
+        const act = $(this).data('act');
+        $(`#${modalId}`).remove();
+
+        if (act === 'inject-var') {
+            import('../preset-manager/utils.js').then(m => {
+                m.showInjectVariableModal(prompt, _currentPreset.name, (freshPreset) => {
+                    renderModalContent(_currentModal, freshPreset || _currentPreset);
+                });
+            });
+        } else if (act === 'folder') {
+            const groups = GroupManager.get(_currentPreset.name);
+            if (groups.length === 0) { toastr.info('请先在「分组管理」中创建分组'); return; }
+            const groupEl = entry.closest('.zero-group');
+            const gid = groupEl?.dataset.gid;
+            const isUngrouped = groupEl?.dataset.ungrouped === 'true';
+            const currentGroup = isUngrouped ? { id: gid } : (groups.find(g => g.id === gid) || { id: gid });
+            showGroupAssignMenu(_currentModal, panel, _currentPreset, prompt, currentGroup, isUngrouped);
+        } else if (act === 'multi-select') {
+            const id = entry.dataset.id;
+            enterMultiSelect(panel, _currentPreset, _currentModal, id);
+            entry.classList.add('selected');
+            const ic = entry.querySelector('.zero-sel-check');
+            if (ic) ic.innerHTML = '<i class="fa-solid fa-circle-check"></i>';
+        } else if (act === 'preview') {
+            showContentPreview(_currentModal, prompt);
+        } else if (act === 'edit') {
+            import('../preset-manager/editor.js').then(m => {
+                m.openQuickEditor(_currentPreset.name, prompt.name || prompt.identifier);
+            });
+        }
+    });
 }
 
 function handleGroupCollapse(header) {

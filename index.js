@@ -135,8 +135,40 @@ async function triggerApiConfigLinkage(presetName) {
 
 window.triggerZeroApiLinkage = triggerApiConfigLinkage;
 
-// ── Public Global API ──────────────────────────────────────────────────────
+// ── Public Global API & Hot Reload ──────────────────────────────────────────
 window.Zero = {
+    reload: async (options = {}) => {
+        try {
+            console.log('[Zero] Executing Hot Reload...');
+            // Clean up DOM overlays and buttons
+            document.getElementById(BTN_ID)?.remove();
+            document.getElementById('zero-modal')?.remove();
+            document.getElementById('zero-preset-manager-modal')?.remove();
+            document.getElementById('zero-entry-context-menu-modal')?.remove();
+            document.getElementById('zero-inject-var-modal')?.remove();
+            document.querySelectorAll('.zero-hot-reload-clean').forEach(el => el.remove());
+
+            const ts = Date.now();
+            try {
+                const { PresetManager } = await import(`./qr-snapshot/state.js?v=${ts}`);
+                PresetManager?.invalidate?.();
+            } catch (e) {}
+
+            const { init: initPM } = await import(`./preset-manager/main.js?v=${ts}`);
+            initPM();
+            injectWithRetry();
+
+            if (!options.silent) {
+                toastr.success('Zero 拓展已成功无缝热重载！');
+            }
+            console.log('[Zero] Hot Reload completed.');
+            return true;
+        } catch (e) {
+            console.error('[Zero] Hot Reload error:', e);
+            if (!options.silent) toastr.error('热更新失败: ' + e.message);
+            return false;
+        }
+    },
     switchPreset: async (presetName, options = {}) => {
         if (!options.skipLinkage) {
             isSwitchingPresetLinkage = true;
@@ -199,6 +231,16 @@ if (event_types.PRESET_CHANGED) {
     });
 }
 
+// Listen for ST extension update event if present
+if (event_types.EXTENSION_UPDATED) {
+    eventSource.on(event_types.EXTENSION_UPDATED, (extName) => {
+        if (extName === MODULE_NAME || extName === 'Zero' || extName === 'zero') {
+            console.log('[Zero] Extension update detected, triggering auto hot reload...');
+            window.Zero.reload();
+        }
+    });
+}
+
 // ── Slash Commands Registration ─────────────────────────────────────────────
 export async function registerZeroSlashCommands() {
     try {
@@ -241,7 +283,20 @@ export async function registerZeroSlashCommands() {
             },
         }));
 
-        console.log('[Zero] Slash commands /zero-snapshot and /zero-preset registered successfully');
+        // 3. Hot Reload command
+        SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+            name: 'zero-reload',
+            aliases: ['zero-hot-reload', 'zeroreload', 'zero-refresh'],
+            helpString: '热重载 Zero 拓展模块 (无需刷新整页)',
+            callback: async () => {
+                if (typeof window.Zero?.reload === 'function') {
+                    await window.Zero.reload();
+                }
+                return '';
+            },
+        }));
+
+        console.log('[Zero] Slash commands /zero-snapshot, /zero-preset and /zero-reload registered successfully');
     } catch (e) {
         console.warn('[Zero] Failed to register slash commands:', e);
     }

@@ -859,6 +859,7 @@ export async function showComparisonDetail(index, allItems) {
                              <div style="display: flex; gap: 8px;">
                                 ${isMatched ? `<button class="zero-overwrite-btn interactable" data-direction="b-to-a" title="用 B 覆盖 A" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;"><i class="fa-solid fa-file-import"></i></button>` : ''}
                                 ${typeof window.translate === 'function' && pA.content ? `<button class="zero-trans-btn interactable" data-target="a" data-original="${escapeHtml(pA.content)}" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="翻译内容"><i class="fa-solid fa-language"></i></button>` : ''}
+                                <button class="zero-inject-var-btn interactable" data-side="a" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="注入变量包裹"><i class="fa-solid fa-code"></i></button>
                                 <button class="zero-bind-regex-btn interactable" data-side="a" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: ${pA.bound_regex_ids?.length ? 'var(--SmartThemeQuoteColor)' : 'inherit'}; cursor: pointer;" title="绑定预设正则"><i class="fa-solid fa-link"></i></button>
                                 <button class="zero-fav-btn interactable" data-side="a" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="收藏"><i class="fa-solid fa-star" style="color: var(--SmartThemeQuoteColor);"></i></button>
                                 <button class="zero-edit-btn interactable" data-preset="${nameA}" data-item="${nameStr}" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="修改"><i class="fa-solid fa-pencil"></i></button>
@@ -882,6 +883,7 @@ export async function showComparisonDetail(index, allItems) {
                              <div style="display: flex; gap: 8px;">
                                 ${isMatched ? `<button class="zero-overwrite-btn interactable" data-direction="a-to-b" title="用 A 覆盖 B" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;"><i class="fa-solid fa-file-import"></i></button>` : ''}
                                 ${typeof window.translate === 'function' && pB.content ? `<button class="zero-trans-btn interactable" data-target="b" data-original="${escapeHtml(pB.content)}" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="翻译内容"><i class="fa-solid fa-language"></i></button>` : ''}
+                                <button class="zero-inject-var-btn interactable" data-side="b" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="注入变量包裹"><i class="fa-solid fa-code"></i></button>
                                 <button class="zero-bind-regex-btn interactable" data-side="b" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: ${pB.bound_regex_ids?.length ? 'var(--SmartThemeQuoteColor)' : 'inherit'}; cursor: pointer;" title="绑定预设正则"><i class="fa-solid fa-link"></i></button>
                                 <button class="zero-fav-btn interactable" data-side="b" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="收藏"><i class="fa-solid fa-star" style="color: var(--SmartThemeQuoteColor);"></i></button>
                                 <button class="zero-edit-btn interactable" data-preset="${nameB}" data-item="${nameStr}" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="修改"><i class="fa-solid fa-pencil"></i></button>
@@ -1067,6 +1069,22 @@ export async function showComparisonDetail(index, allItems) {
         openQuickEditor(presetName, itemName);
     });
 
+    $('#comparison-overlay').on('click', '.zero-inject-var-btn', async function() {
+        const side = $(this).data('side');
+        const isA = side === 'a';
+        const targetId = isA ? currentIdA : currentIdB;
+        const list = isA ? promptsA : promptsB;
+        const prompt = list.find(p => String(p.identifier) === String(targetId));
+        if (!prompt) return;
+
+        const targetPreset = isA ? nameA : nameB;
+        const { showInjectVariableModal } = await import("./utils.js");
+        await showInjectVariableModal(prompt, targetPreset, () => {
+            renderDetailContent();
+            if (typeof performAutoMatch === 'function') performAutoMatch();
+        });
+    });
+
     $('#comparison-overlay').on('click', '.zero-bind-regex-btn', async function() {
         const side = $(this).data('side');
         const isA = side === 'a';
@@ -1216,3 +1234,303 @@ export function pruneManualLinks(currentPresets) {
     }
     if (changed) localStorage.setItem('zero_manual_links', JSON.stringify(links));
 }
+
+export async function showContrastSummaryModal(nameA, nameB) {
+    if (!nameA) nameA = $('#contrast-preset-a').val();
+    if (!nameB) nameB = $('#contrast-preset-b').val();
+
+    if (!nameA || !nameB) {
+        toastr.warning('请先在上方选择两个对比的预设');
+        return;
+    }
+
+    if (nameA === nameB) {
+        toastr.warning('请选择两个不同的预设进行总结');
+        return;
+    }
+
+    const promptsA = await getPresetPrompts(nameA);
+    const promptsB = await getPresetPrompts(nameB);
+
+    const links = JSON.parse(localStorage.getItem('zero_manual_links') || '{}');
+    const keyPair = `${nameA}::${nameB}`;
+    const pairLinks = links[keyPair] || {};
+
+    const usedB = new Set();
+    const mapBByName = new Map();
+    promptsB.forEach(p => {
+        const key = (p.name || p.identifier).trim();
+        if (!mapBByName.has(key)) mapBByName.set(key, p);
+    });
+
+    const matchedList = [];
+    const onlyAList = [];
+
+    promptsA.forEach(pA => {
+        const idA = pA.identifier;
+        let pB = null;
+
+        if (pairLinks[idA]) {
+            const idB = pairLinks[idA];
+            pB = promptsB.find(p => p.identifier === idB);
+        }
+
+        if (!pB) {
+            const key = (pA.name || pA.identifier).trim();
+            if (mapBByName.has(key)) {
+                pB = mapBByName.get(key);
+            }
+        }
+
+        if (pB) {
+            usedB.add(pB.identifier);
+            mapBByName.delete((pB.name || pB.identifier).trim());
+            matchedList.push({ a: pA, b: pB });
+        } else {
+            onlyAList.push(pA);
+        }
+    });
+
+    const onlyBList = promptsB.filter(p => !usedB.has(p.identifier));
+
+    const modifiedList = [];
+    const unchangedList = [];
+
+    matchedList.forEach(({ a, b }) => {
+        const hasChange = hasPromptDifference(a, b, nameA, nameB);
+        if (hasChange) {
+            const diffs = [];
+            if ((a.content || '') !== (b.content || '')) {
+                const linesA = (a.content || '').split('\n').length;
+                const linesB = (b.content || '').split('\n').length;
+                const charA = (a.content || '').length;
+                const charB = (b.content || '').length;
+                diffs.push({ type: 'content', desc: `文本内容变动 (行数: ${linesA}➔${linesB}, 字符数: ${charA}➔${charB})` });
+            }
+            if ((a.role || 'system') !== (b.role || 'system')) {
+                diffs.push({ type: 'role', desc: `角色变更 (${a.role || 'system'} ➔ ${b.role || 'system'})` });
+            }
+            if ((a.injection_position ?? 0) !== (b.injection_position ?? 0)) {
+                const posA = a.injection_position === 1 ? '绝对' : '相对';
+                const posB = b.injection_position === 1 ? '绝对' : '相对';
+                diffs.push({ type: 'position', desc: `位置变更 (${posA} ➔ ${posB})` });
+            }
+            if ((a.injection_depth ?? 4) !== (b.injection_depth ?? 4)) {
+                diffs.push({ type: 'depth', desc: `深度变更 (${a.injection_depth ?? 4} ➔ ${b.injection_depth ?? 4})` });
+            }
+            if ((a.injection_order ?? 100) !== (b.injection_order ?? 100)) {
+                diffs.push({ type: 'order', desc: `顺序变更 (${a.injection_order ?? 100} ➔ ${b.injection_order ?? 100})` });
+            }
+            if ((a.forbid_overrides ?? false) !== (b.forbid_overrides ?? false)) {
+                diffs.push({ type: 'forbid', desc: `禁止覆盖 (${a.forbid_overrides ? '是' : '否'} ➔ ${b.forbid_overrides ? '是' : '否'})` });
+            }
+
+            modifiedList.push({ a, b, diffs });
+        } else {
+            unchangedList.push({ a, b });
+        }
+    });
+
+    const modalId = 'zero-contrast-summary-modal';
+    $(`#${modalId}`).remove();
+
+    const timestamp = new Date().toLocaleString();
+    let mdReport = `# 预设变化与更新总结报告 (Preset Diff Summary)\n`;
+    mdReport += `- **源预设 (A)**: ${nameA} (共 ${promptsA.length} 项)\n`;
+    mdReport += `- **目标预设 (B)**: ${nameB} (共 ${promptsB.length} 项)\n`;
+    mdReport += `- **生成时间**: ${timestamp}\n\n`;
+
+    mdReport += `## 📊 变化概览\n`;
+    mdReport += `- 🟢 **新增条目**: ${onlyBList.length} 项\n`;
+    mdReport += `- 🔴 **移除/缺失条目**: ${onlyAList.length} 项\n`;
+    mdReport += `- 🟧 **修改/变动条目**: ${modifiedList.length} 项\n`;
+    mdReport += `- ⚪ **完全相同条目**: ${unchangedList.length} 项\n\n`;
+
+    if (onlyBList.length > 0) {
+        mdReport += `## 🟢 新增条目 (${onlyBList.length})\n`;
+        onlyBList.forEach((p, idx) => {
+            mdReport += `${idx + 1}. **${p.name || p.identifier}** (角色: \`${p.role || 'system'}\`, 字数: ${p.content?.length || 0})\n`;
+        });
+        mdReport += `\n`;
+    }
+
+    if (onlyAList.length > 0) {
+        mdReport += `## 🔴 移除条目 (${onlyAList.length})\n`;
+        onlyAList.forEach((p, idx) => {
+            mdReport += `${idx + 1}. **${p.name || p.identifier}** (角色: \`${p.role || 'system'}\`)\n`;
+        });
+        mdReport += `\n`;
+    }
+
+    if (modifiedList.length > 0) {
+        mdReport += `## 🟧 修改条目 (${modifiedList.length})\n`;
+        modifiedList.forEach((item, idx) => {
+            const name = item.b.name || item.b.identifier || item.a.name || item.a.identifier;
+            mdReport += `### ${idx + 1}. ${name}\n`;
+            item.diffs.forEach(d => {
+                mdReport += `- ${d.desc}\n`;
+            });
+        });
+        mdReport += `\n`;
+    }
+
+    if (unchangedList.length > 0) {
+        mdReport += `## ⚪ 未变动条目 (${unchangedList.length})\n`;
+        mdReport += unchangedList.map(item => `\`${item.a.name || item.a.identifier}\``).join(', ') + `\n\n`;
+    }
+
+    const modalHtml = `
+        <div id="${modalId}" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.85); z-index: 21000; display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box;">
+            <div style="background: var(--SmartThemeBlurTintColor, #1f1f1f); border: 1px solid var(--SmartThemeBorderColor, #444); border-radius: 14px; width: 100%; max-width: 680px; height: 85vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,0.6);">
+                
+                <!-- Header -->
+                <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--SmartThemeBorderColor, #333); flex-shrink: 0;">
+                    <div style="display: flex; align-items: center; gap: 10px; font-weight: bold; font-size: 15px; color: var(--SmartThemeBodyColor);">
+                        <i class="fa-solid fa-file-contract" style="color: var(--SmartThemeQuoteColor);"></i>
+                        <span>对照更新与变化总结</span>
+                        <span style="font-size: 11px; opacity: 0.6; font-weight: normal;">(${escapeHtml(nameA)} ➔ ${escapeHtml(nameB)})</span>
+                    </div>
+                    <div id="close-contrast-summary-modal" class="interactable" style="cursor: pointer; padding: 6px 10px; opacity: 0.7;"><i class="fa-solid fa-xmark"></i></div>
+                </div>
+
+                <!-- KPI Cards -->
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; padding: 12px 18px; background: rgba(0,0,0,0.15); border-bottom: 1px solid rgba(255,255,255,0.05); flex-shrink: 0;">
+                    <div style="padding: 10px; background: rgba(76,175,80,0.1); border: 1px solid rgba(76,175,80,0.25); border-radius: 8px; text-align: center;">
+                        <div style="font-size: 18px; font-weight: bold; color: #4caf50;">${onlyBList.length}</div>
+                        <div style="font-size: 11px; opacity: 0.8; color: var(--SmartThemeBodyColor);">新增条目</div>
+                    </div>
+                    <div style="padding: 10px; background: rgba(244,67,54,0.1); border: 1px solid rgba(244,67,54,0.25); border-radius: 8px; text-align: center;">
+                        <div style="font-size: 18px; font-weight: bold; color: #f44336;">${onlyAList.length}</div>
+                        <div style="font-size: 11px; opacity: 0.8; color: var(--SmartThemeBodyColor);">移除条目</div>
+                    </div>
+                    <div style="padding: 10px; background: rgba(255,152,0,0.1); border: 1px solid rgba(255,152,0,0.25); border-radius: 8px; text-align: center;">
+                        <div style="font-size: 18px; font-weight: bold; color: #ff9800;">${modifiedList.length}</div>
+                        <div style="font-size: 11px; opacity: 0.8; color: var(--SmartThemeBodyColor);">修改条目</div>
+                    </div>
+                    <div style="padding: 10px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; text-align: center;">
+                        <div style="font-size: 18px; font-weight: bold; color: #aaa;">${unchangedList.length}</div>
+                        <div style="font-size: 11px; opacity: 0.8; color: var(--SmartThemeBodyColor);">完全相同</div>
+                    </div>
+                </div>
+
+                <!-- Tabs -->
+                <div style="display: flex; gap: 4px; padding: 8px 18px 0; border-bottom: 1px solid var(--SmartThemeBorderColor, #333); flex-shrink: 0; background: rgba(0,0,0,0.1);">
+                    <div class="zero-summary-tab active" data-tab="visual" style="padding: 6px 14px; font-size: 12px; cursor: pointer; border-bottom: 2px solid var(--SmartThemeQuoteColor, #7b8cde); color: var(--SmartThemeQuoteColor, #7b8cde);">可视化明细</div>
+                    <div class="zero-summary-tab" data-tab="markdown" style="padding: 6px 14px; font-size: 12px; cursor: pointer; border-bottom: 2px solid transparent; color: inherit; opacity: 0.7;">Markdown 报告</div>
+                </div>
+
+                <!-- Tab Contents -->
+                <div style="flex: 1; overflow-y: auto; padding: 14px 18px;">
+                    <!-- Visual Tab -->
+                    <div id="zero-summary-content-visual" style="display: flex; flex-direction: column; gap: 14px;">
+                        ${onlyBList.length > 0 ? `
+                            <div>
+                                <div style="font-size: 13px; font-weight: bold; color: #4caf50; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                                    <i class="fa-solid fa-circle-plus"></i> 新增条目 (${onlyBList.length})
+                                </div>
+                                <div style="display: flex; flex-direction: column; gap: 6px;">
+                                    ${onlyBList.map(p => `
+                                        <div style="padding: 8px 12px; background: rgba(76,175,80,0.06); border: 1px solid rgba(76,175,80,0.15); border-radius: 6px; font-size: 12px; display: flex; align-items: center; justify-content: space-between;">
+                                            <span style="font-weight: bold;">${escapeHtml(p.name || p.identifier)}</span>
+                                            <span style="font-size: 11px; opacity: 0.7;">角色: ${escapeHtml(p.role || 'system')} | ${p.content?.length || 0} 字符</span>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        ` : ''}
+
+                        ${onlyAList.length > 0 ? `
+                            <div>
+                                <div style="font-size: 13px; font-weight: bold; color: #f44336; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                                    <i class="fa-solid fa-circle-minus"></i> 移除条目 (${onlyAList.length})
+                                </div>
+                                <div style="display: flex; flex-direction: column; gap: 6px;">
+                                    ${onlyAList.map(p => `
+                                        <div style="padding: 8px 12px; background: rgba(244,67,54,0.06); border: 1px solid rgba(244,67,54,0.15); border-radius: 6px; font-size: 12px; display: flex; align-items: center; justify-content: space-between;">
+                                            <span style="font-weight: bold; text-decoration: line-through; opacity: 0.8;">${escapeHtml(p.name || p.identifier)}</span>
+                                            <span style="font-size: 11px; opacity: 0.7;">源角色: ${escapeHtml(p.role || 'system')}</span>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        ` : ''}
+
+                        ${modifiedList.length > 0 ? `
+                            <div>
+                                <div style="font-size: 13px; font-weight: bold; color: #ff9800; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                                    <i class="fa-solid fa-pen-to-square"></i> 修改条目 (${modifiedList.length})
+                                </div>
+                                <div style="display: flex; flex-direction: column; gap: 8px;">
+                                    ${modifiedList.map(item => {
+                                        const name = item.b.name || item.b.identifier || item.a.name || item.a.identifier;
+                                        return `
+                                            <div style="padding: 10px 12px; background: rgba(255,152,0,0.06); border: 1px solid rgba(255,152,0,0.18); border-radius: 8px; font-size: 12px;">
+                                                <div style="font-weight: bold; margin-bottom: 6px; color: var(--SmartThemeBodyColor);">${escapeHtml(name)}</div>
+                                                <div style="display: flex; flex-direction: column; gap: 4px; padding-left: 8px; border-left: 2px solid rgba(255,152,0,0.3);">
+                                                    ${item.diffs.map(d => `<div style="font-size: 11px; opacity: 0.85;">• ${escapeHtml(d.desc)}</div>`).join('')}
+                                                </div>
+                                            </div>
+                                        `;
+                                    }).join('')}
+                                </div>
+                            </div>
+                        ` : ''}
+
+                        ${onlyBList.length === 0 && onlyAList.length === 0 && modifiedList.length === 0 ? `
+                            <div style="text-align: center; padding: 40px; opacity: 0.6; font-size: 13px;">
+                                <i class="fa-solid fa-circle-check" style="font-size: 32px; color: #4caf50; margin-bottom: 10px;"></i><br>
+                                两个预设完全一致，未发现任何变动！
+                            </div>
+                        ` : ''}
+                    </div>
+
+                    <!-- Markdown Tab -->
+                    <div id="zero-summary-content-markdown" style="display: none; height: 100%; flex-direction: column; gap: 10px;">
+                        <textarea id="zero-summary-md-textarea" readonly style="width: 100%; height: 320px; padding: 12px; background: rgba(0,0,0,0.3); border: 1px solid var(--SmartThemeBorderColor, #444); color: inherit; border-radius: 8px; font-size: 12px; font-family: monospace; resize: none; box-sizing: border-box;">${escapeHtml(mdReport)}</textarea>
+                    </div>
+                </div>
+
+                <!-- Footer -->
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 18px; border-top: 1px solid var(--SmartThemeBorderColor, #333); background: rgba(0,0,0,0.1); flex-shrink: 0;">
+                    <div style="font-size: 11px; opacity: 0.5;">预设条目变化总结</div>
+                    <div style="display: flex; gap: 10px;">
+                        <button id="copy-summary-md-btn" class="interactable" style="padding: 6px 14px; border: none; border-radius: 6px; background: var(--SmartThemeQuoteColor, #7b8cde); color: white; cursor: pointer; font-size: 12px; font-weight: bold; display: flex; align-items: center; gap: 6px;">
+                            <i class="fa-solid fa-copy"></i> 复制 Markdown 总结
+                        </button>
+                        <button id="close-summary-footer-btn" class="interactable" style="padding: 6px 14px; border: none; border-radius: 6px; background: rgba(255,255,255,0.1); color: inherit; cursor: pointer; font-size: 12px;">关闭</button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    `;
+
+    $('body').append(modalHtml);
+
+    $('.zero-summary-tab').on('click', function() {
+        const tab = $(this).data('tab');
+        $('.zero-summary-tab').removeClass('active').css({ 'border-bottom-color': 'transparent', 'color': 'inherit', 'opacity': '0.7' });
+        $(this).addClass('active').css({ 'border-bottom-color': 'var(--SmartThemeQuoteColor, #7b8cde)', 'color': 'var(--SmartThemeQuoteColor, #7b8cde)', 'opacity': '1' });
+        
+        if (tab === 'visual') {
+            $('#zero-summary-content-visual').show();
+            $('#zero-summary-content-markdown').hide();
+        } else {
+            $('#zero-summary-content-visual').hide();
+            $('#zero-summary-content-markdown').css('display', 'flex');
+        }
+    });
+
+    $('#close-contrast-summary-modal, #close-summary-footer-btn').on('click', () => {
+        $(`#${modalId}`).remove();
+    });
+
+    $('#copy-summary-md-btn').on('click', function() {
+        navigator.clipboard.writeText(mdReport).then(() => {
+            toastr.success('已复制总结报告到剪贴板');
+        }).catch(() => {
+            toastr.error('复制失败');
+        });
+    });
+}
+

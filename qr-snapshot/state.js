@@ -76,15 +76,25 @@ export const PresetManager = {
         const pm = window.SillyTavern?.getContext?.()?.getPresetManager?.('openai');
         
         const presetName = pm?.getSelectedPresetName() || 'Default';
-        const promptOrder = promptManager.getPromptOrderForCharacter(promptManager.activeCharacter) || [];
+        const presetObj = pm?.getCompletionPresetByName?.(presetName);
+        const promptOrder = promptManager?.getPromptOrderForCharacter?.(promptManager.activeCharacter) || [];
         
         const prompts = promptOrder.map(orderItem => {
-            const p = promptManager.getPromptById(orderItem.identifier);
-            if (!p) return null;
+            const p = promptManager ? promptManager.getPromptById(orderItem.identifier) : null;
+            const presetP = presetObj?.prompts?.find(x => x.identifier === orderItem.identifier || x.name === orderItem.identifier || (p && (x.name === p.name || x.identifier === p.name || x.name === p.identifier)));
+            
+            if (!p && !presetP) return null;
+            const base = presetP || p;
+
+            if (p && presetP && presetP.content !== undefined) {
+                p.content = presetP.content;
+            }
+            
             return {
-                ...p,
+                ...(p || {}),
+                ...(presetP || {}),
                 identifier: orderItem.identifier,
-                name: p.name,
+                name: base.name || orderItem.identifier,
                 enabled: orderItem.enabled
             };
         }).filter(Boolean);
