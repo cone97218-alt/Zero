@@ -1,4 +1,4 @@
-import { getPresetPrompts, escapeHtml, debounce, savePresetWithoutRegexToast } from './utils.js';
+import { getPresetPrompts, escapeHtml, debounce, savePresetWithoutRegexToast, syncBoundRegexOnPromptToggle } from './utils.js';
 import { openQuickEditor } from './editor.js';
 import { GroupManager, zeroTranslate, HistoryManager, getStringSimilarityFromInfos, getBigrams } from '../qr-snapshot/state.js';
 import { highlightText as highlightTextUtil } from '../qr-snapshot/search-util.js';
@@ -1158,6 +1158,7 @@ export async function showComparisonDetail(index, allItems) {
 
             const isActive = pm.getSelectedPresetName() === tgtPreset;
             await savePresetWithoutRegexToast(pm, tgtPreset, tgtPresetObj, { skipUpdate: !isActive });
+            await syncBoundRegexOnPromptToggle(null, tgtPreset);
             
             // Update local loaded prompts data
             const localTgtPrompts = isBToA ? promptsA : promptsB;

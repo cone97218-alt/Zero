@@ -1037,10 +1037,10 @@ function ensurePanel() {
                             <div style="border-bottom: 1px dashed rgba(255,255,255,0.06); padding-bottom: 12px;">
                                 <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
                                     <i class="fa-solid fa-circle-check" style="color: var(--SmartThemeQuoteColor); font-size: 14px;"></i>
-                                    <strong style="font-size: 13px; color: var(--SmartThemeBodyColor);">合规自查 (Checker)</strong>
+                                    <strong style="font-size: 13px; color: var(--SmartThemeBodyColor);">合规自查与智能修正 (Checker)</strong>
                                 </div>
                                 <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.5; padding-left: 22px;">
-                                    使用「自查」模块对指定预设进行静态检查。自动识别宏语法损坏（如 <code>{{}}</code> 缺失）、Token 超限风险、拼写或敏感占位符等问题，帮助您在运行前排查潜在故障。
+                                    使用「自查」模块对指定预设进行静态检查。自动排查 XML 标签闭合、变量初始化/读取一致性，并支持<strong>一键智能自动注入缺失变量</strong>（单变量或全局批量注入）、清理冗余初始化宏与变量拼写更正，避免旧内容残留。
                                 </span>
                             </div>
 
@@ -2132,6 +2132,11 @@ export function init() {
     // Stop event bubbling for typing events on all Zero inputs/textareas to prevent SillyTavern's heavy global key/input listeners from lagging mobile devices
     $('body').on('keydown keyup keypress input', '#zero-preset-manager-panel input, #zero-preset-manager-panel textarea, #zero-quick-editor input, #zero-quick-editor textarea', function(e) {
         e.stopPropagation();
+    });
+
+    // Listen to native SillyTavern completion prompt checkboxes to sync bound regex scripts on toggle
+    $('body').off('change.zero-native-prompt-toggle').on('change.zero-native-prompt-toggle', '#openai_completion_prompts input[type="checkbox"]', function() {
+        import('./utils.js').then(m => m.syncBoundRegexOnPromptToggle(null)).catch(() => {});
     });
     
     // Background preloading of UI modules to eliminate lag on first open

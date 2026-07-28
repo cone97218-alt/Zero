@@ -1,4 +1,4 @@
-import { getPresetPrompts, escapeHtml, debounce, savePresetWithoutRegexToast, getPresetRegexScripts, showBindRegexModal } from './utils.js';
+import { getPresetPrompts, escapeHtml, debounce, savePresetWithoutRegexToast, getPresetRegexScripts, showBindRegexModal, syncBoundRegexOnPromptToggle } from './utils.js';
 import { HistoryManager, UiStateManager, GroupManager } from '../qr-snapshot/state.js';
 import { matchStitch, highlightText as highlightTextUtil } from '../qr-snapshot/search-util.js';
 
@@ -434,7 +434,8 @@ export async function performStitch(itemsA, targetName, position) {
         }
 
         const isActive = pm.getSelectedPresetName() === targetName;
-        savePresetWithoutRegexToast(pm, targetName, targetPreset, { skipUpdate: !isActive }).then(() => {
+        savePresetWithoutRegexToast(pm, targetName, targetPreset, { skipUpdate: !isActive }).then(async () => {
+            await syncBoundRegexOnPromptToggle(null, targetName);
             if (isActive && typeof pm.loadPreset === 'function') {
                 return savePresetWithoutRegexToast(pm, targetName, null, { loadOnly: true });
             }
@@ -512,7 +513,8 @@ export async function performMove(itemsA, presetName, position) {
         }
 
         const isActive = pm.getSelectedPresetName() === presetName;
-        savePresetWithoutRegexToast(pm, presetName, preset, { skipUpdate: !isActive }).then(() => {
+        savePresetWithoutRegexToast(pm, presetName, preset, { skipUpdate: !isActive }).then(async () => {
+            await syncBoundRegexOnPromptToggle(null, presetName);
             if (isActive && typeof pm.loadPreset === 'function') {
                 return savePresetWithoutRegexToast(pm, presetName, null, { loadOnly: true });
             }
@@ -578,7 +580,8 @@ export async function performBatchDelete(items, presetName) {
         _cachedStitchPrompts = _cachedStitchPrompts.filter(p => !idsToRemove.includes(p.identifier));
         renderStitchList(false);
 
-        savePresetWithoutRegexToast(manager, presetName, preset, { skipUpdate: !isActive }).then(() => {
+        savePresetWithoutRegexToast(manager, presetName, preset, { skipUpdate: !isActive }).then(async () => {
+            await syncBoundRegexOnPromptToggle(null, presetName);
             if (isActive && typeof manager.loadPreset === 'function') {
                 return savePresetWithoutRegexToast(manager, presetName, null, { loadOnly: true });
             }
@@ -656,7 +659,8 @@ export async function performSingleClone(item, presetName) {
         }
         renderStitchList(false);
 
-        savePresetWithoutRegexToast(manager, presetName, preset, { skipUpdate: !isActive }).then(() => {
+        savePresetWithoutRegexToast(manager, presetName, preset, { skipUpdate: !isActive }).then(async () => {
+            await syncBoundRegexOnPromptToggle(null, presetName);
             if (isActive && typeof manager.loadPreset === 'function') {
                 return savePresetWithoutRegexToast(manager, presetName, null, { loadOnly: true });
             }

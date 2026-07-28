@@ -503,7 +503,9 @@ export async function openQuickEditor(presetName, itemName) {
             }
 
             const isActive = pm.getSelectedPresetName() === presetName;
-            savePresetWithoutRegexToast(pm, presetName, preset, { skipUpdate: !isActive }).catch(err => {
+            savePresetWithoutRegexToast(pm, presetName, preset, { skipUpdate: !isActive }).then(() => {
+                import('./utils.js').then(m => m.syncBoundRegexOnPromptToggle(null, presetName)).catch(() => {});
+            }).catch(err => {
                 console.error('[Zero] Background save failed:', err);
                 toastr.error('背景保存失败');
             });

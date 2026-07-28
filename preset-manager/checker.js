@@ -5,7 +5,6 @@
 
 import { PresetManager, HistoryManager, getStringSimilarity } from '../qr-snapshot/state.js';
 import { getPresetPrompts, escapeHtml, savePresetWithoutRegexToast } from './utils.js';
-import { matchSimple, highlightMatchSnippet } from '../qr-snapshot/search-util.js';
 
 export const Checker = {
     /**
@@ -13,7 +12,7 @@ export const Checker = {
      * @param {Array} prompts - List of prompt entries.
      */
     performCheck(prompts) {
-        const varMap = new Map(); // name -> { init: [], set: [], get: [], isGlobal: false }
+        const varMap = new Map(); // name -> { init: [], set: [], get: [] }
         const results = {
             xml: [],
             variables: [],
@@ -32,95 +31,66 @@ export const Checker = {
             const content = p.content || '';
             const entryName = p.name || p.identifier || `Entry ${idx + 1}`;
 
-            // Parse variables using a robust stack-based parser to support macro nesting
-            const stack = [];
-            let i = 0;
-            while (i < content.length) {
-                if (content.startsWith('{{', i)) {
-                    stack.push(i);
-                    i += 2;
-                } else if (content.startsWith('}}', i)) {
-                    if (stack.length > 0) {
-                        const startIdx = stack.pop();
-                        const endIdx = i + 2;
-                        const rawMacro = content.substring(startIdx, endIdx);
-                        const inner = rawMacro.substring(2, rawMacro.length - 2);
+            // {{setvar::name:: }} or {{setglobalvar::name:: }}
+            const initRegex = /\{\{set(?:global)?var::([^:]+)::[ ]*\}\}/g;
+            // {{setvar::name::content}} or {{setglobalvar::name::content}}
+            const setRegex = /\{\{set(?:global)?var::([^:]+)::([^}]+)\}\}/g;
+            // {{getvar::name}} or {{getglobalvar::name}}
+            const getRegex = /\{\{get(?:global)?var::([^:]+)\}\}/g;
 
-                        // Tokenize by splitting on '::', respecting nested braces depth
-                        const parts = [];
-                        let currentPart = '';
-                        let braceDepth = 0;
-                        let j = 0;
-                        while (j < inner.length) {
-                            if (inner.startsWith('{{', j)) {
-                                braceDepth++;
-                                currentPart += '{{';
-                                j += 2;
-                            } else if (inner.startsWith('}}', j)) {
-                                braceDepth--;
-                                currentPart += '}}';
-                                j += 2;
-                            } else if (inner.substring(j, j + 2) === '::' && braceDepth === 0) {
-                                parts.push(currentPart);
-                                currentPart = '';
-                                j += 2;
-                            } else {
-                                currentPart += inner[j];
-                                j++;
-                            }
-                        }
-                        parts.push(currentPart);
+            let match;
+            while ((match = initRegex.exec(content)) !== null) {
+                const name = match[1].trim();
+                if (!varMap.has(name)) varMap.set(name, { init: [], set: [], get: [] });
+                varMap.get(name).init.push({ entry: p, name: entryName });
+            }
 
-                        const macroType = parts[0]?.trim().toLowerCase();
-                        const isGlobal = macroType === 'setglobalvar' || macroType === 'getglobalvar';
-                        if (macroType === 'setvar' || macroType === 'setglobalvar') {
-                            const name = parts[1]?.trim();
-                            const value = parts.slice(2).join('::');
-                            if (name) {
-                                if (!varMap.has(name)) varMap.set(name, { init: [], set: [], get: [], isGlobal: false });
-                                if (isGlobal) varMap.get(name).isGlobal = true;
-                                const isInit = !value || value.trim() === '';
-                                if (isInit) {
-                                    varMap.get(name).init.push({ entry: p, name: entryName });
-                                } else {
-                                    varMap.get(name).set.push({ entry: p, name: entryName, value: value.trim() });
-                                }
-                            }
-                        } else if (macroType === 'getvar' || macroType === 'getglobalvar') {
-                            const name = parts[1]?.trim();
-                            if (name) {
-                                if (!varMap.has(name)) varMap.set(name, { init: [], set: [], get: [], isGlobal: false });
-                                if (isGlobal) varMap.get(name).isGlobal = true;
-                                varMap.get(name).get.push({ entry: p, name: entryName });
-                            }
-                        }
-                    }
-                    i += 2;
-                } else {
-                    i++;
-                }
+            // Reset regex or use matchAll
+            const setMatches = content.matchAll(/\{\{set(?:global)?var::([^:]+)::([^}]+)\}\}/g);
+            for (const m of setMatches) {
+                const name = m[1].trim();
+                const value = m[2].trim();
+                if (value === '') continue; // Already caught by init if it was " "
+                if (!varMap.has(name)) varMap.set(name, { init: [], set: [], get: [] });
+                varMap.get(name).set.push({ entry: p, name: entryName, value });
+            }
+
+            const getMatches = content.matchAll(/\{\{get(?:global)?var::([^:]+)\}\}/g);
+            for (const m of getMatches) {
+                const name = m[1].trim();
+                if (!varMap.has(name)) varMap.set(name, { init: [], set: [], get: [] });
+                varMap.get(name).get.push({ entry: p, name: entryName });
             }
         });
 
         // Analyze variables
-        const treatUninitAsProblem = localStorage.getItem('zero_check_treat_uninit_as_problem') === 'true';
         for (const [name, data] of varMap.entries()) {
             const hasInit = data.init.length > 0;
             const hasSet = data.set.length > 0;
             const hasGet = data.get.length > 0;
 
-            const isProblem = !hasSet || !hasGet || data.init.length > 1 || (!hasInit && treatUninitAsProblem);
+            // Check if variable is global
+            let isGlobal = false;
+            prompts.forEach(p => {
+                const c = p.content || '';
+                if (c.includes(`setglobalvar::${name}`) || c.includes(`getglobalvar::${name}`)) {
+                    isGlobal = true;
+                }
+            });
+
+            const treatUninitAsProblem = localStorage.getItem('zero_check_treat_uninit_as_problem') === 'true';
+            const isProblem = (treatUninitAsProblem && !hasInit) || !hasSet || !hasGet || data.init.length > 1;
 
             const varResult = {
                 name,
                 hasInit,
                 hasSet,
                 hasGet,
+                isGlobal,
                 initCount: data.init.length,
                 setCount: data.set.length,
                 getCount: data.get.length,
                 occurrences: data,
-                isGlobal: data.isGlobal,
                 isProblem
             };
 
@@ -220,6 +190,25 @@ export const Checker = {
         return entryResults;
     },
 
+    getScrollTop($container) {
+        if (!$container || $container.length === 0) return 0;
+        const top1 = $container.scrollTop() || 0;
+        const top2 = $container.parent() ? ($container.parent().scrollTop() || 0) : 0;
+        const top3 = $('#zero-tab-check').length ? ($('#zero-tab-check').scrollTop() || 0) : 0;
+        const top4 = $('.zero-panel-body').length ? ($('.zero-panel-body').scrollTop() || 0) : 0;
+        return Math.max(top1, top2, top3, top4);
+    },
+
+    setScrollTop($container, top) {
+        const val = Math.max(0, top || 0);
+        requestAnimationFrame(() => {
+            if ($container && $container.length) $container.scrollTop(val);
+            if ($container && $container.parent().length) $container.parent().scrollTop(val);
+            if ($('#zero-tab-check').length) $('#zero-tab-check').scrollTop(val);
+            if ($('.zero-panel-body').length) $('.zero-panel-body').scrollTop(val);
+        });
+    },
+
     /**
      * Renders the Self-Check tab content.
      */
@@ -227,14 +216,22 @@ export const Checker = {
         this.containerId = containerId;
         this.presetName = presetName;
         const $container = $(`#${containerId}`);
-        $container.empty();
+
+        // 记录重新渲染前的当前滚动高度
+        const currentSub = $('.zero-check-sub-tab.active').data('sub') || localStorage.getItem('zero_check_last_sub_tab') || 'xml';
+        const currentScroll = this.getScrollTop($container);
+        if (currentScroll > 0) {
+            const scrollMap = JSON.parse(localStorage.getItem('zero_check_scroll_map') || '{}');
+            scrollMap[currentSub] = currentScroll;
+            localStorage.setItem('zero_check_scroll_map', JSON.stringify(scrollMap));
+        }
 
         if (!presetName) {
-            $container.html('<p style="text-align: center; opacity: 0.5; margin-top: 40px;">请选择一个预设进行自查</p>');
+            $container.empty().html('<p style="text-align: center; opacity: 0.5; margin-top: 40px;">请选择一个预设进行自查</p>');
             return;
         }
 
-        $container.html('<p style="text-align: center; padding: 20px;"><i class="fa-solid fa-spinner fa-spin"></i> 正在自查...</p>');
+        $container.empty().html('<p style="text-align: center; padding: 20px;"><i class="fa-solid fa-spinner fa-spin"></i> 正在自查...</p>');
 
         try {
             const prompts = await getPresetPrompts(presetName);
@@ -244,7 +241,7 @@ export const Checker = {
             this.renderResults($container, results, presetName);
         } catch (e) {
             console.error('[Zero] Check failed:', e);
-            $container.html('<p style="text-align: center; color: #ff5555; padding: 20px;">自查失败: ' + e.message + '</p>');
+            $container.html('<p style="text-align: center; color: var(--SmartThemeQuoteColor); padding: 20px;">自查失败: ' + e.message + '</p>');
         }
     },
 
@@ -256,13 +253,13 @@ export const Checker = {
 
         const summaryHtml = `
             <div style="display: flex; gap: 8px; margin-bottom: 12px;">
-                <div style="flex: 1; padding: 10px; background: ${xmlCount > 0 ? 'rgba(255,100,100,0.1)' : 'rgba(100,255,100,0.05)'}; border-radius: 8px; text-align: center;">
-                    <div style="font-size: 11px; opacity: 0.6;">XML 问题</div>
-                    <div style="font-size: 18px; font-weight: bold; color: ${xmlCount > 0 ? '#ff5555' : '#55ff55'}">${xmlCount}</div>
+                <div style="flex: 1; padding: 10px; background: rgba(255,255,255,0.03); border-radius: 8px; text-align: center; border: 1px solid var(--SmartThemeBorderColor);">
+                    <div style="font-size: 11px; opacity: 0.6; color: var(--SmartThemeBodyColor);">XML 问题</div>
+                    <div id="check-xml-count-val" style="font-size: 18px; font-weight: bold; color: ${xmlCount > 0 ? 'var(--SmartThemeQuoteColor)' : 'var(--SmartThemeBodyColor)'}">${xmlCount}</div>
                 </div>
-                <div style="flex: 1; padding: 10px; background: ${varCount > 0 ? 'rgba(255,150,50,0.1)' : 'rgba(100,255,100,0.05)'}; border-radius: 8px; text-align: center;">
-                    <div style="font-size: 11px; opacity: 0.6;">变量问题</div>
-                    <div style="font-size: 18px; font-weight: bold; color: ${varCount > 0 ? '#ffaa33' : '#55ff55'}">${varCount}</div>
+                <div style="flex: 1; padding: 10px; background: rgba(255,255,255,0.03); border-radius: 8px; text-align: center; border: 1px solid var(--SmartThemeBorderColor);">
+                    <div style="font-size: 11px; opacity: 0.6; color: var(--SmartThemeBodyColor);">变量问题</div>
+                    <div id="check-var-count-val" style="font-size: 18px; font-weight: bold; color: ${varCount > 0 ? 'var(--SmartThemeQuoteColor)' : 'var(--SmartThemeBodyColor)'}">${varCount}</div>
                 </div>
             </div>
             
@@ -278,7 +275,7 @@ export const Checker = {
                     <div id="xml-exemptions-panel" style="display: none; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 8px; margin-top: 4px;">
                         <div style="font-size: 10px; opacity: 0.5; margin-bottom: 6px;">豁免标签 (逗号分隔):</div>
                         <div style="display: flex; gap: 8px;">
-                            <input type="text" id="check-xml-exemptions" placeholder="user, char, ..." style="flex: 1; padding: 4px 8px; background: rgba(0,0,0,0.2); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 4px; font-size: inherit !important;">
+                            <input type="text" id="check-xml-exemptions" placeholder="user, char, ..." style="flex: 1; padding: 6px; background: rgba(0,0,0,0.2); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 4px; font-size: 11px;">
                             <button id="save-xml-exemptions" class="interactable" style="padding: 4px 10px; background: var(--SmartThemeQuoteColor); border: none; border-radius: 4px; color: white; cursor: pointer; font-size: 11px;">保存</button>
                         </div>
                     </div>
@@ -288,42 +285,54 @@ export const Checker = {
 
             <div id="check-sub-vars" class="check-sub-content" style="display: none;">
                 ${localStorage.getItem('zero_hide_var_init_tip') === 'true' ? '' : `
-                <div id="check-var-init-tip" style="position: relative; font-size: 11px; line-height: 1.5; padding: 8px 30px 8px 12px; background: rgba(255,170,51,0.05); border: 1px solid rgba(255,170,51,0.3); border-radius: 6px; margin-bottom: 10px; color: var(--SmartThemeBodyColor);">
-                    <i class="fa-solid fa-circle-info" style="color: #ffaa33; margin-right: 6px;"></i>
+                <div id="check-var-init-tip" style="position: relative; font-size: 11px; line-height: 1.5; padding: 8px 30px 8px 12px; background: rgba(255,255,255,0.04); border: 1px solid var(--SmartThemeBorderColor); border-radius: 6px; margin-bottom: 10px; color: var(--SmartThemeBodyColor);">
+                    <i class="fa-solid fa-circle-info" style="color: var(--SmartThemeQuoteColor); margin-right: 6px;"></i>
                     <strong>提示：</strong>变量没有初始化（Init）也可以正常使用，但可能会造成<strong>变量内容残留</strong>。例如当你关闭了某个设置变量内容的条目后，因没有初始化条目在最前方执行置空，该变量可能无法被及时清空，后续依然能读取到其残留的旧内容。
                     <i id="close-var-init-tip" class="fa-solid fa-xmark interactable" title="不再提示" style="position: absolute; right: 10px; top: 10px; cursor: pointer; opacity: 0.5; font-size: 12px;"></i>
                 </div>
                 `}
                 <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; padding: 4px; align-items: center; width: 100%;">
-                    <div class="var-filter-btn" data-filter="problem" style="padding: 4px 12px; font-size: 11px; border-radius: 14px; cursor: pointer; background: rgba(255,255,255,0.05); color: inherit; border: 1px solid rgba(255,255,255,0.1);">问题变量</div>
-                    <div class="var-filter-btn" data-filter="correct" style="padding: 4px 12px; font-size: 11px; border-radius: 14px; cursor: pointer; background: rgba(255,255,255,0.05); color: inherit; border: 1px solid rgba(255,255,255,0.1);">正确变量</div>
-                    <div class="var-filter-btn" data-filter="all" style="padding: 4px 12px; font-size: 11px; border-radius: 14px; cursor: pointer; background: rgba(255,255,255,0.05); color: inherit; border: 1px solid rgba(255,255,255,0.1);">全部变量</div>
+                    <div class="var-filter-btn" data-filter="problem" style="padding: 4px 12px; font-size: 11px; border-radius: 14px; cursor: pointer; background: rgba(255,255,255,0.05); color: inherit; border: 1px solid var(--SmartThemeBorderColor);">问题变量</div>
+                    <div class="var-filter-btn" data-filter="correct" style="padding: 4px 12px; font-size: 11px; border-radius: 14px; cursor: pointer; background: rgba(255,255,255,0.05); color: inherit; border: 1px solid var(--SmartThemeBorderColor);">正确变量</div>
+                    <div class="var-filter-btn" data-filter="all" style="padding: 4px 12px; font-size: 11px; border-radius: 14px; cursor: pointer; background: rgba(255,255,255,0.05); color: inherit; border: 1px solid var(--SmartThemeBorderColor);">全部变量</div>
+                    <button id="check-batch-auto-inject-vars" class="interactable" title="一键自动注入所有缺失变量" style="padding: 4px 10px; font-size: 11px; border-radius: 14px; cursor: pointer; background: rgba(255,255,255,0.06); color: var(--SmartThemeQuoteColor); border: 1px solid var(--SmartThemeBorderColor); display: inline-flex; align-items: center; justify-content: center; height: 26px;">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i>
+                    </button>
+                    <button id="check-toggle-log-btn" class="interactable" title="查看/折叠自动化操作日志" style="padding: 4px 10px; font-size: 11px; border-radius: 14px; cursor: pointer; background: rgba(255,255,255,0.06); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); display: inline-flex; align-items: center; justify-content: center; height: 26px;">
+                        <i class="fa-solid fa-clock-rotate-left"></i>
+                    </button>
                     <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer; margin-left: auto; user-select: none;">
                         <input type="checkbox" id="check-treat-uninit-as-problem" class="interactable" style="margin: 0; cursor: pointer;" ${localStorage.getItem('zero_check_treat_uninit_as_problem') === 'true' ? 'checked' : ''}>
-                        <span>无初始化视为问题</span>
+                        <span style="opacity: 0.85; color: var(--SmartThemeBodyColor);">无初始化视为问题</span>
                     </label>
-                    <div id="toggle-var-settings" style="font-size: 11px; opacity: 0.6; cursor: pointer; padding: 4px 0; width: 100%; border-top: 1px dashed rgba(255,255,255,0.05); margin-top: 6px; display: flex; justify-content: space-between; align-items: center; user-select: none;">
+                    <div id="toggle-var-settings" style="font-size: 11px; opacity: 0.6; cursor: pointer; padding: 4px 0; width: 100%; border-top: 1px dashed var(--SmartThemeBorderColor); margin-top: 6px; display: flex; justify-content: space-between; align-items: center; user-select: none;">
                         <span><i class="fa-solid fa-gear"></i> 拼写纠错设置</span>
                         <i class="chevron fa-solid fa-chevron-down"></i>
                     </div>
                     <div id="var-settings-panel" style="display: none; width: 100%; margin-top: 4px; padding: 8px 10px; background: rgba(0,0,0,0.15); border: 1px solid var(--SmartThemeBorderColor); border-radius: 8px;">
                         <div style="display: flex; gap: 8px; align-items: center; font-size: 11px;">
-                            <span style="opacity: 0.8;">纠错相似度阈值:</span>
+                            <span style="opacity: 0.8; color: var(--SmartThemeBodyColor);">纠错相似度阈值:</span>
                             <input type="number" id="check-var-similarity-threshold" class="interactable" min="0.1" max="1.0" step="0.05" style="width: 55px; padding: 2px 4px; background: rgba(0,0,0,0.2); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 4px; font-size: 11px; outline: none; text-align: center;" value="${localStorage.getItem('zero_check_var_similarity_threshold') || '0.6'}">
-                            <span style="opacity: 0.5;">(0.1 ~ 1.0，值越高要求越相似)</span>
+                            <span style="opacity: 0.5; color: var(--SmartThemeEmColor);">(0.1 ~ 1.0，值越高要求越相似)</span>
                         </div>
                     </div>
                 </div>
+
+                <!-- 自动化操作日志面板 -->
+                <div id="check-var-log-panel" style="display: none; width: 100%; margin-bottom: 12px; padding: 10px; background: rgba(0,0,0,0.2); border: 1px solid var(--SmartThemeBorderColor); border-radius: 8px; font-size: 11px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; opacity: 0.85; font-weight: bold; border-bottom: 1px dashed var(--SmartThemeBorderColor); padding-bottom: 4px; color: var(--SmartThemeBodyColor);">
+                        <span><i class="fa-solid fa-clock-rotate-left" style="color: var(--SmartThemeQuoteColor); margin-right: 4px;"></i> 自动化操作日志</span>
+                        <button id="clear-var-log-btn" class="interactable" title="清空操作日志" style="background: none; border: none; color: var(--SmartThemeEmColor); cursor: pointer; padding: 2px 6px; font-size: 11px;"><i class="fa-solid fa-trash-can"></i></button>
+                    </div>
+                    <div id="var-log-entries-list" style="max-height: 150px; overflow-y: auto;"></div>
+                </div>
+
                 <div id="vars-list-container"></div>
             </div>
+
             <div id="check-sub-all-entries" class="check-sub-content" style="display: none;">
-                <div style="margin-bottom: 10px; display: flex; flex-direction: column; gap: 6px;">
-                    <input type="text" id="check-entry-search" placeholder="搜索条目名称或内容..." style="width: 100%; padding: 4px 8px; background: rgba(0,0,0,0.2); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 4px; font-size: inherit !important;">
-                    <div style="display: flex; gap: 6px; align-items: center; padding-left: 2px;">
-                        <span style="font-size: 11px; opacity: 0.6; margin-right: 4px;">筛选范围:</span>
-                        <span class="check-search-filter-badge interactable active" data-filter="name" style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background: var(--SmartThemeQuoteColor); color: white; cursor: pointer; user-select: none; transition: all 0.15s ease;">名称</span>
-                        <span class="check-search-filter-badge interactable active" data-filter="content" style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background: var(--SmartThemeQuoteColor); color: white; cursor: pointer; user-select: none; transition: all 0.15s ease;">内容</span>
-                    </div>
+                <div style="margin-bottom: 10px;">
+                    <input type="text" id="check-entry-search" placeholder="搜索条目名称或内容..." style="width: 100%; padding: 8px; background: rgba(0,0,0,0.2); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 6px; font-size: 12px;">
                 </div>
                 <div id="check-entry-list"></div>
             </div>
@@ -354,7 +363,7 @@ export const Checker = {
             const val = $('#check-xml-exemptions').val();
             const list = val.split(',').map(s => s.trim()).filter(s => s !== '');
             localStorage.setItem('zero_xml_exemptions', JSON.stringify(list));
-            this.render(containerId, presetName);
+            this.refreshResultsInPlace(presetName);
         });
 
         if (results.xml.length === 0) {
@@ -362,14 +371,14 @@ export const Checker = {
         } else {
             results.xml.forEach(issue => {
                 const row = $(`
-                    <div class="check-issue-row" style="padding: 10px; background: rgba(255,255,255,0.03); border-radius: 8px; margin-bottom: 8px; border-left: 3px solid #ff5555;">
+                    <div class="check-issue-row" style="padding: 10px; background: rgba(255,255,255,0.03); border-radius: 8px; margin-bottom: 8px; border-left: 3px solid var(--SmartThemeQuoteColor);">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                             <span style="font-size: 13px; font-weight: bold;">${escapeHtml(issue.name)}</span>
-                            <button class="check-edit-btn interactable" style="padding: 4px 8px; background: rgba(255,255,255,0.1); border: none; border-radius: 4px; color: inherit; cursor: pointer; font-size: 11px;">
-                                <i class="fa-solid fa-pencil"></i> 修改
+                            <button class="check-edit-btn interactable" title="修改条目" style="padding: 4px 8px; background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; color: inherit; cursor: pointer; font-size: 11px;">
+                                <i class="fa-solid fa-pencil"></i>
                             </button>
                         </div>
-                        <div style="font-size: 11px; color: #ff7777; line-height: 1.4;">
+                        <div style="font-size: 11px; color: var(--SmartThemeEmColor); line-height: 1.4;">
                             ${issue.errors.map(err => `<div>• ${err}</div>`).join('')}
                         </div>
                     </div>
@@ -400,15 +409,29 @@ export const Checker = {
         renderVariables($('.var-filter-btn.active').data('filter') || 'problem');
 
         $('.var-filter-btn').off('click').on('click', function() {
-            $('.var-filter-btn').css('background', 'rgba(255,255,255,0.05)').css('color', 'inherit').css('border-color', 'rgba(255,255,255,0.1)');
+            $('.var-filter-btn').css('background', 'rgba(255,255,255,0.05)').css('color', 'inherit').css('border-color', 'var(--SmartThemeBorderColor)');
             $(this).css('background', 'var(--SmartThemeQuoteColor)').css('color', 'white').css('border-color', 'var(--SmartThemeQuoteColor)');
             renderVariables($(this).data('filter'));
             localStorage.setItem('zero_check_var_filter', $(this).data('filter'));
         });
 
-        $('#check-treat-uninit-as-problem').off('change').on('change', function() {
-            localStorage.setItem('zero_check_treat_uninit_as_problem', $(this).is(':checked') ? 'true' : 'false');
-            Checker.render(Checker.containerId, Checker.presetName);
+        $('#check-batch-auto-inject-vars').off('click').on('click', () => {
+            this.batchAutoInjectVars(presetName);
+        });
+
+        $('#check-toggle-log-btn').off('click').on('click', () => {
+            const $panel = $('#check-var-log-panel');
+            $panel.slideToggle(200);
+            this.renderLogs();
+        });
+
+        $('#clear-var-log-btn').off('click').on('click', () => {
+            this.clearLogs();
+        });
+
+        $('#check-treat-uninit-as-problem').off('change').on('change', () => {
+            localStorage.setItem('zero_check_treat_uninit_as_problem', $('#check-treat-uninit-as-problem').is(':checked') ? 'true' : 'false');
+            this.refreshResultsInPlace(presetName);
         });
 
         $('#toggle-var-settings').off('click').on('click', function () {
@@ -417,17 +440,16 @@ export const Checker = {
             $(this).find('i.chevron').toggleClass('fa-chevron-down fa-chevron-up');
         });
 
-        $('#check-var-similarity-threshold').off('change').on('change', function() {
-            let val = parseFloat($(this).val());
-            if (isNaN(val) || val < 0.1) val = 0.1;
-            if (val > 1.0) val = 1.0;
-            $(this).val(val);
+        $('#check-var-similarity-threshold').off('change').on('change', () => {
+            let val = parseFloat($('#check-var-similarity-threshold').val());
+            if (isNaN(val)) val = 0.6;
+            val = Math.max(0.1, Math.min(1.0, val));
             localStorage.setItem('zero_check_var_similarity_threshold', val.toString());
-            Checker.render(Checker.containerId, Checker.presetName);
+            this.refreshResultsInPlace(presetName);
         });
 
         const lastVarFilter = localStorage.getItem('zero_check_var_filter') || 'problem';
-        $(`.var-filter-btn[data-filter="${lastVarFilter}"]`).click();
+        $(`.var-filter-btn[data-filter="${lastVarFilter}"]`).trigger('click');
 
         // --- Render All Entries ---
         const $entryList = $('#check-entry-list');
@@ -435,31 +457,24 @@ export const Checker = {
             $entryList.empty();
             const lowerFilter = filter.toLowerCase();
 
-            const activeFilters = [];
-            $('.check-search-filter-badge.active').each(function() {
-                activeFilters.push($(this).data('filter'));
-            });
-
             results.prompts.forEach((p, idx) => {
                 const name = p.name || p.identifier || `Entry ${idx + 1}`;
                 const content = p.content || '';
 
-                const matchesName = activeFilters.includes('name') && name.toLowerCase().includes(lowerFilter);
-                const matchesContent = activeFilters.includes('content') && content.toLowerCase().includes(lowerFilter);
+                const nameMatch = name.toLowerCase().includes(lowerFilter);
+                const contentMatch = content.toLowerCase().includes(lowerFilter);
 
-                if (filter && !matchesName && !matchesContent) return;
-
-                const contentMatch = filter && matchesContent;
+                if (filter && !nameMatch && !contentMatch) return;
 
                 const row = $(`
                     <div class="check-entry-row" style="display: flex; flex-direction: column; gap: 4px; padding: 10px; background: rgba(255,255,255,0.03); border-radius: 8px; margin-bottom: 6px; font-size: 13px;">
                         <div style="display: flex; justify-content: space-between; align-items: center;">
                             <span style="font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">${escapeHtml(name)}</span>
-                            <button class="entry-edit-btn interactable" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; color: inherit; cursor: pointer; padding: 4px 8px; font-size: 11px;"><i class="fa-solid fa-pencil"></i> 修改</button>
+                            <button class="entry-edit-btn interactable" title="修改条目" style="padding: 4px 8px; background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; color: inherit; cursor: pointer; font-size: 11px;"><i class="fa-solid fa-pencil"></i></button>
                         </div>
-                        ${contentMatch ? `
+                        ${filter && contentMatch ? `
                             <div style="font-size: 11px; opacity: 0.6; padding: 6px; background: rgba(0,0,0,0.2); border-radius: 4px; border-left: 2px solid var(--SmartThemeQuoteColor);">
-                                ...${highlightMatchSnippet(content, filter)}...
+                                ...${this.highlightMatch(content, filter)}...
                             </div>
                         ` : ''}
                     </div>
@@ -474,19 +489,7 @@ export const Checker = {
             renderEntries($(this).val());
         });
 
-        $('body').off('click', '.check-search-filter-badge').on('click', '.check-search-filter-badge', function () {
-            const activeCount = $('.check-search-filter-badge.active').length;
-            if ($(this).hasClass('active') && activeCount === 1) return;
-
-            $(this).toggleClass('active');
-            if ($(this).hasClass('active')) {
-                $(this).css('background', 'var(--SmartThemeQuoteColor)').css('color', 'white').css('opacity', '1');
-            } else {
-                $(this).css('background', 'rgba(255,255,255,0.08)').css('color', 'inherit').css('opacity', '0.5');
-            }
-            renderEntries($('#check-entry-search').val());
-        });
-
+        const self = this;
         // Event listeners for sub-tabs
         $('.zero-check-sub-tab').on('click', function () {
             const sub = $(this).data('sub');
@@ -499,120 +502,276 @@ export const Checker = {
 
             // Restore scroll
             const scrollMap = JSON.parse(localStorage.getItem('zero_check_scroll_map') || '{}');
-            if (scrollMap[sub]) {
-                $('.zero-panel-body').scrollTop(scrollMap[sub]);
-            } else {
-                $('.zero-panel-body').scrollTop(0);
-            }
+            const targetScroll = scrollMap[sub] || 0;
+            self.setScrollTop($container, targetScroll);
         });
 
         // Restore last sub-tab
         const lastSub = localStorage.getItem('zero_check_last_sub_tab') || 'xml';
         $(`.zero-check-sub-tab[data-sub="${lastSub}"]`).click();
 
-        // Save scroll position per tab
-        $('.zero-panel-body').off('scroll.checker').on('scroll.checker', function () {
+        // Save scroll position per tab across all possible scrolling containers
+        const saveScrollHandler = () => {
             const currentSub = $('.zero-check-sub-tab.active').data('sub');
             if (currentSub) {
-                const scrollMap = JSON.parse(localStorage.getItem('zero_check_scroll_map') || '{}');
-                scrollMap[currentSub] = $(this).scrollTop();
-                localStorage.setItem('zero_check_scroll_map', JSON.stringify(scrollMap));
+                const st = this.getScrollTop($container);
+                if (st >= 0) {
+                    const scrollMap = JSON.parse(localStorage.getItem('zero_check_scroll_map') || '{}');
+                    scrollMap[currentSub] = st;
+                    localStorage.setItem('zero_check_scroll_map', JSON.stringify(scrollMap));
+                }
             }
-        });
+        };
+
+        $container.off('scroll.checker').on('scroll.checker', saveScrollHandler);
+        if ($container.parent().length) $container.parent().off('scroll.checker').on('scroll.checker', saveScrollHandler);
+        if ($('#zero-tab-check').length) $('#zero-tab-check').off('scroll.checker').on('scroll.checker', saveScrollHandler);
+        if ($('.zero-panel-body').length) $('.zero-panel-body').off('scroll.checker').on('scroll.checker', saveScrollHandler);
+    },
+
+    async refreshResultsInPlace(presetName) {
+        try {
+            const targetPreset = presetName || this.presetName;
+            if (!targetPreset) return;
+            const containerId = this.containerId || 'check-results-container';
+            const $container = $(`#${containerId}`);
+            if (!$container.length) return;
+
+            const prompts = await getPresetPrompts(targetPreset);
+            this._lastPrompts = prompts;
+            const results = this.performCheck(prompts);
+
+            // 1. Update issue counters in header
+            const xmlCount = results.xml.length;
+            const varCount = results.variables.length;
+
+            $('#check-xml-count-val').text(xmlCount).css('color', xmlCount > 0 ? 'var(--SmartThemeQuoteColor)' : 'var(--SmartThemeBodyColor)');
+            $('#check-var-count-val').text(varCount).css('color', varCount > 0 ? 'var(--SmartThemeQuoteColor)' : 'var(--SmartThemeBodyColor)');
+
+            // 2. Update XML issues list in place
+            const $xmlList = $('#xml-issues-list');
+            if ($xmlList.length) {
+                $xmlList.empty();
+                if (results.xml.length === 0) {
+                    $xmlList.html('<p style="text-align: center; opacity: 0.5; padding: 20px; font-size: 12px;">未发现 XML 标签闭合问题</p>');
+                } else {
+                    results.xml.forEach(issue => {
+                        const row = $(`
+                            <div class="check-issue-row" style="padding: 10px; background: rgba(255,255,255,0.03); border-radius: 8px; margin-bottom: 8px; border-left: 3px solid var(--SmartThemeQuoteColor);">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                    <span style="font-size: 13px; font-weight: bold;">${escapeHtml(issue.name)}</span>
+                                    <button class="check-edit-btn interactable" title="修改条目" style="padding: 4px 8px; background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; color: inherit; cursor: pointer; font-size: 11px;">
+                                        <i class="fa-solid fa-pencil"></i>
+                                    </button>
+                                </div>
+                                <div style="font-size: 11px; color: var(--SmartThemeEmColor); line-height: 1.4;">
+                                    ${issue.errors.map(err => `<div>• ${err}</div>`).join('')}
+                                </div>
+                            </div>
+                        `);
+                        row.find('.check-edit-btn').on('click', () => this.openEditor(targetPreset, issue.name));
+                        $xmlList.append(row);
+                    });
+                }
+            }
+
+            // 3. Update Variable list in place
+            const $varBox = $('#vars-list-container');
+            if ($varBox.length) {
+                const filter = $('.var-filter-btn.active').data('filter') || localStorage.getItem('zero_check_var_filter') || 'problem';
+                $varBox.empty();
+
+                let varsToShow = [];
+                if (filter === 'problem') varsToShow = results.variables;
+                else if (filter === 'correct') varsToShow = results.allVars.filter(v => !v.isProblem);
+                else varsToShow = results.allVars;
+
+                if (varsToShow.length === 0) {
+                    $varBox.html(`<p style="text-align: center; opacity: 0.5; padding: 20px; font-size: 12px;">无${filter === 'problem' ? '问题' : (filter === 'correct' ? '正确' : '')}变量</p>`);
+                } else {
+                    varsToShow.sort((a, b) => a.name.localeCompare(b.name)).forEach(v => {
+                        $varBox.append(this.buildVariableRow(v, targetPreset, results.allVars));
+                    });
+                }
+            }
+
+            // 4. Update log list if open
+            if ($('#check-var-log-panel').is(':visible')) {
+                this.renderLogs();
+            }
+        } catch (e) {
+            console.error('[Zero] refreshResultsInPlace failed:', e);
+        }
+    },
+
+    getLogs() {
+        try {
+            return JSON.parse(localStorage.getItem('zero_check_op_logs') || '[]');
+        } catch (e) {
+            return [];
+        }
+    },
+
+    addLog(action, details) {
+        const logs = this.getLogs();
+        const now = new Date();
+        const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+        logs.unshift({ time: timeStr, action, details });
+        if (logs.length > 50) logs.pop();
+        localStorage.setItem('zero_check_op_logs', JSON.stringify(logs));
+        this.renderLogs();
+    },
+
+    clearLogs() {
+        localStorage.setItem('zero_check_op_logs', '[]');
+        this.renderLogs();
+    },
+
+    renderLogs() {
+        const $list = $('#var-log-entries-list');
+        if ($list.length === 0) return;
+        const logs = this.getLogs();
+        if (logs.length === 0) {
+            $list.html('<div style="text-align: center; opacity: 0.5; padding: 12px; font-size: 11px;">暂无自动化操作日志记录</div>');
+            return;
+        }
+        const html = logs.map(l => `
+            <div style="padding: 4px 6px; border-bottom: 1px dashed rgba(255,255,255,0.05); font-size: 11px; display: flex; gap: 6px; align-items: flex-start; color: var(--SmartThemeBodyColor);">
+                <span style="opacity: 0.5; flex-shrink: 0; font-family: monospace;">[${escapeHtml(l.time)}]</span>
+                <span style="color: var(--SmartThemeQuoteColor); font-weight: bold; flex-shrink: 0;">[${escapeHtml(l.action)}]</span>
+                <span style="opacity: 0.9; flex: 1; word-break: break-all;">${escapeHtml(l.details)}</span>
+            </div>
+        `).join('');
+        $list.html(html);
     },
 
     buildVariableRow(v, presetName, allVars) {
-        const initBg = v.hasInit ? '#44aa44' : 'var(--SmartThemeBorderColor)';
-        const initColor = v.hasInit ? 'white' : 'var(--SmartThemeBodyColor)';
-        const initOpacity = v.hasInit ? '1' : '0.8';
-        const initText = v.hasInit ? `初始化${v.initCount > 1 ? ` (${v.initCount}!)` : ''}` : '初始化 (可选)';
+        const treatUninitAsProblem = localStorage.getItem('zero_check_treat_uninit_as_problem') === 'true';
 
-        const setBg = v.hasSet ? '#44aa44' : '#aa4444';
-        const setOpacity = v.hasSet ? '1' : '0.8';
-        const setText = v.hasSet ? `内容设置 (${v.setCount})` : '未设置内容';
+        const isInitProblem = (treatUninitAsProblem && !v.hasInit) || (v.initCount > 1);
+        const initBorder = isInitProblem ? '1px solid var(--SmartThemeQuoteColor)' : '1px solid var(--SmartThemeBorderColor)';
+        const initColor = isInitProblem ? 'var(--SmartThemeQuoteColor)' : (v.hasInit ? 'var(--SmartThemeBodyColor)' : 'var(--SmartThemeEmColor)');
+        const initText = v.hasInit ? `初始化${v.initCount > 1 ? ` (${v.initCount}!)` : ''}` : '未初始化';
 
-        const getBg = v.hasGet ? '#44aa44' : '#aa4444';
-        const getOpacity = v.hasGet ? '1' : '0.8';
-        const getText = v.hasGet ? `变量读取 (${v.getCount})` : '未读取';
+        const isSetProblem = !v.hasSet;
+        const setBorder = isSetProblem ? '1px solid var(--SmartThemeQuoteColor)' : '1px solid var(--SmartThemeBorderColor)';
+        const setColor = isSetProblem ? 'var(--SmartThemeQuoteColor)' : 'var(--SmartThemeBodyColor)';
+        const setText = v.hasSet ? `设置 (${v.setCount})` : '未设置';
+
+        const isGetProblem = !v.hasGet;
+        const getBorder = isGetProblem ? '1px solid var(--SmartThemeQuoteColor)' : '1px solid var(--SmartThemeBorderColor)';
+        const getColor = isGetProblem ? 'var(--SmartThemeQuoteColor)' : 'var(--SmartThemeBodyColor)';
+        const getText = v.hasGet ? `读取 (${v.getCount})` : '未读取';
 
         const statusHtml = `
             <div style="display: flex; gap: 4px; margin-top: 6px;">
-                <span style="font-size: 10px; padding: 2px 5px; border-radius: 3px; background: ${initBg}; color: ${initColor}; opacity: ${initOpacity}">${initText}</span>
-                <span style="font-size: 10px; padding: 2px 5px; border-radius: 3px; background: ${setBg}; color: white; opacity: ${setOpacity}">${setText}</span>
-                <span style="font-size: 10px; padding: 2px 5px; border-radius: 3px; background: ${getBg}; color: white; opacity: ${getOpacity}">${getText}</span>
+                <span style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.06); color: ${initColor}; border: ${initBorder}; font-weight: ${isInitProblem ? 'bold' : 'normal'};">${initText}</span>
+                <span style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.06); color: ${setColor}; border: ${setBorder}; font-weight: ${isSetProblem ? 'bold' : 'normal'};">${setText}</span>
+                <span style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.06); color: ${getColor}; border: ${getBorder}; font-weight: ${isGetProblem ? 'bold' : 'normal'};">${getText}</span>
             </div>
         `;
 
-        // 查找拼写纠错建议
-        let bestCand = null;
-        let highestSimilarity = -1;
-        const threshold = parseFloat(localStorage.getItem('zero_check_var_similarity_threshold') || '0.6');
-        
-        if (!v.hasSet && v.hasGet && allVars) {
-            allVars.forEach(cand => {
-                if (cand.name === v.name || !cand.hasSet) return;
-                const sim = getStringSimilarity(v.name, cand.name);
-                if (sim >= threshold && sim > highestSimilarity) {
-                    highestSimilarity = sim;
-                    bestCand = cand;
+        // Typo correction check
+        let typoHtml = '';
+        if (Array.isArray(allVars)) {
+            const threshold = parseFloat(localStorage.getItem('zero_check_var_similarity_threshold') || '0.5');
+            let bestCand = null;
+            let maxSim = 0;
+            allVars.forEach(other => {
+                if (other.name !== v.name) {
+                    const isGetMismatch = !v.hasSet && v.hasGet && (other.hasSet || other.hasInit);
+                    const isSetMismatch = !v.hasGet && (v.hasSet || v.hasInit) && other.hasGet;
+
+                    if (isGetMismatch || isSetMismatch) {
+                        const sim = this.calculateSimilarity(v.name, other.name);
+                        if (sim > maxSim) {
+                            maxSim = sim;
+                            bestCand = other;
+                        }
+                    }
+                }
+            });
+
+            if (bestCand && maxSim >= threshold) {
+                const actionTitle = !v.hasSet ? `可更正为 "${escapeHtml(bestCand.name)}"` : `可能对应读取变量 "${escapeHtml(bestCand.name)}"`;
+                typoHtml = `
+                    <div style="margin-top: 6px; padding: 6px 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--SmartThemeBorderColor); border-radius: 6px; font-size: 11px; display: flex; align-items: center; justify-content: space-between; gap: 6px;">
+                        <span style="color: var(--SmartThemeBodyColor);"><i class="fa-solid fa-lightbulb" style="color: var(--SmartThemeQuoteColor); margin-right: 4px;"></i>疑似拼写关联：${actionTitle} <span style="opacity: 0.6;">(相似度 ${(maxSim * 100).toFixed(0)}%)</span></span>
+                        <button class="var-replace-btn interactable" data-from="${escapeHtml(v.name)}" data-to="${escapeHtml(bestCand.name)}" title="按拼写建议一键更正变量名" style="background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; color: var(--SmartThemeQuoteColor); padding: 4px 8px; font-size: 11px; cursor: pointer;"><i class="fa-solid fa-right-left"></i></button>
+                    </div>
+                `;
+            }
+        }
+
+        const occurrences = [];
+        if (v.occurrences) {
+            Object.entries(v.occurrences).forEach(([type, items]) => {
+                if (Array.isArray(items)) {
+                    items.forEach(occ => {
+                        occurrences.push({ type, ...occ });
+                    });
                 }
             });
         }
 
-        const typoHtml = bestCand ? `
-            <div class="var-typo-banner" style="font-size: 11px; margin-top: 6px; padding: 6px 10px; background: color-mix(in srgb, #ff8822 10%, var(--SmartThemeChatTintColor)); border: 1px solid color-mix(in srgb, #ff8822 25%, var(--SmartThemeBorderColor)); border-radius: 6px; display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--SmartThemeBodyColor);">
-                <span style="opacity: 0.85; text-align: left;">
-                    <i class="fa-solid fa-triangle-exclamation" style="color: color-mix(in srgb, #ff8822 85%, var(--SmartThemeBodyColor)); margin-right: 4px;"></i>
-                    未发现设置宏。拼写建议：<strong>${escapeHtml(bestCand.name)}</strong> (相似度 ${Math.round(highestSimilarity * 100)}%)
-                </span>
-                <button class="var-replace-btn interactable" data-from="${escapeHtml(v.name)}" data-to="${escapeHtml(bestCand.name)}" style="background: var(--SmartThemeQuoteColor); border: none; border-radius: 4px; color: white; padding: 2px 6px; font-size: 10px; cursor: pointer; font-weight: bold; flex-shrink: 0;">替换</button>
-            </div>
-        ` : '';
-
-        const occurrences = [];
-        ['init', 'set', 'get'].forEach(type => {
-            const items = v.occurrences[type] || [];
-            items.forEach(occ => {
-                occurrences.push({ type, ...occ });
-            });
-        });
-
         const occHtml = occurrences.map(o => `
             <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; opacity: 0.7; margin-top: 4px; padding: 2px 4px; background: rgba(0,0,0,0.1); border-radius: 4px;">
                 <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">[${o.type.toUpperCase()}] ${escapeHtml(o.name)}</span>
-                <button class="occ-edit-btn interactable" data-entry="${escapeHtml(o.name)}" style="background: none; border: none; color: inherit; cursor: pointer; padding: 2px 5px;"><i class="fa-solid fa-pencil"></i></button>
+                <button class="occ-edit-btn interactable" data-entry="${escapeHtml(o.name)}" title="修改对应条目" style="background: none; border: none; color: inherit; cursor: pointer; padding: 2px 5px;"><i class="fa-solid fa-pencil"></i></button>
             </div>
         `).join('');
 
+        // Prepare entry recommendations for manual initialization modal
+        let recommendedPromptIndex = 0;
+        let maxSetVarsCount = -1;
+        if (this._lastPrompts) {
+            this._lastPrompts.forEach((p, idx) => {
+                const count = (p.content || '').split('setvar::').length - 1 + ((p.content || '').split('setglobalvar::').length - 1);
+                if (count > maxSetVarsCount) {
+                    maxSetVarsCount = count;
+                    recommendedPromptIndex = idx;
+                }
+            });
+        }
+
+        const promptOptionsHtml = (this._lastPrompts || []).map((p, idx) => {
+            const name = p.name || p.identifier || `Entry ${idx + 1}`;
+            const isRec = idx === recommendedPromptIndex;
+            return `<option value="${idx}" ${isRec ? 'selected' : ''}>${escapeHtml(name)}${isRec ? ' [推荐]' : ''}</option>`;
+        }).join('');
+
         const row = $(`
-            <div class="check-var-row" style="padding: 10px; background: rgba(255,255,255,0.03); border-radius: 8px; margin-bottom: 8px; border-left: 3px solid ${v.isProblem ? '#ffaa33' : '#55ff55'};">
+            <div class="check-var-row" style="padding: 10px; background: rgba(255,255,255,0.03); border-radius: 8px; margin-bottom: 8px; border-left: 3px solid ${v.isProblem ? 'var(--SmartThemeQuoteColor)' : 'var(--SmartThemeBorderColor)'};">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <div style="font-size: 13px; font-weight: bold; color: ${v.isProblem ? '#ffaa33' : 'inherit'}">${escapeHtml(v.name)}</div>
+                    <div style="font-size: 13px; font-weight: bold; color: ${v.isProblem ? 'var(--SmartThemeQuoteColor)' : 'inherit'}">${escapeHtml(v.name)}</div>
                     <div style="display: flex; gap: 6px; align-items: center;">
-                        ${v.initCount > 1 ? `<button class="var-clean-init-btn interactable" title="清理冗余的初始化宏，仅保留最早条目中的那一个" style="background: color-mix(in srgb, #ff4444 10%, var(--SmartThemeChatTintColor)); border: 1px solid color-mix(in srgb, #ff4444 30%, var(--SmartThemeBorderColor)); border-radius: 4px; color: color-mix(in srgb, #ff4444 85%, var(--SmartThemeBodyColor)); cursor: pointer; padding: 2px 6px; font-size: 10px;"><i class="fa-solid fa-trash-can"></i> 优化</button>` : ''}
-                        ${!v.hasInit ? `<button class="var-quick-init-btn interactable" title="快速初始化该变量" style="background: color-mix(in srgb, #44aa44 10%, var(--SmartThemeChatTintColor)); border: 1px solid color-mix(in srgb, #44aa44 30%, var(--SmartThemeBorderColor)); border-radius: 4px; color: color-mix(in srgb, #44aa44 85%, var(--SmartThemeBodyColor)); cursor: pointer; padding: 2px 6px; font-size: 10px;"><i class="fa-solid fa-wand-magic-sparkles"></i> 初始化</button>` : ''}
-                        <button class="var-quick-add-btn interactable" title="在其他条目中增加此变量" style="background: rgba(125,125,125,0.1); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; color: var(--SmartThemeBodyColor); cursor: pointer; padding: 2px 6px; font-size: 10px;"><i class="fa-solid fa-plus"></i> 注入</button>
+                        ${v.initCount > 1 ? `
+                            <button class="var-clean-init-btn interactable" title="清理冗余初始化，仅保留最早条目中的那一个" style="background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; color: var(--SmartThemeEmColor); cursor: pointer; padding: 4px 8px; font-size: 11px;"><i class="fa-solid fa-trash-can"></i></button>
+                        ` : ''}
+                        ${!v.hasInit ? `
+                            <button class="var-auto-inject-btn interactable" title="一键智能自动注入此变量初始化" style="background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; color: var(--SmartThemeQuoteColor); cursor: pointer; padding: 4px 8px; font-size: 11px;"><i class="fa-solid fa-bolt"></i></button>
+                        ` : ''}
+                        <button class="var-quick-add-btn interactable" title="展开变量注入与手动管理面板" style="background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; color: var(--SmartThemeBodyColor); cursor: pointer; padding: 4px 8px; font-size: 11px;"><i class="fa-solid fa-plus"></i></button>
                     </div>
                 </div>
                 ${statusHtml}
                 ${typoHtml}
-                
-                <!-- 初始化配置折叠面板 -->
-                ${!v.hasInit ? `
-                <div class="var-init-panel" style="display: none; margin-top: 8px; padding: 10px; background: rgba(0,0,0,0.2); border: 1px solid var(--SmartThemeBorderColor); border-radius: 8px; color: var(--SmartThemeBodyColor);">
-                    <div style="font-size: 11px; opacity: 0.7; margin-bottom: 6px;">选择初始化目标条目：</div>
-                    <div style="display: flex; gap: 8px; align-items: center; width: 100%;">
-                        <select class="var-init-select interactable" style="flex: 1; background: rgba(0,0,0,0.25); border: 1px solid var(--SmartThemeBorderColor); color: inherit; padding: 4px 8px; border-radius: 6px; font-size: 12px; height: 28px; outline: none; min-width: 0;"></select>
-                        <button class="var-init-confirm-btn interactable" style="padding: 4px 10px; background: var(--SmartThemeQuoteColor); border: none; border-radius: 6px; color: white; cursor: pointer; font-size: 11px; font-weight: bold; height: 28px; flex-shrink: 0;">确认</button>
-                    </div>
-                </div>
-                ` : ''}
-
                 <div class="var-occ-list" style="margin-top: 8px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 4px;">
                     ${occHtml}
                 </div>
                 <div class="var-inject-panel" style="display: none; margin-top: 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.1);">
-                    <input type="text" class="var-inject-search" placeholder="搜索条目名称或内容以注入变量..." style="width: 100%; padding: 4px 8px; background: rgba(0,0,0,0.2); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 4px; font-size: inherit !important; margin-bottom: 6px;">
+                    ${!v.hasInit ? `
+                        <div class="var-manual-init-section" style="margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px dashed rgba(255,255,255,0.08);">
+                            <div style="font-size: 11px; opacity: 0.8; margin-bottom: 4px; color: var(--SmartThemeBodyColor);"><i class="fa-solid fa-sliders" style="color: var(--SmartThemeQuoteColor); margin-right: 4px;"></i> 手动指定条目初始化此变量：</div>
+                            <div style="display: flex; gap: 6px;">
+                                <select class="var-init-prompt-select" style="flex: 1; padding: 4px 6px; background: rgba(0,0,0,0.2); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 4px; font-size: 11px; outline: none;">
+                                    ${promptOptionsHtml}
+                                </select>
+                                <button class="var-init-confirm-btn interactable" title="确认初始化" style="padding: 4px 10px; background: var(--SmartThemeQuoteColor); border: none; border-radius: 4px; color: white; cursor: pointer; font-size: 11px; height: 26px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;"><i class="fa-solid fa-check"></i></button>
+                            </div>
+                        </div>
+                    ` : ''}
+                    <input type="text" class="var-inject-search" placeholder="搜索条目名称或内容以注入变量..." style="width: 100%; padding: 6px; background: rgba(0,0,0,0.2); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 4px; font-size: 11px; margin-bottom: 6px;">
                     <div class="var-inject-results" style="max-height: 150px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px;"></div>
                 </div>
             </div>
@@ -623,66 +782,106 @@ export const Checker = {
             this.openEditor(presetName, entryName);
         });
 
-        row.find('.var-quick-add-btn').on('click', () => {
-            const $panel = row.find('.var-inject-panel');
-            $panel.slideToggle(200);
-            if ($panel.is(':visible')) {
-                renderInjectList('');
+        // Typo replace event handler
+        row.find('.var-replace-btn').on('click', async (e) => {
+            const fromName = $(e.currentTarget).data('from');
+            const toName = $(e.currentTarget).data('to');
+            if (!fromName || !toName) return;
+
+            try {
+                const pm = SillyTavern.getContext().getPresetManager('openai');
+                if (!pm) {
+                    toastr.error('无法获取预设管理器');
+                    return;
+                }
+                const preset = pm.getCompletionPresetByName(presetName);
+                if (!preset || !Array.isArray(preset.prompts)) return;
+
+                HistoryManager.record();
+
+                let modifiedCount = 0;
+                const regex = new RegExp(`(\\{\\{(?:get|set)(?:global)?var::)${this.escapeRegExp(fromName)}(::|\\}\\})`, 'g');
+                preset.prompts.forEach(p => {
+                    if (!p.content) return;
+                    if (p.content.match(regex)) {
+                        p.content = p.content.replace(regex, `$1${toName}$2`);
+                        modifiedCount++;
+                    }
+                });
+
+                if (modifiedCount > 0) {
+                    const isActive = pm.getSelectedPresetName() === presetName;
+                    await savePresetWithoutRegexToast(pm, presetName, preset, { skipUpdate: !isActive });
+
+                    this.addLog('拼写更正', `将变量 "${fromName}" 在 ${modifiedCount} 个条目中更正为 "${toName}"`);
+                    toastr.success(`已在 ${modifiedCount} 个条目中将变量 "${fromName}" 修正为 "${toName}"`);
+
+                    await this.refreshResultsInPlace(presetName);
+                    window.dispatchEvent(new CustomEvent('zero-content-updated', { detail: { presetName } }));
+                } else {
+                    toastr.info('未找到需要替换的变量');
+                }
+            } catch (err) {
+                console.error('[Zero] Replace var failed:', err);
+                toastr.error('替换变量失败: ' + err.message);
             }
         });
 
-        // 绑定一键初始化展开逻辑
-        if (!v.hasInit) {
-            row.find('.var-quick-init-btn').on('click', () => {
-                const $panel = row.find('.var-init-panel');
-                $panel.slideToggle(200);
-                if ($panel.is(':visible')) {
-                    const $select = row.find('.var-init-select');
-                    $select.empty();
-
-                    const promptInitCounts = this._lastPrompts.map(p => {
-                        const content = p.content || '';
-                        const matches = content.match(/\{\{(?:setvar|setglobalvar)::[^:]+::\s*\}\}/g);
-                        return {
-                            prompt: p,
-                            count: matches ? matches.length : 0
-                        };
-                    });
-
-                    let recommendedIdx = 0;
-                    let maxCount = -1;
-                    promptInitCounts.forEach((pic, idx) => {
-                        if (pic.count > maxCount) {
-                            maxCount = pic.count;
-                            recommendedIdx = idx;
-                        }
-                    });
-
-                    promptInitCounts.forEach((pic, idx) => {
-                        const p = pic.prompt;
-                        const name = p.name || p.identifier || `Entry ${idx + 1}`;
-                        let suffix = '';
-                        if (pic.count > 0) {
-                            suffix = ` (已初始化 ${pic.count} 个变量)`;
-                        }
-                        if (idx === recommendedIdx) {
-                            suffix += pic.count > 0 ? ' [推荐]' : ' [推荐 - 默认首选]';
-                        }
-
-                        const opt = $('<option></option>')
-                            .val(p.identifier)
-                            .text(`${name}${suffix}`)
-                            .prop('selected', idx === recommendedIdx);
-                        $select.append(opt);
-                    });
+        // Clean redundant init event handler
+        row.find('.var-clean-init-btn').on('click', async () => {
+            try {
+                const pm = SillyTavern.getContext().getPresetManager('openai');
+                if (!pm) {
+                    toastr.error('无法获取预设管理器');
+                    return;
                 }
-            });
+                const preset = pm.getCompletionPresetByName(presetName);
+                if (!preset || !Array.isArray(preset.prompts)) return;
 
-            // 绑定确认初始化保存逻辑
-            row.find('.var-init-confirm-btn').on('click', async () => {
-                const targetId = row.find('.var-init-select').val();
-                if (!targetId) return;
+                HistoryManager.record();
 
+                let keptFirst = false;
+                let removedCount = 0;
+                const escapedName = this.escapeRegExp(v.name);
+
+                preset.prompts.forEach(p => {
+                    if (!p.content) return;
+                    const findRegex = new RegExp(`\\{\\{(?:setvar|setglobalvar)::${escapedName}::\\s*\\}\\}`, 'g');
+
+                    p.content = p.content.replace(findRegex, (match) => {
+                        if (!keptFirst) {
+                            keptFirst = true; // 保留最早发现的那一处初始化
+                            return match;
+                        } else {
+                            removedCount++;
+                            return ''; // 清理后续所有冗余初始化
+                        }
+                    });
+
+                    // 清理移除后留下的空行
+                    p.content = p.content.replace(/\n\s*\n\s*\n/g, '\n\n');
+                });
+
+                if (removedCount > 0) {
+                    const isActive = pm.getSelectedPresetName() === presetName;
+                    await savePresetWithoutRegexToast(pm, presetName, preset, { skipUpdate: !isActive });
+
+                    this.addLog('清理冗余', `清理变量 "${v.name}" 的 ${removedCount} 处冗余初始化`);
+                    toastr.success(`已清理 ${removedCount} 处冗余初始化`);
+
+                    await this.refreshResultsInPlace(presetName);
+                    window.dispatchEvent(new CustomEvent('zero-content-updated', { detail: { presetName } }));
+                } else {
+                    toastr.info('未找到可清理的冗余初始化');
+                }
+            } catch (e) {
+                console.error('[Zero] Clean init failed:', e);
+                toastr.error('清理失败: ' + e.message);
+            }
+        });
+
+        if (!v.hasInit) {
+            row.find('.var-auto-inject-btn').on('click', async () => {
                 try {
                     const pm = SillyTavern.getContext().getPresetManager('openai');
                     if (!pm) {
@@ -690,11 +889,11 @@ export const Checker = {
                         return;
                     }
                     const preset = pm.getCompletionPresetByName(presetName);
-                    if (!preset) return;
+                    if (!preset || !Array.isArray(preset.prompts)) return;
 
-                    const targetPrompt = preset.prompts.find(p => p.identifier === targetId);
+                    const targetPrompt = this.getRecommendedInitPrompt(preset.prompts);
                     if (!targetPrompt) {
-                        toastr.error('无法定位选中的条目');
+                        toastr.error('无法定位目标条目');
                         return;
                     }
 
@@ -706,130 +905,70 @@ export const Checker = {
                     const isActive = pm.getSelectedPresetName() === presetName;
                     await savePresetWithoutRegexToast(pm, presetName, preset, { skipUpdate: !isActive });
 
-                    toastr.success(`已在条目 "${targetPrompt.name || targetPrompt.identifier}" 中智能完成变量初始化`);
+                    const targetEntryName = targetPrompt.name || targetPrompt.identifier;
+                    this.addLog('单变量自动注入', `为变量 "${v.name}" 在条目「${targetEntryName}」中生成初始化宏`);
+                    toastr.success(`已在条目 "${targetEntryName}" 中自动注入初始化`);
 
-                    this.render(this.containerId, presetName);
-                    window.dispatchEvent(new CustomEvent('zero-content-updated', { detail: { presetName, itemName: targetPrompt.name || targetPrompt.identifier } }));
+                    await this.refreshResultsInPlace(presetName);
+                    window.dispatchEvent(new CustomEvent('zero-content-updated', { detail: { presetName, itemName: targetEntryName } }));
                 } catch (e) {
-                    console.error('[Zero] Auto init failed:', e);
-                    toastr.error('自动初始化失败: ' + e.message);
+                    console.error('[Zero] Auto inject single var failed:', e);
+                    toastr.error('自动注入失败: ' + e.message);
                 }
             });
         }
 
-        // 绑定冗余初始化清理逻辑
-        if (v.initCount > 1) {
-            row.find('.var-clean-init-btn').on('click', async () => {
-                try {
-                    const pm = SillyTavern.getContext().getPresetManager('openai');
-                    if (!pm) {
-                        toastr.error('无法获取预设管理器');
-                        return;
-                    }
-                    const preset = pm.getCompletionPresetByName(presetName);
-                    if (!preset) return;
+        row.find('.var-init-confirm-btn').on('click', async () => {
+            const promptIdx = parseInt(row.find('.var-init-prompt-select').val());
+            if (isNaN(promptIdx) || !this._lastPrompts || !this._lastPrompts[promptIdx]) {
+                toastr.error('无效的条目选择');
+                return;
+            }
 
-                    const occurrences = v.occurrences.init;
-                    if (occurrences.length <= 1) return;
+            const targetP = this._lastPrompts[promptIdx];
+            const targetName = targetP.name || targetP.identifier;
 
-                    const promptIndices = new Map();
-                    preset.prompts.forEach((p, idx) => {
-                        promptIndices.set(p.identifier, idx);
-                    });
-
-                    occurrences.sort((a, b) => {
-                        const idxA = promptIndices.has(a.entry.identifier) ? promptIndices.get(a.entry.identifier) : 9999;
-                        const idxB = promptIndices.has(b.entry.identifier) ? promptIndices.get(b.entry.identifier) : 9999;
-                        return idxA - idxB;
-                    });
-
-                    const keepEntry = occurrences[0].entry;
-                    const removeEntries = occurrences.slice(1).map(o => o.entry);
-
-                    HistoryManager.record();
-
-                    const escapedName = v.name.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-                    const cleanRegex = new RegExp(`\\{\\{(?:setvar|setglobalvar)::${escapedName}::\\s*\\}}\\s*\\n?`, 'g');
-
-                    let cleanedCount = 0;
-                    removeEntries.forEach(entryToClean => {
-                        const promptInPreset = preset.prompts.find(p => p.identifier === entryToClean.identifier);
-                        if (promptInPreset) {
-                            const original = promptInPreset.content || '';
-                            const cleaned = original.replace(cleanRegex, '');
-                            if (cleaned !== original) {
-                                promptInPreset.content = cleaned;
-                                cleanedCount++;
-                            }
-                        }
-                    });
-
-                    if (cleanedCount > 0) {
-                        const isActive = pm.getSelectedPresetName() === presetName;
-                        await savePresetWithoutRegexToast(pm, presetName, preset, { skipUpdate: !isActive });
-
-                        toastr.success(`已清理 ${cleanedCount} 处冗余初始化，仅保留了最早执行的那个`);
-
-                        this.render(this.containerId, presetName);
-                        window.dispatchEvent(new CustomEvent('zero-content-updated', { detail: { presetName, itemName: keepEntry.name || keepEntry.identifier } }));
-                    } else {
-                        toastr.info('未发现需要清理的冗余初始化宏');
-                    }
-                } catch (e) {
-                    console.error('[Zero] Clean inits failed:', e);
-                    toastr.error('优化清理失败: ' + e.message);
+            try {
+                const pm = SillyTavern.getContext().getPresetManager('openai');
+                if (!pm) {
+                    toastr.error('无法获取预设管理器');
+                    return;
                 }
-            });
-        }
+                const preset = pm.getCompletionPresetByName(presetName);
+                if (!preset) return;
 
-        // 绑定拼写建议一键替换逻辑
-        if (bestCand) {
-            row.find('.var-replace-btn').on('click', async (e) => {
-                const fromName = $(e.currentTarget).data('from');
-                const toName = $(e.currentTarget).data('to');
-                if (!fromName || !toName) return;
-
-                try {
-                    const pm = SillyTavern.getContext().getPresetManager('openai');
-                    if (!pm) {
-                        toastr.error('无法获取预设管理器');
-                        return;
-                    }
-                    const preset = pm.getCompletionPresetByName(presetName);
-                    if (!preset) return;
-
-                    HistoryManager.record();
-
-                    const escapedName = fromName.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-                    const macroRegex = new RegExp(`(\\{\\{(?:setvar|setglobalvar|getvar|getglobalvar)::)${escapedName}(\\b|::|\\})`, 'g');
-
-                    let replacedCount = 0;
-                    preset.prompts.forEach(p => {
-                        const original = p.content || '';
-                        const replaced = original.replace(macroRegex, `$1${toName}$2`);
-                        if (replaced !== original) {
-                            p.content = replaced;
-                            replacedCount++;
-                        }
-                    });
-
-                    if (replacedCount > 0) {
-                        const isActive = pm.getSelectedPresetName() === presetName;
-                        await savePresetWithoutRegexToast(pm, presetName, preset, { skipUpdate: !isActive });
-
-                        toastr.success(`已成功替换 ${replacedCount} 处变量名 "${fromName}" 为 "${toName}"`);
-
-                        this.render(this.containerId, presetName);
-                        window.dispatchEvent(new CustomEvent('zero-content-updated', { detail: { presetName, itemName: fromName } }));
-                    } else {
-                        toastr.info('未在任何条目中发现匹配的变量宏');
-                    }
-                } catch (err) {
-                    console.error('[Zero] Replace variable name failed:', err);
-                    toastr.error('替换失败: ' + err.message);
+                const targetPrompt = preset.prompts.find(p => p.identifier === targetP.identifier);
+                if (!targetPrompt) {
+                    toastr.error('找不到对应条目');
+                    return;
                 }
-            });
-        }
+
+                HistoryManager.record();
+
+                const newContent = this.getSmartInsertContent(targetPrompt.content || '', v.name, v.isGlobal, true);
+                targetPrompt.content = newContent;
+
+                const isActive = pm.getSelectedPresetName() === presetName;
+                await savePresetWithoutRegexToast(pm, presetName, preset, { skipUpdate: !isActive });
+
+                this.addLog('手动初始化', `在条目「${targetName}」中显式为变量 "${v.name}" 注入初始化宏`);
+                toastr.success(`已在 "${targetName}" 中初始化变量 ${v.name}`);
+
+                await this.refreshResultsInPlace(presetName);
+                window.dispatchEvent(new CustomEvent('zero-content-updated', { detail: { presetName, itemName: targetName } }));
+            } catch (e) {
+                console.error('[Zero] Init var failed:', e);
+                toastr.error('初始化失败: ' + e.message);
+            }
+        });
+
+        row.find('.var-quick-add-btn').on('click', () => {
+            const $panel = row.find('.var-inject-panel');
+            $panel.slideToggle(200);
+            if ($panel.is(':visible')) {
+                renderInjectList('');
+            }
+        });
 
         const renderInjectList = (filter = '') => {
             const $results = row.find('.var-inject-results');
@@ -837,10 +976,11 @@ export const Checker = {
             const lowerFilter = filter.toLowerCase();
 
             const existingEntries = new Set();
-            ['init', 'set', 'get'].forEach(type => {
-                const list = v.occurrences[type] || [];
-                list.forEach(o => existingEntries.add(o.name));
-            });
+            if (v.occurrences) {
+                Object.values(v.occurrences).forEach(list => {
+                    if (Array.isArray(list)) list.forEach(o => existingEntries.add(o.name));
+                });
+            }
 
             this._lastPrompts.forEach(p => {
                 const name = p.name || p.identifier;
@@ -848,12 +988,12 @@ export const Checker = {
                 if (filter && !name.toLowerCase().includes(lowerFilter) && !(p.content || '').toLowerCase().includes(lowerFilter)) return;
 
                 const item = $(`
-                    <div class="inject-entry-item" style="padding: 6px 8px; background: rgba(255,255,255,0.03); border-radius: 6px; font-size: 11px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; gap: 8px;">
-                        <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
+                    <div class="inject-entry-item interactable" style="padding: 6px 8px; background: rgba(255,255,255,0.03); border-radius: 4px; font-size: 11px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; gap: 8px;">
+                        <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">${escapeHtml(name)}</span>
                         <div style="display: flex; gap: 4px; flex-shrink: 0;">
-                            <button class="inject-read-btn interactable" title="智能注入读取宏" style="padding: 2px 6px; background: color-mix(in srgb, #2288ff 10%, var(--SmartThemeChatTintColor)); border: 1px solid color-mix(in srgb, #2288ff 30%, var(--SmartThemeBorderColor)); border-radius: 4px; color: color-mix(in srgb, #2288ff 85%, var(--SmartThemeBodyColor)); cursor: pointer; font-size: 10px;">+ 读取</button>
-                            <button class="inject-set-btn interactable" title="智能注入设置宏" style="padding: 2px 6px; background: color-mix(in srgb, #ff8822 10%, var(--SmartThemeChatTintColor)); border: 1px solid color-mix(in srgb, #ff8822 30%, var(--SmartThemeBorderColor)); border-radius: 4px; color: color-mix(in srgb, #ff8822 85%, var(--SmartThemeBodyColor)); cursor: pointer; font-size: 10px;">+ 设置</button>
-                            <button class="inject-edit-btn interactable" title="打开编辑器手动修改" style="padding: 2px 6px; background: rgba(125,125,125,0.1); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; color: var(--SmartThemeBodyColor); cursor: pointer; font-size: 10px;"><i class="fa-solid fa-pencil"></i></button>
+                            <button class="inject-read-btn interactable" title="智能注入读取宏 (getvar)" style="padding: 4px 8px; background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; color: var(--SmartThemeQuoteColor); cursor: pointer; font-size: 11px; font-weight: bold; min-width: 24px; text-align: center;">G</button>
+                            <button class="inject-set-btn interactable" title="智能注入设置宏 (setvar)" style="padding: 4px 8px; background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; color: var(--SmartThemeEmColor); cursor: pointer; font-size: 11px; font-weight: bold; min-width: 24px; text-align: center;">S</button>
+                            <button class="inject-edit-btn interactable" title="打开编辑器手动修改" style="padding: 4px 8px; background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; color: var(--SmartThemeBodyColor); cursor: pointer; font-size: 11px;"><i class="fa-solid fa-pencil"></i></button>
                         </div>
                     </div>
                 `);
@@ -882,9 +1022,10 @@ export const Checker = {
                         const isActive = pm.getSelectedPresetName() === presetName;
                         await savePresetWithoutRegexToast(pm, presetName, preset, { skipUpdate: !isActive });
 
+                        this.addLog('手动宏注入', `在条目「${name}」中成功注入变量 "${v.name}" 的${isSet ? '设置' : '读取'}宏`);
                         toastr.success(`已在条目 "${name}" 中智能注入${isSet ? '设置' : '读取'}宏`);
 
-                        this.render(this.containerId, presetName);
+                        await this.refreshResultsInPlace(presetName);
                         window.dispatchEvent(new CustomEvent('zero-content-updated', { detail: { presetName, itemName: name } }));
                     } catch (e) {
                         console.error('[Zero] Auto inject failed:', e);
@@ -892,9 +1033,9 @@ export const Checker = {
                     }
                 };
 
-                item.find('.inject-read-btn').on('click', () => doInject(false));
-                item.find('.inject-set-btn').on('click', () => doInject(true));
-                item.find('.inject-edit-btn').on('click', () => this.openEditor(presetName, name));
+                item.find('.inject-read-btn').on('click', (e) => { e.stopPropagation(); doInject(false); });
+                item.find('.inject-set-btn').on('click', (e) => { e.stopPropagation(); doInject(true); });
+                item.find('.inject-edit-btn').on('click', (e) => { e.stopPropagation(); this.openEditor(presetName, name); });
                 $results.append(item);
             });
 
@@ -908,6 +1049,25 @@ export const Checker = {
         });
 
         return row;
+    },
+
+    getRecommendedInitPrompt(prompts) {
+        if (!Array.isArray(prompts) || prompts.length === 0) return null;
+
+        let recommended = prompts[0];
+        let maxInitCount = -1;
+
+        prompts.forEach((p) => {
+            const content = p.content || '';
+            const matches = content.match(/\{\{(?:setvar|setglobalvar)::[^:]+::\s*\}\}/g);
+            const count = matches ? matches.length : 0;
+            if (count > maxInitCount) {
+                maxInitCount = count;
+                recommended = p;
+            }
+        });
+
+        return recommended;
     },
 
     getSmartInsertContent(content, varName, isGlobal, isSet) {
@@ -984,11 +1144,105 @@ export const Checker = {
         }
     },
 
+    async batchAutoInjectVars(presetName) {
+        try {
+            const pm = SillyTavern.getContext().getPresetManager('openai');
+            if (!pm) {
+                toastr.error('无法获取预设管理器');
+                return;
+            }
+            const preset = pm.getCompletionPresetByName(presetName);
+            if (!preset || !Array.isArray(preset.prompts)) return;
+
+            const checkResults = this.performCheck(preset.prompts);
+            const uninitVars = checkResults.allVars.filter(v => !v.hasInit);
+            if (uninitVars.length === 0) {
+                toastr.info('未发现需要自动注入初始化的变量');
+                return;
+            }
+
+            const targetPrompt = this.getRecommendedInitPrompt(preset.prompts);
+            if (!targetPrompt) {
+                toastr.error('未找到有效的目标条目');
+                return;
+            }
+
+            HistoryManager.record();
+
+            let injectedCount = 0;
+            uninitVars.forEach(v => {
+                targetPrompt.content = this.getSmartInsertContent(targetPrompt.content || '', v.name, v.isGlobal, true);
+                injectedCount++;
+            });
+
+            const isActive = pm.getSelectedPresetName() === presetName;
+            await savePresetWithoutRegexToast(pm, presetName, preset, { skipUpdate: !isActive });
+
+            const targetEntryName = targetPrompt.name || targetPrompt.identifier;
+            this.addLog('批量自动注入', `已为 ${injectedCount} 个缺失变量在条目「${targetEntryName}」中智能生成初始化宏`);
+            toastr.success(`已为 ${injectedCount} 个变量在条目「${targetEntryName}」中智能自动注入初始化`);
+
+            await this.refreshResultsInPlace(presetName);
+            window.dispatchEvent(new CustomEvent('zero-content-updated', { detail: { presetName, itemName: targetPrompt.name || targetPrompt.identifier } }));
+        } catch (e) {
+            console.error('[Zero] Batch auto inject failed:', e);
+            toastr.error('自动注入失败: ' + e.message);
+        }
+    },
+
+    calculateSimilarity(str1, str2) {
+        if (!str1 || !str2) return 0;
+        if (str1 === str2) return 1.0;
+
+        const sim = getStringSimilarity(str1, str2);
+
+        const s1 = str1.toLowerCase();
+        const s2 = str2.toLowerCase();
+        const len1 = s1.length;
+        const len2 = s2.length;
+
+        const track = Array(len2 + 1).fill(null).map(() => Array(len1 + 1).fill(null));
+        for (let i = 0; i <= len1; i += 1) track[0][i] = i;
+        for (let j = 0; j <= len2; j += 1) track[j][0] = j;
+        for (let j = 1; j <= len2; j += 1) {
+            for (let i = 1; i <= len1; i += 1) {
+                const indicator = s1[i - 1] === s2[j - 1] ? 0 : 1;
+                track[j][i] = Math.min(
+                    track[j][i - 1] + 1,
+                    track[j - 1][i] + 1,
+                    track[j - 1][i - 1] + indicator
+                );
+            }
+        }
+        const levDist = track[len2][len1];
+        const maxLen = Math.max(len1, len2);
+        const levSim = maxLen > 0 ? (maxLen - levDist) / maxLen : 0;
+
+        return Math.max(sim, levSim);
+    },
+
     openEditor(presetName, itemName) {
         // We will call the editor from ext-ui.js
         const event = new CustomEvent('zero-open-editor', {
             detail: { presetName, itemName }
         });
         window.dispatchEvent(event);
+    },
+
+    highlightMatch(text, filter) {
+        const idx = text.toLowerCase().indexOf(filter.toLowerCase());
+        if (idx === -1) return escapeHtml(text.substring(0, 50));
+
+        const start = Math.max(0, idx - 20);
+        const end = Math.min(text.length, idx + filter.length + 30);
+        const snippet = text.substring(start, end);
+
+        const escaped = escapeHtml(snippet);
+        const regex = new RegExp(`(${this.escapeRegExp(filter)})`, 'gi');
+        return escaped.replace(regex, '<span style="color: var(--SmartThemeQuoteColor); font-weight: bold;">$1</span>');
+    },
+
+    escapeRegExp(string) {
+        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
 };
