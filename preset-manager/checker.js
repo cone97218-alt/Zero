@@ -31,35 +31,50 @@ export const Checker = {
             const content = p.content || '';
             const entryName = p.name || p.identifier || `Entry ${idx + 1}`;
 
-            // {{setvar::name:: }} or {{setglobalvar::name:: }}
-            const initRegex = /\{\{set(?:global)?var::([^:]+)::[ ]*\}\}/g;
-            // {{setvar::name::content}} or {{setglobalvar::name::content}}
-            const setRegex = /\{\{set(?:global)?var::([^:]+)::([^}]+)\}\}/g;
-            // {{getvar::name}} or {{getglobalvar::name}}
-            const getRegex = /\{\{get(?:global)?var::([^:]+)\}\}/g;
-
+            // 1. 扫描所有 getvar / getglobalvar 宏（包括嵌套在其他宏内部的读取）
+            const getRegex = /\{\{get(?:global)?var::([^{}:\s]+)/gi;
             let match;
-            while ((match = initRegex.exec(content)) !== null) {
+            while ((match = getRegex.exec(content)) !== null) {
                 const name = match[1].trim();
-                if (!varMap.has(name)) varMap.set(name, { init: [], set: [], get: [] });
-                varMap.get(name).init.push({ entry: p, name: entryName });
+                if (name) {
+                    if (!varMap.has(name)) varMap.set(name, { init: [], set: [], get: [] });
+                    varMap.get(name).get.push({ entry: p, name: entryName });
+                }
             }
 
-            // Reset regex or use matchAll
-            const setMatches = content.matchAll(/\{\{set(?:global)?var::([^:]+)::([^}]+)\}\}/g);
-            for (const m of setMatches) {
-                const name = m[1].trim();
-                const value = m[2].trim();
-                if (value === '') continue; // Already caught by init if it was " "
-                if (!varMap.has(name)) varMap.set(name, { init: [], set: [], get: [] });
-                varMap.get(name).set.push({ entry: p, name: entryName, value });
-            }
+            // 2. 扫描所有 setvar / setglobalvar 宏（包括包含嵌套值的设置/初始化）
+            const setRegex = /\{\{set(?:global)?var::([^{}:\s]+)::/gi;
+            while ((match = setRegex.exec(content)) !== null) {
+                const name = match[1].trim();
+                if (!name) continue;
 
-            const getMatches = content.matchAll(/\{\{get(?:global)?var::([^:]+)\}\}/g);
-            for (const m of getMatches) {
-                const name = m[1].trim();
+                const startIndex = match.index + match[0].length;
+                let depth = 1;
+                let endIndex = startIndex;
+                let value = '';
+
+                for (let i = startIndex; i < content.length - 1; i++) {
+                    if (content[i] === '{' && content[i + 1] === '{') {
+                        depth++;
+                        i++;
+                    } else if (content[i] === '}' && content[i + 1] === '}') {
+                        depth--;
+                        if (depth === 0) {
+                            endIndex = i;
+                            value = content.substring(startIndex, endIndex);
+                            break;
+                        }
+                        i++;
+                    }
+                }
+
                 if (!varMap.has(name)) varMap.set(name, { init: [], set: [], get: [] });
-                varMap.get(name).get.push({ entry: p, name: entryName });
+
+                if (depth === 0 && value.trim() === '') {
+                    varMap.get(name).init.push({ entry: p, name: entryName });
+                } else {
+                    varMap.get(name).set.push({ entry: p, name: entryName, value: value.trim() || '...' });
+                }
             }
         });
 
