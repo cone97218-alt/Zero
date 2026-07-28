@@ -316,21 +316,6 @@ export const Checker = {
                     <button id="check-toggle-log-btn" class="interactable" title="查看/折叠自动化操作日志" style="padding: 4px 10px; font-size: 11px; border-radius: 14px; cursor: pointer; background: rgba(255,255,255,0.06); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); display: inline-flex; align-items: center; justify-content: center; height: 26px;">
                         <i class="fa-solid fa-clock-rotate-left"></i>
                     </button>
-                    <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer; margin-left: auto; user-select: none;">
-                        <input type="checkbox" id="check-treat-uninit-as-problem" class="interactable" style="margin: 0; cursor: pointer;" ${localStorage.getItem('zero_check_treat_uninit_as_problem') === 'true' ? 'checked' : ''}>
-                        <span style="opacity: 0.85; color: var(--SmartThemeBodyColor);">无初始化视为问题</span>
-                    </label>
-                    <div id="toggle-var-settings" style="font-size: 11px; opacity: 0.6; cursor: pointer; padding: 4px 0; width: 100%; border-top: 1px dashed var(--SmartThemeBorderColor); margin-top: 6px; display: flex; justify-content: space-between; align-items: center; user-select: none;">
-                        <span><i class="fa-solid fa-gear"></i> 拼写纠错设置</span>
-                        <i class="chevron fa-solid fa-chevron-down"></i>
-                    </div>
-                    <div id="var-settings-panel" style="display: none; width: 100%; margin-top: 4px; padding: 8px 10px; background: rgba(0,0,0,0.15); border: 1px solid var(--SmartThemeBorderColor); border-radius: 8px;">
-                        <div style="display: flex; gap: 8px; align-items: center; font-size: 11px;">
-                            <span style="opacity: 0.8; color: var(--SmartThemeBodyColor);">纠错相似度阈值:</span>
-                            <input type="number" id="check-var-similarity-threshold" class="interactable" min="0.1" max="1.0" step="0.05" style="width: 55px; padding: 2px 4px; background: rgba(0,0,0,0.2); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 4px; font-size: 11px; outline: none; text-align: center;" value="${localStorage.getItem('zero_check_var_similarity_threshold') || '0.6'}">
-                            <span style="opacity: 0.5; color: var(--SmartThemeEmColor);">(0.1 ~ 1.0，值越高要求越相似)</span>
-                        </div>
-                    </div>
                 </div>
 
                 <!-- 自动化操作日志面板 -->
@@ -442,25 +427,6 @@ export const Checker = {
 
         $('#clear-var-log-btn').off('click').on('click', () => {
             this.clearLogs();
-        });
-
-        $('#check-treat-uninit-as-problem').off('change').on('change', () => {
-            localStorage.setItem('zero_check_treat_uninit_as_problem', $('#check-treat-uninit-as-problem').is(':checked') ? 'true' : 'false');
-            this.refreshResultsInPlace(presetName);
-        });
-
-        $('#toggle-var-settings').off('click').on('click', function () {
-            const $panel = $('#var-settings-panel');
-            $panel.slideToggle(200);
-            $(this).find('i.chevron').toggleClass('fa-chevron-down fa-chevron-up');
-        });
-
-        $('#check-var-similarity-threshold').off('change').on('change', () => {
-            let val = parseFloat($('#check-var-similarity-threshold').val());
-            if (isNaN(val)) val = 0.6;
-            val = Math.max(0.1, Math.min(1.0, val));
-            localStorage.setItem('zero_check_var_similarity_threshold', val.toString());
-            this.refreshResultsInPlace(presetName);
         });
 
         const lastVarFilter = localStorage.getItem('zero_check_var_filter') || 'problem';

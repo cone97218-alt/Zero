@@ -972,7 +972,59 @@ function ensurePanel() {
                         </div>
                     </div>
 
-                    <!-- 6. 使用教程 (折叠) -->
+                    <!-- 6. 自查设置 (折叠) -->
+                    <div class="zero-settings-section" style="
+                        display: flex;
+                        flex-direction: column;
+                        background: rgba(255, 255, 255, 0.03);
+                        border: 1px solid var(--SmartThemeBorderColor, #444);
+                        border-radius: 10px;
+                        overflow: hidden;
+                    ">
+                        <div class="zero-settings-header interactable" id="zero-settings-check-toggle" style="
+                            display: flex;
+                            align-items: center;
+                            justify-content: space-between;
+                            padding: 14px;
+                            cursor: pointer;
+                            user-select: none;
+                        ">
+                            <div style="font-weight: bold; font-size: 14px; display: flex; align-items: center; gap: 6px;">
+                                <i class="fa-solid fa-stethoscope" style="color: var(--SmartThemeQuoteColor);"></i> 自查设置
+                            </div>
+                            <i class="fa-solid fa-chevron-right zero-settings-chevron" style="transition: transform 0.15s; font-size: 12px; opacity: 0.7;"></i>
+                        </div>
+                        <div class="zero-settings-body" id="zero-settings-check-body" style="
+                            display: none;
+                            flex-direction: column;
+                            gap: 14px;
+                            padding: 0 14px 14px 14px;
+                        ">
+                            <!-- 无初始化视为问题 -->
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px;">
+                                <div style="flex: 1;">
+                                    <strong style="display: block; font-size: 13px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">无初始化视为问题</strong>
+                                    <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">将预设中未进行置空初始化的变量判定为问题变量。</span>
+                                </div>
+                                <label class="zero-switch">
+                                    <input type="checkbox" id="zero-setting-check-treat-uninit-as-problem" class="interactable">
+                                    <span class="zero-slider"></span>
+                                </label>
+                            </div>
+                            <!-- 拼写纠错相似度阈值 -->
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 12px; margin-top: 4px;">
+                                <div style="flex: 1;">
+                                    <strong style="display: block; font-size: 13px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">拼写纠错相似度阈值</strong>
+                                    <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">设定变量自查推荐关联的拼写相似度阈值 (0.1 ~ 1.0)。</span>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 4px;">
+                                    <input type="number" id="zero-setting-check-var-similarity-threshold" class="interactable" min="0.1" max="1.0" step="0.05" value="0.5" style="width: 60px; padding: 4px 6px; background: var(--SmartThemeChatTintColor); color: inherit; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; text-align: center; font-size: 12px;">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 7. 使用教程 (折叠) -->
                     <div class="zero-settings-section" style="
                         display: flex;
                         flex-direction: column;
@@ -1337,6 +1389,19 @@ function ensurePanel() {
         });
     });
 
+    $('body').off('click', '#zero-settings-check-toggle').on('click', '#zero-settings-check-toggle', function() {
+        const $body = $('#zero-settings-check-body');
+        const $chevron = $(this).find('.zero-settings-chevron');
+        $body.slideToggle(150, function() {
+            if ($body.is(':visible')) {
+                $body.css('display', 'flex');
+                $chevron.addClass('expanded');
+            } else {
+                $chevron.removeClass('expanded');
+            }
+        });
+    });
+
     $('body').off('click', '#zero-settings-tutorial-toggle').on('click', '#zero-settings-tutorial-toggle', function() {
         const $body = $('#zero-settings-tutorial-body');
         const $chevron = $(this).find('.zero-settings-chevron');
@@ -1600,6 +1665,33 @@ function ensurePanel() {
     $('body').off('change', '#zero-setting-contrast-nav-bottom').on('change', '#zero-setting-contrast-nav-bottom', function() {
         const checked = $(this).is(':checked');
         localStorage.setItem('zero_contrast_nav_bottom', checked.toString());
+    });
+
+    // Check Settings Event Listeners
+    $('body').off('change', '#zero-setting-check-treat-uninit-as-problem').on('change', '#zero-setting-check-treat-uninit-as-problem', function() {
+        const checked = $(this).is(':checked');
+        localStorage.setItem('zero_check_treat_uninit_as_problem', checked.toString());
+        const selectedPreset = $('#check-preset-select').val();
+        if (selectedPreset && _checker && _checker.Checker) {
+            _checker.Checker.refreshResultsInPlace(selectedPreset);
+        }
+    });
+
+    $('body').off('input change', '#zero-setting-check-var-similarity-threshold').on('input change', '#zero-setting-check-var-similarity-threshold', function(e) {
+        const rawVal = $(this).val();
+        if (e.type === 'change' || (rawVal !== '' && !isNaN(parseFloat(rawVal)))) {
+            let val = parseFloat(rawVal);
+            if (isNaN(val)) val = 0.5;
+            val = Math.max(0.1, Math.min(1.0, val));
+            if (e.type === 'change') {
+                $(this).val(val);
+            }
+            localStorage.setItem('zero_check_var_similarity_threshold', val.toString());
+            const selectedPreset = $('#check-preset-select').val();
+            if (selectedPreset && _checker && _checker.Checker) {
+                _checker.Checker.refreshResultsInPlace(selectedPreset);
+            }
+        }
     });
     $('body').off('input', '#contrast-search-input').on('input', '#contrast-search-input', function() {
         const query = $(this).val().trim();
@@ -2208,6 +2300,13 @@ export function renderSettingsTab() {
     $('#zero-setting-contrast-nav-top').prop('checked', contrastNavTop);
     $('#zero-setting-contrast-nav-middle').prop('checked', contrastNavMiddle);
     $('#zero-setting-contrast-nav-bottom').prop('checked', contrastNavBottom);
+
+    // Checker settings
+    const checkTreatUninitAsProblem = localStorage.getItem('zero_check_treat_uninit_as_problem') === 'true';
+    const checkVarSimilarityThreshold = localStorage.getItem('zero_check_var_similarity_threshold') || '0.5';
+
+    $('#zero-setting-check-treat-uninit-as-problem').prop('checked', checkTreatUninitAsProblem);
+    $('#zero-setting-check-var-similarity-threshold').val(checkVarSimilarityThreshold);
 }
 
 export async function refreshActiveTab() {
