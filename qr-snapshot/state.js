@@ -156,17 +156,38 @@ export const PresetManager = {
     async switchPreset(name, options = {}) {
         const selectEl = document.getElementById('settings_preset_openai');
         if (!selectEl) return false;
-        const opt = Array.from(selectEl.options).find(o => o.textContent.trim() === name);
+        const opt = Array.from(selectEl.options).find(o => o.textContent.trim() === name || o.value === name);
         if (!opt) return false;
-        
-        selectEl.value = opt.value;
-        selectEl.dispatchEvent(new Event('change', { bubbles: true }));
-        if (typeof $ !== 'undefined') {
-            $(selectEl).trigger('change');
-        }
         
         _preset = null;
         _presetNames = null;
+
+        if (selectEl.value !== opt.value) {
+            const ctx = SillyTavern.getContext();
+            const eventSource = ctx?.eventSource;
+            const event_types = ctx?.event_types;
+
+            const switchPromise = new Promise((resolve) => {
+                let timer = null;
+                const handler = () => {
+                    if (timer) clearTimeout(timer);
+                    resolve();
+                };
+
+                if (eventSource && event_types?.OAI_PRESET_CHANGED_AFTER) {
+                    eventSource.once(event_types.OAI_PRESET_CHANGED_AFTER, handler);
+                }
+                timer = setTimeout(handler, 100);
+            });
+
+            selectEl.value = opt.value;
+            selectEl.dispatchEvent(new Event('change', { bubbles: true }));
+            if (typeof $ !== 'undefined') {
+                $(selectEl).trigger('change');
+            }
+
+            await switchPromise;
+        }
 
         if (!options.skipLinkage && typeof window.triggerZeroApiLinkage === 'function') {
             window.triggerZeroApiLinkage(name);

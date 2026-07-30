@@ -316,9 +316,22 @@ export async function openUI() {
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
 
-    modal.innerHTML = '<div class="zero-skeleton"><div class="zero-sk-header"></div><div class="zero-sk-tabs"></div><div class="zero-sk-row"></div><div class="zero-sk-row short"></div><div class="zero-sk-row"></div><div class="zero-sk-row short"></div></div>';
+    try {
+        PresetManager.invalidate();
+        const [preset, listInfo] = await Promise.all([PresetManager.load(), PresetManager.listNames()]);
+        if (!preset) { toastr.error('无法加载预设'); closeUI(); return; }
+        buildModal(modal, preset, listInfo);
 
-    // Trigger slide-in transition in next frame
+        // Background detect preset renames without blocking UI rendering
+        detectPresetRenames().catch(e => console.warn('[Zero] detectPresetRenames background check:', e));
+    } catch (e) {
+        console.error('[Zero]', e);
+        toastr.error('加载预设失败');
+        closeUI();
+        return;
+    }
+
+    // Trigger slide-in transition in next frame with real content already rendered
     if (animStyle !== 'none') {
         requestAnimationFrame(() => {
             if (overlay) {
@@ -330,20 +343,8 @@ export async function openUI() {
             }
         });
     } else {
-        overlay.style.opacity = '1';
-    }
-
-    try {
-        PresetManager.invalidate();
-        await detectPresetRenames();
-        const [preset, listInfo] = await Promise.all([PresetManager.load(), PresetManager.listNames()]);
-        if (!preset) { toastr.error('无法加载预设'); closeUI(); return; }
-        modal.innerHTML = '';
-        buildModal(modal, preset, listInfo);
-    } catch (e) {
-        console.error('[Zero]', e);
-        toastr.error('加载预设失败');
-        closeUI();
+        if (overlay) overlay.style.opacity = '1';
+        if (modal) modal.style.opacity = '1';
     }
 }
 
@@ -3236,54 +3237,61 @@ async function openNativeEditor(identifier) {
         const popup = document.getElementById(popupId) || document.getElementById('openai_prompt_manager_popup');
 
         if (popup) {
-            const observer = new MutationObserver(async () => {
+            const observer = new MutationObserver(() => {
                 // React instantly when the closing animation starts (openDrawer class removed)
                 if (!popup.classList.contains('openDrawer')) {
                     observer.disconnect();
-                    // Wait 250ms for native slideUp closing animation to fully finish before restoring and re-rendering list
-                    setTimeout(async () => {
-                        if (overlay) {
-                            overlay.style.display = 'flex';
-                            overlay.style.opacity = '1';
-                            overlay.style.pointerEvents = 'auto';
-                            try {
-                                const pm = SillyTavern.getContext().getPresetManager('openai');
-                                if (pm) {
-                                    const presetName = pm.getSelectedPresetName();
-                                    const presetObj = pm.getCompletionPresetByName(presetName);
-                                    if (presetObj && Array.isArray(presetObj.prompts)) {
-                                        const updatedPrompt = (typeof promptManager.getPromptById === 'function' && promptManager.getPromptById(identifier)) ||
-                                            (Array.isArray(promptManager.prompts) && promptManager.prompts.find(x => x.identifier === identifier));
-                                        if (updatedPrompt) {
-                                            const targetP = presetObj.prompts.find(x => x.identifier === identifier) ||
-                                                presetObj.prompts.find(x => x.name === updatedPrompt.name);
-                                            if (targetP) {
-                                                targetP.content = updatedPrompt.content;
-                                                targetP.name = updatedPrompt.name;
-                                                targetP.role = updatedPrompt.role;
-                                            }
-                                            const { savePresetWithoutRegexToast } = await import('../preset-manager/utils.js');
-                                            await savePresetWithoutRegexToast(pm, presetName, presetObj, { skipUpdate: false });
-                                        }
-                                    }
-                                }
 
-                                PresetManager.invalidate();
-                                const p = await PresetManager.load();
-                                if (p) {
-                                    const panel = overlay.querySelector('.zero-panel.active');
-                                    if (panel) {
-                                        const activeTab = UiStateManager.get().activeTab || 'entries';
-                                        if (activeTab === 'editor') {
-                                            renderEditor(panel, p, overlay.querySelector('.zero-modal'));
-                                        } else if (activeTab === 'entries') {
-                                            renderEntries(panel, p, overlay.querySelector('.zero-modal'));
+                    // 1. Instantly restore Zero overlay (0ms latency!)
+                    if (overlay) {
+                        overlay.style.display = 'flex';
+                        overlay.style.opacity = '1';
+                        overlay.style.pointerEvents = 'auto';
+                    }
+
+                    // 2. Background sync & save asynchronously without blocking UI return
+                    (async () => {
+                        try {
+                            const pm = SillyTavern.getContext().getPresetManager('openai');
+                            if (!pm) return;
+                            const presetName = pm.getSelectedPresetName();
+                            const presetObj = pm.getCompletionPresetByName(presetName);
+                            const updatedPrompt = (typeof promptManager.getPromptById === 'function' && promptManager.getPromptById(identifier)) ||
+                                (Array.isArray(promptManager.prompts) && promptManager.prompts.find(x => x.identifier === identifier));
+
+                            if (presetObj && Array.isArray(presetObj.prompts) && updatedPrompt) {
+                                const targetP = presetObj.prompts.find(x => x.identifier === identifier) ||
+                                    presetObj.prompts.find(x => x.name === updatedPrompt.name);
+                                if (targetP) {
+                                    const changed = targetP.content !== updatedPrompt.content || targetP.name !== updatedPrompt.name || targetP.role !== updatedPrompt.role;
+                                    targetP.content = updatedPrompt.content;
+                                    targetP.name = updatedPrompt.name;
+                                    targetP.role = updatedPrompt.role;
+
+                                    if (changed) {
+                                        const { savePresetWithoutRegexToast } = await import('../preset-manager/utils.js');
+                                        await savePresetWithoutRegexToast(pm, presetName, presetObj, { skipUpdate: false });
+                                        
+                                        PresetManager.invalidate();
+                                        const p = await PresetManager.load();
+                                        if (p && overlay) {
+                                            const panel = overlay.querySelector('.zero-panel.active');
+                                            if (panel) {
+                                                const activeTab = UiStateManager.get().activeTab || 'entries';
+                                                if (activeTab === 'editor') {
+                                                    renderEditor(panel, p, overlay.querySelector('.zero-modal'));
+                                                } else if (activeTab === 'entries') {
+                                                    renderEntries(panel, p, overlay.querySelector('.zero-modal'));
+                                                }
+                                            }
                                         }
                                     }
                                 }
-                            } catch (err) { console.error('[Zero] reload after native edit:', err); }
+                            }
+                        } catch (err) {
+                            console.error('[Zero] reload after native edit:', err);
                         }
-                    }, 250);
+                    })();
                 }
             });
             observer.observe(popup, { attributes: true, attributeFilter: ['class'] });

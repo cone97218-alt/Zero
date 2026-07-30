@@ -2271,11 +2271,11 @@ export async function showPanel() {
     $panel[0].offsetHeight;
     $panel.css('opacity', '1');
 
-    // Defer heavy tab rendering to a macro-task after the panel opacity transition completes smoothly
-    setTimeout(() => {
+    // Instantly load the initial tab on panel open
+    requestAnimationFrame(() => {
         const lastTab = localStorage.getItem('zero_last_main_tab') || 'contrast';
         $(`#${PANEL_ID} .zero-tab-link[data-tab="${lastTab}"]`).click();
-    }, 200);
+    });
 }
 
 export function closePanel() {
