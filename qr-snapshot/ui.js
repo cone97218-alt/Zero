@@ -3249,49 +3249,54 @@ async function openNativeEditor(identifier) {
                         overlay.style.pointerEvents = 'auto';
                     }
 
-                    // 2. Background sync & save asynchronously without blocking UI return
-                    (async () => {
-                        try {
-                            const pm = SillyTavern.getContext().getPresetManager('openai');
-                            if (!pm) return;
+                    // 2. Synchronously sync memory & save to preset data
+                    try {
+                        const ctx = SillyTavern.getContext();
+                        const pm = ctx.getPresetManager?.('openai');
+                        const updatedPrompt = (typeof promptManager.getPromptById === 'function' && promptManager.getPromptById(identifier)) ||
+                            (Array.isArray(promptManager.prompts) && promptManager.prompts.find(x => x.identifier === identifier));
+
+                        if (pm && updatedPrompt) {
                             const presetName = pm.getSelectedPresetName();
                             const presetObj = pm.getCompletionPresetByName(presetName);
-                            const updatedPrompt = (typeof promptManager.getPromptById === 'function' && promptManager.getPromptById(identifier)) ||
-                                (Array.isArray(promptManager.prompts) && promptManager.prompts.find(x => x.identifier === identifier));
-
-                            if (presetObj && Array.isArray(presetObj.prompts) && updatedPrompt) {
+                            if (presetObj && Array.isArray(presetObj.prompts)) {
                                 const targetP = presetObj.prompts.find(x => x.identifier === identifier) ||
-                                    presetObj.prompts.find(x => x.name === updatedPrompt.name);
+                                    presetObj.prompts.find(x => x.name === updatedPrompt.name || x.identifier === updatedPrompt.name);
                                 if (targetP) {
-                                    const changed = targetP.content !== updatedPrompt.content || targetP.name !== updatedPrompt.name || targetP.role !== updatedPrompt.role;
                                     targetP.content = updatedPrompt.content;
                                     targetP.name = updatedPrompt.name;
                                     targetP.role = updatedPrompt.role;
-
-                                    if (changed) {
-                                        const { savePresetWithoutRegexToast } = await import('../preset-manager/utils.js');
-                                        await savePresetWithoutRegexToast(pm, presetName, presetObj, { skipUpdate: false });
-                                        
-                                        PresetManager.invalidate();
-                                        const p = await PresetManager.load();
-                                        if (p && overlay) {
-                                            const panel = overlay.querySelector('.zero-panel.active');
-                                            if (panel) {
-                                                const activeTab = UiStateManager.get().activeTab || 'entries';
-                                                if (activeTab === 'editor') {
-                                                    renderEditor(panel, p, overlay.querySelector('.zero-modal'));
-                                                } else if (activeTab === 'entries') {
-                                                    renderEntries(panel, p, overlay.querySelector('.zero-modal'));
-                                                }
-                                            }
-                                        }
-                                    }
                                 }
                             }
-                        } catch (err) {
-                            console.error('[Zero] reload after native edit:', err);
                         }
-                    })();
+
+                        // Persist to disk asynchronously in background without causing UI reflow
+                        if (typeof ctx.saveSettingsDebounced === 'function') {
+                            ctx.saveSettingsDebounced();
+                        }
+
+                        // Invalidate cache and reload memory models instantly
+                        PresetManager.invalidate();
+                        PresetManager.load().then(freshPreset => {
+                            if (freshPreset) {
+                                _currentPreset = freshPreset;
+                                _promptMap = new Map(freshPreset.prompts.map(p => [p.identifier, p]));
+
+                                // Update entry name in DOM in-place if changed
+                                const updatedP = _promptMap.get(identifier);
+                                if (updatedP && overlay) {
+                                    const entryEl = overlay.querySelector(`.zero-entry[data-id="${esc(identifier)}"]`);
+                                    if (entryEl) {
+                                        const nameEl = entryEl.querySelector('.zero-entry-name');
+                                        if (nameEl) nameEl.textContent = updatedP.name || updatedP.identifier;
+                                    }
+                                }
+                                if (_currentPanels) markPanelsDirty(_currentPanels, UiStateManager.get().activeTab || 'entries');
+                            }
+                        }).catch(e => console.error('[Zero] load after native edit:', e));
+                    } catch (err) {
+                        console.error('[Zero] memory sync after native edit:', err);
+                    }
                 }
             });
             observer.observe(popup, { attributes: true, attributeFilter: ['class'] });
