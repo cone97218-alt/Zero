@@ -25,7 +25,7 @@ function saveSettings() {
 
 // ─── Cached openai module ───
 let _openaiModule = null;
-async function getOpenai() {
+export async function getOpenai() {
     if (!_openaiModule) _openaiModule = await import('/scripts/openai.js');
     return _openaiModule;
 }
@@ -79,9 +79,20 @@ export const PresetManager = {
         const presetObj = pm?.getCompletionPresetByName?.(presetName);
         const promptOrder = promptManager?.getPromptOrderForCharacter?.(promptManager.activeCharacter) || [];
         
+        const presetMapById = new Map();
+        const presetMapByName = new Map();
+        if (presetObj && Array.isArray(presetObj.prompts)) {
+            for (const x of presetObj.prompts) {
+                if (x.identifier) presetMapById.set(x.identifier, x);
+                if (x.name) presetMapByName.set(x.name, x);
+            }
+        }
+
         const prompts = promptOrder.map(orderItem => {
             const p = promptManager ? promptManager.getPromptById(orderItem.identifier) : null;
-            const presetP = presetObj?.prompts?.find(x => x.identifier === orderItem.identifier || x.name === orderItem.identifier || (p && (x.name === p.name || x.identifier === p.name || x.name === p.identifier)));
+            const presetP = presetMapById.get(orderItem.identifier) ||
+                (p ? (presetMapByName.get(p.name) || presetMapById.get(p.name)) : null) ||
+                presetMapByName.get(orderItem.identifier);
             
             if (!p && !presetP) return null;
             const base = presetP || p;

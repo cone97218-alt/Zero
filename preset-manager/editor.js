@@ -162,6 +162,13 @@ export async function openQuickEditor(presetName, itemName) {
         </div>
     `;
     
+    const snapshotOverlay = document.getElementById('zero-overlay');
+    let snapshotWasVisible = false;
+    if (snapshotOverlay && snapshotOverlay.style.display !== 'none') {
+        snapshotWasVisible = true;
+        snapshotOverlay.style.display = 'none';
+    }
+
     const originalBodyOverflow = $('body').css('overflow');
     const originalHtmlOverflow = $('html').css('overflow');
     
@@ -171,6 +178,9 @@ export async function openQuickEditor(presetName, itemName) {
     const closeEditor = () => {
         $('body').css('overflow', originalBodyOverflow || '');
         $('html').css('overflow', originalHtmlOverflow || '');
+        if (snapshotOverlay && snapshotWasVisible) {
+            snapshotOverlay.style.display = 'flex';
+        }
         $('#zero-quick-editor').remove();
     };
 
@@ -183,23 +193,18 @@ export async function openQuickEditor(presetName, itemName) {
         lastSelectionEnd = this.selectionEnd;
     });
     
-    // --- Auto-resizing Group select width helper ---
+    // --- Fast Canvas-based Group select width helper (No DOM reflow) ---
     const adjustSelectWidth = ($select) => {
         const text = $select.find('option:selected').text();
-        const $span = $('<span>').text(text).css({
-            font: $select.css('font'),
-            'font-size': $select.css('font-size'),
-            'font-family': $select.css('font-family'),
-            'font-weight': $select.css('font-weight'),
-            visibility: 'hidden',
-            position: 'absolute',
-            'white-space': 'nowrap'
-        });
-        $('body').append($span);
-        const width = $span.width();
-        $span.remove();
-        // Set width with padding for the dropdown chevron
-        $select.css('width', (width + 24) + 'px');
+        if (!text) return;
+        const canvas = adjustSelectWidth._canvas || (adjustSelectWidth._canvas = document.createElement('canvas'));
+        const ctx = canvas.getContext('2d');
+        let width = text.length * 8;
+        if (ctx) {
+            ctx.font = '11px sans-serif';
+            width = ctx.measureText(text).width;
+        }
+        $select.css('width', Math.ceil(width + 28) + 'px');
     };
 
     // Initialize Group select width on open
@@ -388,12 +393,8 @@ export async function openQuickEditor(presetName, itemName) {
 
     renderPhrases();
 
-    // --- Preset Variable Assistant ---
-    $('#toggle-editor-vars').on('click', function() {
-        $('#editor-vars-container').slideToggle(200);
-        $(this).find('i.fa-chevron-right, i.fa-chevron-down').toggleClass('fa-chevron-right fa-chevron-down');
-    });
-
+    // --- Preset Variable Assistant (Lazy Rendered on Expand) ---
+    let varsRendered = false;
     const renderEditorVariables = () => {
         const $list = $('#editor-vars-list');
         $list.empty();
@@ -434,8 +435,17 @@ export async function openQuickEditor(presetName, itemName) {
             $list.html('<div style="font-size: 11px; opacity: 0.5; color: #ff5555; padding: 4px;">加载预设变量失败</div>');
         }
     };
-    
-    renderEditorVariables();
+
+    $('#toggle-editor-vars').on('click', function() {
+        const $container = $('#editor-vars-container');
+        const isOpening = !$container.is(':visible');
+        $container.slideToggle(200);
+        $(this).find('i.fa-chevron-right, i.fa-chevron-down').toggleClass('fa-chevron-right fa-chevron-down');
+        if (isOpening && !varsRendered) {
+            varsRendered = true;
+            renderEditorVariables();
+        }
+    });
 
     // --- Favorite Handler ---
     $('#fav-quick-edit').on('click', async () => {

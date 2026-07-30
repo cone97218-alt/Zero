@@ -2,7 +2,7 @@
  * Zero Preset Manager - UI
  * Performance-optimized v2: innerHTML templates, event delegation, lazy rendering.
  */
-import { PresetManager, SnapshotManager, GroupManager, HiddenManager, UiStateManager, LinkageManager, zeroTranslate, HistoryManager, ModelProfileManager, SamplingParamsHelper, SnapshotGroupManager, getPresetPromptsWithEnabled, getStringSimilarity, detectPresetRenames } from './state.js';
+import { PresetManager, SnapshotManager, GroupManager, HiddenManager, UiStateManager, LinkageManager, zeroTranslate, HistoryManager, ModelProfileManager, SamplingParamsHelper, SnapshotGroupManager, getPresetPromptsWithEnabled, getStringSimilarity, detectPresetRenames, getOpenai } from './state.js';
 import { matchPrompt } from './search-util.js';
 
 let overlay = null;
@@ -14,17 +14,28 @@ let searchDebounceTimer = null;
 let searchScopeName = true;
 let searchScopeContent = true;
 let presetManagerModule = null;
+let editorModule = null;
 
 // ─── Multi-select state ───
 let msActive = false;
 let msSelected = new Set();
 let msBar = null;
 
-// ─── Current render context (for event delegation) ───
 let _promptMap = null;
 let _groupMemberMap = null;
 let _currentPreset = null;
 let _currentModal = null;
+let _currentPanels = null;
+
+function markPanelsDirty(panels, exceptId = null) {
+    const targetPanels = panels || _currentPanels;
+    if (!targetPanels) return;
+    Object.keys(targetPanels).forEach(id => {
+        if (id !== exceptId && targetPanels[id]) {
+            targetPanels[id]._dirty = true;
+        }
+    });
+}
 
 // ─── Helpers ───
 const h = (tag, attrs = {}, ...ch) => {
@@ -182,10 +193,14 @@ export async function openUI() {
         searchDebounceTimer = null;
     }
 
-    // Background preload ext-ui.js to avoid transition lag when entering Preset Manager
+    // Background preload modules to avoid transition lag when entering Preset Manager or editing prompts
     import('../preset-manager/main.js').then(m => {
         presetManagerModule = m;
     }).catch(() => {});
+    import('../preset-manager/editor.js').then(m => {
+        editorModule = m;
+    }).catch(() => {});
+    import('../preset-manager/utils.js').catch(() => {});
 
     const state = UiStateManager.get();
     const modalStyle = state.snapshotModalStyle || 'center';
@@ -413,19 +428,24 @@ function buildModal(modal, preset, listInfo) {
         if (n === preset.name) opt.selected = true;
         select.appendChild(opt);
     });
-    select.addEventListener('change', () => {
+    select.addEventListener('change', async () => {
         const name = select.value;
         select.disabled = true;
         const contentEl = modal.querySelector('.zero-content');
-        if (contentEl) contentEl.innerHTML = '<div class="zero-loading" style="padding:20px;text-align:center;color:var(--SmartThemeBodyColor)"><i class="fa-solid fa-spinner fa-spin"></i><div>加载中...</div></div>';
-        requestAnimationFrame(() => {
-            setTimeout(async () => {
-                await PresetManager.switchPreset(name);
-                await new Promise(r => requestAnimationFrame(r));
-                const newPreset = await PresetManager.load();
-                if (newPreset) { modal.innerHTML = ''; buildModal(modal, newPreset, listInfo); }
-            }, 10);
-        });
+        if (contentEl) {
+            contentEl.innerHTML = '<div class="zero-loading" style="padding:20px;text-align:center;color:var(--SmartThemeBodyColor)"><i class="fa-solid fa-spinner fa-spin"></i><div>加载中...</div></div>';
+        }
+        try {
+            await PresetManager.switchPreset(name);
+            const newPreset = await PresetManager.load();
+            if (newPreset) {
+                modal.innerHTML = '';
+                buildModal(modal, newPreset, listInfo);
+            }
+        } catch (err) {
+            console.error('[Zero] preset switch failed:', err);
+            select.disabled = false;
+        }
     });
 
     // Search wrap setup
@@ -533,14 +553,15 @@ function buildModal(modal, preset, listInfo) {
         const activeTabId = UiStateManager.get().activeTab || 'entries';
         const activePanel = panels[activeTabId];
         const freshPreset = PresetManager.cached() || preset;
-        renderTab(activeTabId, activePanel, freshPreset, modal);
+        markPanelsDirty(panels, activeTabId);
+        renderTab(activeTabId, activePanel, freshPreset, modal, true);
     }
 
     searchInput.addEventListener('input', () => {
         clearTimeout(searchDebounceTimer);
         searchDebounceTimer = setTimeout(() => {
             triggerSearch(searchInput.value);
-        }, 1000); // 1s debounce
+        }, 300);
     });
 
     searchInput.addEventListener('keydown', (e) => {
@@ -612,6 +633,7 @@ function buildModal(modal, preset, listInfo) {
     const tabBar = h('div', { class: 'zero-tabs' });
     const content = h('div', { class: 'zero-content' });
     const panels = {};
+    _currentPanels = panels;
     const initialTab = UiStateManager.get().activeTab || 'entries';
 
     // ─── Scroll position tracking ───
@@ -628,7 +650,6 @@ function buildModal(modal, preset, listInfo) {
 
     function restoreScrollPos(contentEl, tabId) {
         const pos = UiStateManager.getScrollPos(tabId);
-        // Important: scroll restoration needs to wait for render
         requestAnimationFrame(() => {
             contentEl.scrollTop = pos;
         });
@@ -656,19 +677,18 @@ function buildModal(modal, preset, listInfo) {
                 UiStateManager.save({ activeTab: t.id });
                 tabBar.querySelectorAll('.zero-tab').forEach(x => x.classList.toggle('active', x.dataset.tab === t.id));
 
-                // Switch panels instantly
+                // Switch panels instantly via CSS class
                 Object.values(panels).forEach(p => p.classList.remove('active'));
-                panels[t.id].classList.add('active');
+                const targetPanel = panels[t.id];
+                targetPanel.classList.add('active');
 
-                // Defer heavy tab rendering to a macro-task so tab switch triggers instantly
-                setTimeout(() => {
-                    const freshPreset = PresetManager.cached() || preset;
-                    renderTab(t.id, panels[t.id], freshPreset, modal);
+                // Instant switch: only render if target tab is not yet rendered or marked dirty
+                const freshPreset = PresetManager.cached() || preset;
+                renderTab(t.id, targetPanel, freshPreset, modal);
 
-                    // Update scroll tracking and restore position
-                    setupScrollTracking(content, t.id);
-                    restoreScrollPos(content, t.id);
-                }, 0);
+                // Update scroll tracking and restore position
+                setupScrollTracking(content, t.id);
+                restoreScrollPos(content, t.id);
             }
         });
         tabBar.appendChild(tab);
@@ -682,18 +702,25 @@ function buildModal(modal, preset, listInfo) {
     restoreScrollPos(content, initialTab);
 }
 
-function renderTab(id, panel, preset, modal) {
-    panel.innerHTML = '';
-    const searchWrap = modal.querySelector('.zero-search-wrap');
+function renderTab(id, panel, preset, modal, force = false) {
+    const searchWrap = modal?.querySelector('.zero-search-wrap');
     if (searchWrap) {
         searchWrap.classList.toggle('hide-options', id === 'snapshots');
     }
+    // Instant switch: skip DOM destruction & re-rendering if already rendered and clean
+    if (!force && panel._rendered && !panel._dirty) {
+        return;
+    }
+    panel.innerHTML = '';
     if (id === 'entries') renderEntries(panel, preset, modal);
     else if (id === 'snapshots') {
         const viewMode = UiStateManager.get().snapshotViewMode || 'local';
         renderSnapshots(panel, preset, modal, viewMode);
     }
     else if (id === 'editor') renderEditor(panel, preset, modal);
+
+    panel._rendered = true;
+    panel._dirty = false;
 }
 
 // ═══════════════════════════════════════
@@ -912,9 +939,14 @@ function setupEntriesDelegation(panel) {
                 const ic = entry.querySelector('.zero-sel-check');
                 if (ic) ic.innerHTML = '<i class="fa-solid fa-circle-check"></i>';
             } else if (action.dataset.action === 'edit') {
-                import('../preset-manager/editor.js').then(m => {
-                    m.openQuickEditor(_currentPreset.name, prompt.identifier || prompt.name);
-                });
+                if (editorModule) {
+                    editorModule.openQuickEditor(_currentPreset.name, prompt.identifier || prompt.name);
+                } else {
+                    import('../preset-manager/editor.js').then(m => {
+                        editorModule = m;
+                        m.openQuickEditor(_currentPreset.name, prompt.identifier || prompt.name);
+                    });
+                }
             }
             return;
         }
@@ -1045,9 +1077,14 @@ function showEntryContextMenu(panel, entry, prompt) {
         } else if (act === 'preview') {
             showContentPreview(_currentModal, prompt);
         } else if (act === 'edit') {
-            import('../preset-manager/editor.js').then(m => {
-                m.openQuickEditor(_currentPreset.name, prompt.identifier || prompt.name);
-            });
+            if (editorModule) {
+                editorModule.openQuickEditor(_currentPreset.name, prompt.identifier || prompt.name);
+            } else {
+                import('../preset-manager/editor.js').then(m => {
+                    editorModule = m;
+                    m.openQuickEditor(_currentPreset.name, prompt.identifier || prompt.name);
+                });
+            }
         }
     });
 }
@@ -3170,11 +3207,13 @@ function renderEditor(panel, preset, modal) {
 
 async function openNativeEditor(identifier) {
     try {
-        const openai = await import('/scripts/openai.js');
-        const promptManager = openai.promptManager;
+        const openai = await getOpenai();
+        const promptManager = openai?.promptManager;
         if (!promptManager) { toastr.error('找不到预设编辑器'); return; }
+
         const ctx = SillyTavern.getContext();
-        const prompt = (typeof promptManager.getPromptById === 'function' && promptManager.getPromptById(identifier)) ||
+        const prompt = (_promptMap && _promptMap.get(identifier)) ||
+            (typeof promptManager.getPromptById === 'function' && promptManager.getPromptById(identifier)) ||
             (ctx.chatCompletionSettings?.prompts?.find(p => p.identifier === identifier)) ||
             (Array.isArray(promptManager.prompts) && promptManager.prompts.find(p => p.identifier === identifier));
         if (!prompt) { toastr.error('找不到该条目'); return; }
@@ -3183,14 +3222,19 @@ async function openNativeEditor(identifier) {
         promptManager.clearInspectForm();
         promptManager.loadPromptIntoEditForm(prompt);
         
+        // Hide Zero overlay from layout completely (display: none) to eliminate
+        // layout recalculations and animation stutter while ST native drawer opens
         if (overlay) {
+            overlay.style.display = 'none';
             overlay.style.opacity = '0';
             overlay.style.pointerEvents = 'none';
         }
         promptManager.showPopup();
 
-        const popupId = promptManager.configuration.prefix + 'prompt_manager_popup';
-        const popup = document.getElementById(popupId);
+        const prefix = promptManager.configuration?.prefix || '';
+        const popupId = prefix + 'prompt_manager_popup';
+        const popup = document.getElementById(popupId) || document.getElementById('openai_prompt_manager_popup');
+
         if (popup) {
             const observer = new MutationObserver(async () => {
                 // React instantly when the closing animation starts (openDrawer class removed)
@@ -3199,6 +3243,7 @@ async function openNativeEditor(identifier) {
                     // Wait 250ms for native slideUp closing animation to fully finish before restoring and re-rendering list
                     setTimeout(async () => {
                         if (overlay) {
+                            overlay.style.display = 'flex';
                             overlay.style.opacity = '1';
                             overlay.style.pointerEvents = 'auto';
                             try {
@@ -3245,6 +3290,7 @@ async function openNativeEditor(identifier) {
         } else {
             console.warn('[Zero] Could not find native popup:', popupId);
             if (overlay) {
+                overlay.style.display = 'flex';
                 overlay.style.opacity = '1';
                 overlay.style.pointerEvents = 'auto';
             }
@@ -3253,6 +3299,7 @@ async function openNativeEditor(identifier) {
         console.error('[Zero] openNativeEditor failed:', e);
         toastr.error('无法打开编辑器');
         if (overlay) {
+            overlay.style.display = 'flex';
             overlay.style.opacity = '1';
             overlay.style.pointerEvents = 'auto';
         }
