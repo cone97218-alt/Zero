@@ -245,7 +245,6 @@ export async function openUI() {
     Object.assign(modal.style, {
         animation: 'none' // Disable original stylesheet slideUp animation
     });
-
     if (animStyle === 'scale') {
         modal.style.transition = 'transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.25s ease-out';
     } else if (animStyle === 'fade') {
@@ -313,15 +312,14 @@ export async function openUI() {
         }
     }
 
-    overlay.appendChild(modal);
-    document.body.appendChild(overlay);
-
     try {
         PresetManager.invalidate();
         const [preset, listInfo] = await Promise.all([PresetManager.load(), PresetManager.listNames()]);
         if (!preset) { toastr.error('无法加载预设'); closeUI(); return; }
         buildModal(modal, preset, listInfo);
 
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
         // Background detect preset renames without blocking UI rendering
         detectPresetRenames().catch(e => console.warn('[Zero] detectPresetRenames background check:', e));
     } catch (e) {
