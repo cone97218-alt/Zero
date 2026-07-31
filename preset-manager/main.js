@@ -1288,68 +1288,7 @@ function ensurePanel() {
         $(`#${PANEL_ID} .zero-tab-content`).css('display', 'none');
         $(`#zero-tab-${tab}`).css('display', 'flex');
         
-        // Defer heavy tab rendering to a macro-task so the tab switch highlights instantly
-        setTimeout(() => {
-            if (tab === 'manage') {
-                if (!renderedTabs.has('manage')) {
-                    _manage.renderManageTab();
-                    renderedTabs.add('manage');
-                }
-            }
-            else if (tab === 'contrast') {
-                if (!renderedTabs.has('contrast')) {
-                    populatePresetSelects().then(() => {
-                        $('#contrast-search-input').val('');
-                        $('#contrast-search-clear').hide();
-                        renderedTabs.add('contrast');
-                        if (_contrast && typeof _contrast.restoreScroll === 'function') _contrast.restoreScroll();
-                    });
-                } else {
-                    if (_contrast && typeof _contrast.restoreScroll === 'function') _contrast.restoreScroll();
-                }
-            }
-            else if (tab === 'stitch') {
-                if (!renderedTabs.has('stitch')) {
-                    populatePresetSelects().then(() => {
-                        $('#stitch-search-input').val('');
-                        $('#stitch-search-clear').hide();
-                        $('#stitch-peek-search-input').val('');
-                        $('#stitch-peek-search-clear').hide();
-                        return _stitch.renderStitchList();
-                    }).then(() => {
-                        renderedTabs.add('stitch');
-                        if (_stitch && typeof _stitch.restorePeekScroll === 'function') _stitch.restorePeekScroll();
-                    });
-                } else {
-                    if (_stitch && typeof _stitch.renderStitchList === 'function') _stitch.renderStitchList(false);
-                    if (_stitch && typeof _stitch.restorePeekScroll === 'function') _stitch.restorePeekScroll();
-                }
-            }
-            else if (tab === 'regex') {
-                if (!renderedTabs.has('regex')) {
-                    populatePresetSelects().then(() => {
-                        if (_regex) {
-                            _regex.initRegexTab();
-                            _regex.renderRegexList();
-                        }
-                        renderedTabs.add('regex');
-                    });
-                } else {
-                    if (_regex) _regex.renderRegexList();
-                }
-            }
-            else if (tab === 'check') {
-                if (!renderedTabs.has('check')) {
-                    populatePresetSelects().then(() => {
-                        _checker.Checker.render('check-results-container', $('#check-preset-select').val());
-                        renderedTabs.add('check');
-                    });
-                }
-            }
-            else if (tab === 'settings') {
-                renderSettingsTab();
-            }
-        }, 0);
+        renderTabContent(tab);
     });
 
     $(`#zero-panel-close`).on('click', () => closePanel());
@@ -2255,6 +2194,68 @@ function ensurePanel() {
     syncTheme();
 }
 
+function renderTabContent(tab) {
+    if (tab === 'manage') {
+        if (!renderedTabs.has('manage')) {
+            _manage.renderManageTab();
+            renderedTabs.add('manage');
+        }
+    }
+    else if (tab === 'contrast') {
+        if (!renderedTabs.has('contrast')) {
+            populatePresetSelects().then(() => {
+                $('#contrast-search-input').val('');
+                $('#contrast-search-clear').hide();
+                renderedTabs.add('contrast');
+                if (_contrast && typeof _contrast.restoreScroll === 'function') _contrast.restoreScroll();
+            });
+        } else {
+            if (_contrast && typeof _contrast.restoreScroll === 'function') _contrast.restoreScroll();
+        }
+    }
+    else if (tab === 'stitch') {
+        if (!renderedTabs.has('stitch')) {
+            populatePresetSelects().then(() => {
+                $('#stitch-search-input').val('');
+                $('#stitch-search-clear').hide();
+                $('#stitch-peek-search-input').val('');
+                $('#stitch-peek-search-clear').hide();
+                return _stitch.renderStitchList();
+            }).then(() => {
+                renderedTabs.add('stitch');
+                if (_stitch && typeof _stitch.restorePeekScroll === 'function') _stitch.restorePeekScroll();
+            });
+        } else {
+            if (_stitch && typeof _stitch.renderStitchList === 'function') _stitch.renderStitchList(false);
+            if (_stitch && typeof _stitch.restorePeekScroll === 'function') _stitch.restorePeekScroll();
+        }
+    }
+    else if (tab === 'regex') {
+        if (!renderedTabs.has('regex')) {
+            populatePresetSelects().then(() => {
+                if (_regex) {
+                    _regex.initRegexTab();
+                    _regex.renderRegexList();
+                }
+                renderedTabs.add('regex');
+            });
+        } else {
+            if (_regex) _regex.renderRegexList();
+        }
+    }
+    else if (tab === 'check') {
+        if (!renderedTabs.has('check')) {
+            populatePresetSelects().then(() => {
+                _checker.Checker.render('check-results-container', $('#check-preset-select').val());
+                renderedTabs.add('check');
+            });
+        }
+    }
+    else if (tab === 'settings') {
+        renderSettingsTab();
+    }
+}
+
 export async function showPanel() {
     renderedTabs.clear(); // Clear rendering cache on open to force fresh data load
     _presetsLastFetch = 0; // Force cache invalidation so the initial tab load is fresh
@@ -2265,17 +2266,20 @@ export async function showPanel() {
     
     // Initialize history button states
     HistoryManager.updateButtonsState();
+
+    const lastTab = localStorage.getItem('zero_last_main_tab') || 'contrast';
+    $(`#${PANEL_ID} .zero-tab-link`).removeClass('active');
+    $(`#${PANEL_ID} .zero-tab-link[data-tab="${lastTab}"]`).addClass('active');
+    $(`#${PANEL_ID} .zero-tab-content`).css('display', 'none');
+    $(`#zero-tab-${lastTab}`).css('display', 'flex');
+
+    await populatePresetSelects();
+    renderTabContent(lastTab);
     
     const $panel = $(`#${PANEL_ID}`);
     $panel.css('display', 'flex');
     $panel[0].offsetHeight;
     $panel.css('opacity', '1');
-
-    // Instantly load the initial tab on panel open
-    requestAnimationFrame(() => {
-        const lastTab = localStorage.getItem('zero_last_main_tab') || 'contrast';
-        $(`#${PANEL_ID} .zero-tab-link[data-tab="${lastTab}"]`).click();
-    });
 }
 
 export function closePanel() {

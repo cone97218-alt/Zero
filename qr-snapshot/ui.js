@@ -314,7 +314,13 @@ export async function openUI() {
 
     try {
         PresetManager.invalidate();
-        const [preset, listInfo] = await Promise.all([PresetManager.load(), PresetManager.listNames()]);
+        let preset = PresetManager.loadSync();
+        let listInfo = PresetManager.listNamesSync();
+        if (!preset) {
+            const res = await Promise.all([PresetManager.load(), PresetManager.listNames()]);
+            preset = res[0];
+            listInfo = res[1];
+        }
         if (!preset) { toastr.error('无法加载预设'); closeUI(); return; }
         buildModal(modal, preset, listInfo);
 

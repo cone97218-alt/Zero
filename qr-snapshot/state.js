@@ -70,7 +70,64 @@ export const PresetManager = {
     /** Returns cached preset (sync), or null if not yet loaded */
     cached() { return _preset; },
 
+    loadSync() {
+        try {
+            const openai = _openaiModule || window.SillyTavern?.getContext?.()?.getOpenaiModule?.();
+            const promptManager = openai?.promptManager;
+            const ctx = window.SillyTavern?.getContext?.();
+            const pm = ctx?.getPresetManager?.('openai');
+            if (!pm || !promptManager) return null;
+
+            const presetName = pm.getSelectedPresetName() || 'Default';
+            const presetObj = pm.getCompletionPresetByName?.(presetName);
+            const promptOrder = promptManager.getPromptOrderForCharacter?.(promptManager.activeCharacter) || [];
+
+            const presetMapById = new Map();
+            const presetMapByName = new Map();
+            if (presetObj && Array.isArray(presetObj.prompts)) {
+                for (const x of presetObj.prompts) {
+                    if (x.identifier) presetMapById.set(x.identifier, x);
+                    if (x.name) presetMapByName.set(x.name, x);
+                }
+            }
+
+            const prompts = promptOrder.map(orderItem => {
+                const p = promptManager.getPromptById(orderItem.identifier);
+                const presetP = presetMapById.get(orderItem.identifier) ||
+                    (p ? (presetMapByName.get(p.name) || presetMapById.get(p.name)) : null) ||
+                    presetMapByName.get(orderItem.identifier);
+
+                if (!p && !presetP) return null;
+                const base = presetP || p;
+
+                if (p && presetP && presetP.content !== undefined) {
+                    p.content = presetP.content;
+                }
+
+                return {
+                    ...(p || {}),
+                    ...(presetP || {}),
+                    identifier: orderItem.identifier,
+                    name: base.name || orderItem.identifier,
+                    enabled: orderItem.enabled
+                };
+            }).filter(Boolean);
+
+            _preset = {
+                name: presetName,
+                prompts: prompts
+            };
+
+            return _preset;
+        } catch (e) {
+            return null;
+        }
+    },
+
     async load() {
+        const syncPreset = this.loadSync();
+        if (syncPreset) return syncPreset;
+
         const openai = await getOpenai();
         const promptManager = openai.promptManager;
         const pm = window.SillyTavern?.getContext?.()?.getPresetManager?.('openai');
@@ -121,7 +178,21 @@ export const PresetManager = {
         return _preset;
     },
 
-    cached() { return _preset; },
+    listNamesSync() {
+        try {
+            const ctx = SillyTavern.getContext();
+            const pm = ctx.getPresetManager?.('openai');
+            if (pm) {
+                const list = pm.getPresetList();
+                const names = pm.isKeyedApi() ? (list.preset_names || []) : Object.keys(list.preset_names || {});
+                const active = pm.getSelectedPresetName();
+                if (names && names.length > 0) {
+                    return { names, active };
+                }
+            }
+        } catch (e) {}
+        return { names: [], active: 'Default' };
+    },
 
     async listNames() {
         // Try to get names from SillyTavern context first (more reliable)
