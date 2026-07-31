@@ -212,13 +212,9 @@ export async function openUI() {
     Object.assign(overlay.style, {
         position: 'fixed', top: '0', left: '0', width: '100vw', height: '100vh',
         zIndex: '10001', background: 'rgba(0,0,0,0.55)',
-        display: 'flex', overflow: 'hidden'
+        display: 'flex', overflow: 'hidden',
+        opacity: '1'
     });
-
-    if (animStyle !== 'none') {
-        overlay.style.opacity = '0';
-        overlay.style.transition = 'opacity 0.2s ease-out';
-    }
 
     if (modalStyle === 'center') {
         overlay.style.alignItems = 'center';
@@ -240,17 +236,15 @@ export async function openUI() {
     overlay.addEventListener('click', (e) => { if (e.target === overlay) closeUI(); });
 
     const modal = h('div', { class: 'zero-modal' });
-    
-    // Override zero-modal style defaults inline
     Object.assign(modal.style, {
-        animation: 'none' // Disable original stylesheet slideUp animation
+        animation: 'none',
+        opacity: '1'
     });
+
     if (animStyle === 'scale') {
-        modal.style.transition = 'transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.25s ease-out';
-    } else if (animStyle === 'fade') {
-        modal.style.transition = 'opacity 0.2s ease-out';
+        modal.style.transition = 'transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1)';
     } else if (animStyle === 'slide') {
-        modal.style.transition = 'transform 0.25s cubic-bezier(0.25, 0.8, 0.25, 1), opacity 0.25s ease-out';
+        modal.style.transition = 'transform 0.15s cubic-bezier(0.25, 0.8, 0.25, 1)';
     }
 
     if (modalStyle === 'center') {
@@ -261,15 +255,9 @@ export async function openUI() {
         modal.style.borderRadius = '14px';
         
         if (animStyle === 'slide') {
-            modal.style.transform = 'translateY(40px)';
-            modal.style.opacity = '0';
+            modal.style.transform = 'translateY(25px)';
         } else if (animStyle === 'scale') {
-            modal.style.transform = 'scale(0.85)';
-            modal.style.opacity = '0';
-        } else if (animStyle === 'fade') {
-            modal.style.opacity = '0';
-        } else { // none
-            modal.style.opacity = '1';
+            modal.style.transform = 'scale(0.92)';
         }
     } else {
         if (modalStyle === 'top') {
@@ -301,14 +289,7 @@ export async function openUI() {
         }
 
         if (animStyle === 'scale') {
-            modal.style.transform = 'scale(0.85)';
-            modal.style.opacity = '0';
-        } else if (animStyle === 'fade') {
-            modal.style.opacity = '0';
-        } else if (animStyle === 'slide') {
-            modal.style.opacity = '0';
-        } else { // none
-            modal.style.opacity = '1';
+            modal.style.transform = 'scale(0.92)';
         }
     }
 
@@ -326,7 +307,6 @@ export async function openUI() {
 
         overlay.appendChild(modal);
         document.body.appendChild(overlay);
-        overlay.style.opacity = '1';
         
         // Background detect preset renames without blocking UI rendering
         detectPresetRenames().catch(e => console.warn('[Zero] detectPresetRenames background check:', e));
@@ -337,16 +317,13 @@ export async function openUI() {
         return;
     }
 
-    // Trigger smooth transition with real content already rendered
+    // Trigger transform slide/scale animation while modal stays 100% opaque
     if (animStyle !== 'none') {
         requestAnimationFrame(() => {
             if (modal) {
-                modal.style.opacity = '1';
                 modal.style.transform = 'translate(0) scale(1)';
             }
         });
-    } else {
-        if (modal) modal.style.opacity = '1';
     }
 }
 

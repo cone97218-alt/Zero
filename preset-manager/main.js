@@ -156,8 +156,7 @@ function ensurePanel() {
             overflow: hidden;
             overflow-x: hidden;
             font-family: var(--mainFontFamily, sans-serif);
-            opacity: 0;
-            transition: opacity 0.15s ease-out;
+            opacity: 1;
         ">
             <!-- Tabs Navigation -->
             <div class="zero-tabs-nav" style="
