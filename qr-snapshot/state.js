@@ -26,13 +26,21 @@ function saveSettings() {
 // ─── Cached openai module ───
 let _openaiModule = null;
 export async function getOpenai() {
-    if (!_openaiModule) _openaiModule = await import('/scripts/openai.js');
+    if (!_openaiModule) {
+        try {
+            _openaiModule = await import('/scripts/openai.js');
+        } catch (e) {
+            console.warn('[Zero] Failed to import /scripts/openai.js:', e);
+        }
+    }
     return _openaiModule;
 }
-/** Pre-warm openai import (fire-and-forget from index.js) */
+/** Pre-warm openai import (fire-and-forget) */
 export function preloadOpenai() {
     getOpenai().catch(() => {});
 }
+// Trigger immediately on module evaluation
+preloadOpenai();
 
 // ─── UI State Manager ───
 export const UiStateManager = {
@@ -70,10 +78,18 @@ export const PresetManager = {
     /** Returns cached preset (sync), or null if not yet loaded */
     cached() { return _preset; },
 
+    getPromptManager() {
+        if (_openaiModule?.promptManager) return _openaiModule.promptManager;
+        if (window.promptManager) return window.promptManager;
+        if (window.openai?.promptManager) return window.openai.promptManager;
+        const ctx = window.SillyTavern?.getContext?.();
+        if (ctx?.promptManager) return ctx.promptManager;
+        return null;
+    },
+
     loadSync() {
         try {
-            const openai = _openaiModule || window.SillyTavern?.getContext?.()?.getOpenaiModule?.();
-            const promptManager = openai?.promptManager;
+            const promptManager = this.getPromptManager();
             const ctx = window.SillyTavern?.getContext?.();
             const pm = ctx?.getPresetManager?.('openai');
             if (!pm || !promptManager) return null;

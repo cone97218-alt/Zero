@@ -313,10 +313,10 @@ export async function openUI() {
     }
 
     try {
-        PresetManager.invalidate();
         let preset = PresetManager.loadSync();
         let listInfo = PresetManager.listNamesSync();
         if (!preset) {
+            PresetManager.invalidate();
             const res = await Promise.all([PresetManager.load(), PresetManager.listNames()]);
             preset = res[0];
             listInfo = res[1];
@@ -326,6 +326,8 @@ export async function openUI() {
 
         overlay.appendChild(modal);
         document.body.appendChild(overlay);
+        overlay.style.opacity = '1';
+        
         // Background detect preset renames without blocking UI rendering
         detectPresetRenames().catch(e => console.warn('[Zero] detectPresetRenames background check:', e));
     } catch (e) {
@@ -335,19 +337,15 @@ export async function openUI() {
         return;
     }
 
-    // Trigger slide-in transition in next frame with real content already rendered
+    // Trigger smooth transition with real content already rendered
     if (animStyle !== 'none') {
         requestAnimationFrame(() => {
-            if (overlay) {
-                overlay.style.opacity = '1';
-            }
             if (modal) {
                 modal.style.opacity = '1';
                 modal.style.transform = 'translate(0) scale(1)';
             }
         });
     } else {
-        if (overlay) overlay.style.opacity = '1';
         if (modal) modal.style.opacity = '1';
     }
 }

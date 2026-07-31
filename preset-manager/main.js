@@ -56,6 +56,8 @@ async function loadModules() {
     ]);
     _modulesLoaded = true;
 }
+// Pre-warm submodules in background on script load
+loadModules().catch(() => {});
 
 const PANEL_ID = 'zero-preset-manager-panel';
 const BTN_ID = 'zero-preset-manager-btn';

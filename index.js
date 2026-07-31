@@ -375,14 +375,23 @@ const observer = new MutationObserver(() => {
     }
 });
 
-eventSource.on(event_types.APP_READY, () => {
+// Pre-warm OpenAI module immediately on script load
+preloadOpenai();
+
+function onAppReady() {
     preloadOpenai();
     injectWithRetry();
     initPresetManager();
     initPresetPerformanceOptimizer(eventSource, event_types);
     registerZeroSlashCommands();
     observer.observe(document.body, { childList: true, subtree: true });
-});
+}
+
+if (document.readyState === 'complete' || (window.SillyTavern && window.SillyTavern.getContext && window.SillyTavern.getContext().characterId !== undefined)) {
+    onAppReady();
+} else {
+    eventSource.on(event_types.APP_READY, onAppReady);
+}
 eventSource.on(event_types.CHAT_CHANGED, injectButton);
 
 console.log('[Zero] Preset Manager extension loaded with API Config Manager linkage & Slash Commands support');
