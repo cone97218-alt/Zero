@@ -84,6 +84,7 @@ export const PresetManager = {
         if (window.openai?.promptManager) return window.openai.promptManager;
         const ctx = window.SillyTavern?.getContext?.();
         if (ctx?.promptManager) return ctx.promptManager;
+        if (ctx?.getOpenaiModule?.()?.promptManager) return ctx.getOpenaiModule().promptManager;
         return null;
     },
 
@@ -92,11 +93,11 @@ export const PresetManager = {
             const promptManager = this.getPromptManager();
             const ctx = window.SillyTavern?.getContext?.();
             const pm = ctx?.getPresetManager?.('openai');
-            if (!pm || !promptManager) return null;
+            if (!pm) return _preset || null;
 
             const presetName = pm.getSelectedPresetName() || 'Default';
             const presetObj = pm.getCompletionPresetByName?.(presetName);
-            const promptOrder = promptManager.getPromptOrderForCharacter?.(promptManager.activeCharacter) || [];
+            let promptOrder = promptManager?.getPromptOrderForCharacter?.(promptManager?.activeCharacter) || [];
 
             const presetMapById = new Map();
             const presetMapByName = new Map();
@@ -107,27 +108,41 @@ export const PresetManager = {
                 }
             }
 
-            const prompts = promptOrder.map(orderItem => {
-                const p = promptManager.getPromptById(orderItem.identifier);
-                const presetP = presetMapById.get(orderItem.identifier) ||
-                    (p ? (presetMapByName.get(p.name) || presetMapById.get(p.name)) : null) ||
-                    presetMapByName.get(orderItem.identifier);
+            let prompts = [];
+            if (Array.isArray(promptOrder) && promptOrder.length > 0) {
+                prompts = promptOrder.map(orderItem => {
+                    const p = promptManager ? promptManager.getPromptById(orderItem.identifier) : null;
+                    const presetP = presetMapById.get(orderItem.identifier) ||
+                        (p ? (presetMapByName.get(p.name) || presetMapById.get(p.name)) : null) ||
+                        presetMapByName.get(orderItem.identifier);
 
-                if (!p && !presetP) return null;
-                const base = presetP || p;
+                    if (!p && !presetP) return null;
+                    const base = presetP || p;
 
-                if (p && presetP && presetP.content !== undefined) {
-                    p.content = presetP.content;
-                }
+                    if (p && presetP && presetP.content !== undefined) {
+                        p.content = presetP.content;
+                    }
 
-                return {
-                    ...(p || {}),
-                    ...(presetP || {}),
-                    identifier: orderItem.identifier,
-                    name: base.name || orderItem.identifier,
-                    enabled: orderItem.enabled
-                };
-            }).filter(Boolean);
+                    return {
+                        ...(p || {}),
+                        ...(presetP || {}),
+                        identifier: orderItem.identifier,
+                        name: base.name || orderItem.identifier,
+                        enabled: orderItem.enabled
+                    };
+                }).filter(Boolean);
+            }
+
+            if (prompts.length === 0 && presetObj && Array.isArray(presetObj.prompts)) {
+                prompts = presetObj.prompts.map(p => ({
+                    ...p,
+                    identifier: p.identifier || p.name,
+                    name: p.name || p.identifier,
+                    enabled: p.enabled !== false
+                }));
+            }
+
+            if (!prompts.length && !_preset) return null;
 
             _preset = {
                 name: presetName,
@@ -136,7 +151,7 @@ export const PresetManager = {
 
             return _preset;
         } catch (e) {
-            return null;
+            return _preset || null;
         }
     },
 

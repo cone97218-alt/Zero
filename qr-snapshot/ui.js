@@ -413,7 +413,8 @@ function buildModal(modal, preset, listInfo) {
         select.disabled = true;
         const contentEl = modal.querySelector('.zero-content');
         if (contentEl) {
-            contentEl.innerHTML = '<div class="zero-loading" style="padding:20px;text-align:center;color:var(--SmartThemeBodyColor)"><i class="fa-solid fa-spinner fa-spin"></i><div>加载中...</div></div>';
+            contentEl.style.opacity = '0.5';
+            contentEl.style.pointerEvents = 'none';
         }
         try {
             await PresetManager.switchPreset(name);
@@ -424,6 +425,10 @@ function buildModal(modal, preset, listInfo) {
             }
         } catch (err) {
             console.error('[Zero] preset switch failed:', err);
+            if (contentEl) {
+                contentEl.style.opacity = '1';
+                contentEl.style.pointerEvents = '';
+            }
             select.disabled = false;
         }
     });
@@ -676,8 +681,10 @@ function buildModal(modal, preset, listInfo) {
     modal.appendChild(tabBar);
     modal.appendChild(content);
 
-    // Initial render
-    renderTab(initialTab, panels[initialTab], preset, modal);
+    // Initial render: pre-render all panel tabs synchronously to eliminate blank flash on tab clicks
+    tabs.forEach(t => {
+        renderTab(t.id, panels[t.id], preset, modal);
+    });
     setupScrollTracking(content, initialTab);
     restoreScrollPos(content, initialTab);
 }
