@@ -2,7 +2,7 @@
  * Zero Preset Manager - UI
  * Performance-optimized v2: innerHTML templates, event delegation, lazy rendering.
  */
-import { PresetManager, SnapshotManager, GroupManager, HiddenManager, UiStateManager, LinkageManager, zeroTranslate, HistoryManager, ModelProfileManager, SamplingParamsHelper, SnapshotGroupManager, getPresetPromptsWithEnabled, getStringSimilarity, detectPresetRenames, getOpenai } from './state.js';
+import { PresetManager, SnapshotManager, GroupManager, HiddenManager, UiStateManager, LinkageManager, zeroTranslate, HistoryManager, ModelProfileManager, SamplingParamsHelper, SnapshotGroupManager, getPresetPromptsWithEnabled, getStringSimilarity, detectPresetRenames, getOpenai, OpLogManager } from './state.js';
 import { matchPrompt } from './search-util.js';
 
 let overlay = null;
@@ -557,9 +557,20 @@ function buildModal(modal, preset, listInfo) {
         }
     });
 
-    modal.appendChild(h('div', { class: 'zero-header' },
+    const isOpLogEnabled = UiStateManager.get().enablePresetOpLog === true;
+    const headerChildren = [
         h('label', { class: 'zero-header-label', text: '当前预设' }),
-        select,
+        select
+    ];
+    if (isOpLogEnabled) {
+        headerChildren.push(h('button', {
+            class: 'zero-op-log-btn',
+            title: '查看预设操作日志 (最新20条)',
+            html: '<i class="fa-solid fa-clock-rotate-left"></i> 日志',
+            onclick: () => openOpLogModal(preset.name)
+        }));
+    }
+    headerChildren.push(
         h('button', {
             class: 'zero-manage-btn',
             title: '打开预设管理',
@@ -610,7 +621,9 @@ function buildModal(modal, preset, listInfo) {
         }),
         searchWrap,
         h('button', { class: 'zero-close-btn', html: '<i class="fa-solid fa-xmark"></i>', onclick: closeUI })
-    ));
+    );
+
+    modal.appendChild(h('div', { class: 'zero-header' }, ...headerChildren));
 
     const tabs = [
         { id: 'entries', icon: 'fa-list', label: '条目' },
@@ -4411,4 +4424,111 @@ async function showSnapshotMigrationModal(preset, preselectedSourceOrSnap = null
 
     applyBtn.addEventListener('click', () => executeImport(true));
     importOnlyBtn.addEventListener('click', () => executeImport(false));
+}
+
+function escapeHtml(str) {
+    return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+export function openOpLogModal(presetName) {
+    const existing = document.getElementById('zero-op-log-modal');
+    if (existing) existing.remove();
+
+    const logs = OpLogManager.get(presetName);
+
+    const logModal = document.createElement('div');
+    logModal.id = 'zero-op-log-modal';
+    logModal.className = 'completion_prompt_manager_popup TH-script-editor-container regex_editor_template';
+    Object.assign(logModal.style, {
+        position: 'fixed',
+        top: '0', left: '0', width: '100vw', height: '100vh',
+        background: 'rgba(0,0,0,0.82)',
+        zIndex: '22000',
+        display: 'flex',
+        alignItems: 'center',
+        justify-content: 'center',
+        padding: '16px',
+        boxSizing: 'border-box'
+    });
+
+    const formatTime = (ts) => {
+        const d = new Date(ts);
+        const pad = (n) => String(n).padStart(2, '0');
+        return `${pad(d.getMonth()+1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    };
+
+    const getTypeColor = (type) => {
+        switch(type) {
+            case 'toggle': return 'var(--SmartThemeQuoteColor, #7b8cde)';
+            case 'batch_toggle': return '#ffab00';
+            case 'add': return '#4caf50';
+            case 'delete': return '#ff5252';
+            case 'snapshot_apply': return '#ab47bc';
+            default: return '#7b8cde';
+        }
+    };
+
+    let logItemsHtml = '';
+    if (!logs || logs.length === 0) {
+        logItemsHtml = `<p style="text-align: center; opacity: 0.5; font-size: 13px; padding: 40px 0; margin: 0;"><i class="fa-solid fa-folder-open" style="margin-right: 6px;"></i>暂无「${escapeHtml(presetName)}」的操作日志记录</p>`;
+    } else {
+        logItemsHtml = logs.map(l => {
+            const color = getTypeColor(l.type);
+            const timeStr = formatTime(l.ts);
+            return `
+                <div style="display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                        <div style="display: flex; align-items: center; gap: 6px; min-width: 0;">
+                            <span style="font-size: 10px; font-weight: bold; padding: 2px 6px; border-radius: 4px; background: ${color}22; color: ${color}; border: 1px solid ${color}44; white-space: nowrap;">${escapeHtml(l.typeText || '操作')}</span>
+                            <span style="font-size: 13px; font-weight: bold; color: var(--SmartThemeBodyColor); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(l.itemName || '默认预设')}</span>
+                        </div>
+                        <span style="font-size: 11px; opacity: 0.5; font-family: monospace; flex-shrink: 0;">${timeStr}</span>
+                    </div>
+                    ${l.detail ? `<div style="font-size: 12px; opacity: 0.75; line-height: 1.4; padding-left: 2px;">${escapeHtml(l.detail)}</div>` : ''}
+                </div>
+            `;
+        }).join('');
+    }
+
+    logModal.innerHTML = `
+        <div style="background: var(--SmartThemeBlurTintColor, #1f1f1f); border: 1px solid var(--SmartThemeBorderColor, #444); border-radius: 14px; width: 100%; max-width: 520px; display: flex; flex-direction: column; max-height: 85vh; overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,0.6);">
+            <!-- Header -->
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--SmartThemeBorderColor, #333); flex-shrink: 0;">
+                <div style="display: flex; align-items: center; gap: 8px; font-weight: bold; font-size: 14px; color: var(--SmartThemeBodyColor);">
+                    <i class="fa-solid fa-clock-rotate-left" style="color: var(--SmartThemeQuoteColor);"></i>
+                    <span>预设操作日志</span>
+                    <span style="font-size: 11px; opacity: 0.6; font-weight: normal;">(最新 ${logs.length}/20 条 | ${escapeHtml(presetName)})</span>
+                </div>
+                <div id="close-zero-op-log-modal" class="interactable" style="cursor: pointer; padding: 4px 8px; opacity: 0.7;"><i class="fa-solid fa-xmark"></i></div>
+            </div>
+
+            <!-- Body (Logs List) -->
+            <div id="zero-op-log-list" style="padding: 14px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 8px;">
+                ${logItemsHtml}
+            </div>
+
+            <!-- Footer -->
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-top: 1px solid var(--SmartThemeBorderColor, #333); background: rgba(0,0,0,0.1); flex-shrink: 0;">
+                <button id="clear-zero-op-log-btn" class="interactable" style="padding: 6px 12px; border: 1px solid rgba(255,82,82,0.3); border-radius: 6px; background: rgba(255,82,82,0.12); color: #ff5252; cursor: pointer; font-size: 12px; font-weight: bold;"><i class="fa-solid fa-trash-can" style="margin-right: 4px;"></i> 清空日志</button>
+                <button id="confirm-zero-op-log-btn" class="interactable" style="padding: 6px 16px; border: none; border-radius: 6px; background: var(--SmartThemeQuoteColor, #7b8cde); color: white; cursor: pointer; font-size: 12px; font-weight: bold;">关闭</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(logModal);
+
+    const closeLogModal = () => logModal.remove();
+
+    logModal.querySelector('#close-zero-op-log-modal').addEventListener('click', closeLogModal);
+    logModal.querySelector('#confirm-zero-op-log-btn').addEventListener('click', closeLogModal);
+
+    logModal.querySelector('#clear-zero-op-log-btn').addEventListener('click', () => {
+        OpLogManager.clear(presetName);
+        toastr.success(`已清空「${presetName}」的操作日志`);
+        openOpLogModal(presetName);
+    });
+
+    logModal.addEventListener('click', (e) => {
+        if (e.target === logModal) closeLogModal();
+    });
 }

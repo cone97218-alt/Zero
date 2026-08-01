@@ -197,6 +197,31 @@
     opacity: 1;
 }
 
+.zero-op-log-btn {
+    padding: 4px 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--SmartThemeQuoteColor, #7b8cde);
+    opacity: 0.85;
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    border-radius: 6px;
+    touch-action: manipulation;
+    background: rgba(123, 140, 222, 0.15);
+    border: 1px solid rgba(123, 140, 222, 0.3);
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.zero-op-log-btn:hover,
+.zero-op-log-btn:active {
+    opacity: 1;
+    background: rgba(123, 140, 222, 0.28);
+    transform: scale(0.96);
+}
+
 /* ===== Search Bar ===== */
 .zero-search-btn {
     padding: 6px 10px;

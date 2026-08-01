@@ -300,6 +300,14 @@ export const PresetManager = {
 
     async togglePrompt(identifier, enabled) {
         HistoryManager.record();
+        let itemName = identifier;
+        if (_preset) {
+            const p = _preset.prompts.find(x => x.identifier === identifier);
+            if (p) {
+                p.enabled = enabled;
+                itemName = p.name || p.identifier;
+            }
+        }
         const openai = await getOpenai();
         const promptManager = openai.promptManager;
         if (promptManager) {
@@ -307,6 +315,10 @@ export const PresetManager = {
             const orderItem = promptOrder.find(o => o.identifier === identifier);
             if (orderItem) {
                 orderItem.enabled = enabled;
+                if (!itemName || itemName === identifier) {
+                    const realP = promptManager.getPromptById(identifier);
+                    if (realP && realP.name) itemName = realP.name;
+                }
                 if (promptManager.tokenHandler && typeof promptManager.tokenHandler.getCounts === 'function') {
                     const counts = promptManager.tokenHandler.getCounts();
                     counts[identifier] = null;
@@ -319,10 +331,9 @@ export const PresetManager = {
                 }
             }
         }
-        if (_preset) {
-            const p = _preset.prompts.find(x => x.identifier === identifier);
-            if (p) p.enabled = enabled;
-        }
+
+        // Record operation log
+        OpLogManager.add(_preset?.name, 'toggle', '开关', itemName, enabled ? '切换为 [开启]' : '切换为 [关闭]');
 
         import('../preset-manager/utils.js').then(m => m.syncBoundRegexOnPromptToggle([{ identifier, enabled }])).catch(e => {
             console.warn('[Zero] Failed to sync bound regex on togglePrompt:', e);
@@ -330,7 +341,7 @@ export const PresetManager = {
     },
 
     /** Batch update from a Map<identifier, enabled> */
-    async batchToggleMap(toggleMap) {
+    async batchToggleMap(toggleMap, skipOpLog = false) {
         HistoryManager.record();
         if (!_preset) await this.load();
         
@@ -365,6 +376,23 @@ export const PresetManager = {
             }
         }
 
+        if (!skipOpLog && toggleMap && toggleMap.size > 0) {
+            const currentPresetName = _preset?.name;
+            if (toggleMap.size === 1) {
+                const [id, en] = Array.from(toggleMap.entries())[0];
+                const p = _preset?.prompts?.find(x => x.identifier === id);
+                const name = p ? (p.name || p.identifier) : id;
+                OpLogManager.add(currentPresetName, 'toggle', '开关', name, en ? '切换为 [开启]' : '切换为 [关闭]');
+            } else {
+                let onCount = 0;
+                let offCount = 0;
+                for (const en of toggleMap.values()) {
+                    if (en) onCount++; else offCount++;
+                }
+                OpLogManager.add(currentPresetName, 'batch_toggle', '批量开关', `批量修改 ${toggleMap.size} 个条目`, `开启 ${onCount} 个，关闭 ${offCount} 个`);
+            }
+        }
+
         import('../preset-manager/utils.js').then(m => m.syncBoundRegexOnPromptToggle(toggleMap)).catch(e => {
             console.warn('[Zero] Failed to sync bound regex on batchToggleMap:', e);
         });
@@ -393,9 +421,10 @@ export const PresetManager = {
                 }
             });
         }
-        // Rename model profiles as well
+        // Rename model profiles & op logs as well
         ModelProfileManager.renameSettings(oldName, newName);
         SnapshotGroupManager.renameSettings(oldName, newName);
+        OpLogManager.renameSettings(oldName, newName);
         saveSettings();
     },
 
@@ -717,7 +746,8 @@ export const SnapshotManager = {
             });
         }
 
-        await PresetManager.batchToggleMap(map);
+        await PresetManager.batchToggleMap(map, true);
+        OpLogManager.add(preset?.name || snapshot.presetName, 'snapshot_apply', '应用快照', snapshot.name, `恢复至快照「${snapshot.name}」状态`);
 
         if (!decouple && snapshot.samplingParams) {
             await SamplingParamsHelper.apply(snapshot.samplingParams, snapshot.additionalParams);
@@ -1115,6 +1145,60 @@ export const LinkageManager = {
             }
         });
         this._save(targetPresetName, targetLinks);
+    }
+};
+
+// ═══════════════════════════════════════
+//  Operation Log Manager
+// ═══════════════════════════════════════
+export const OpLogManager = {
+    get(presetName) {
+        const s = getSettings();
+        if (!s.opLogs) s.opLogs = {};
+        if (!presetName) return [];
+        return s.opLogs[presetName] || [];
+    },
+
+    add(presetName, type, typeText, itemName, detail) {
+        if (!presetName) {
+            presetName = _preset?.name || PresetManager.cached()?.name || 'Default';
+        }
+        const s = getSettings();
+        if (!s.opLogs) s.opLogs = {};
+        if (!s.opLogs[presetName]) s.opLogs[presetName] = [];
+        const list = s.opLogs[presetName];
+
+        const entry = {
+            id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+            ts: Date.now(),
+            type: type || 'toggle',       // 'toggle' | 'add' | 'delete' | 'rename' | 'batch_toggle' | 'snapshot_apply' | 'stitch'
+            typeText: typeText || '操作', // '开关' | '新增' | '删除' | '重命名' | '批量开关' | '应用快照' | '缝合'
+            itemName: itemName || '',
+            detail: detail || ''
+        };
+
+        list.unshift(entry);
+        if (list.length > 20) {
+            list.length = 20; // Keep up to 20 latest records
+        }
+        saveSettings();
+        return entry;
+    },
+
+    clear(presetName) {
+        const s = getSettings();
+        if (!s.opLogs) s.opLogs = {};
+        s.opLogs[presetName] = [];
+        saveSettings();
+    },
+
+    renameSettings(oldName, newName) {
+        const s = getSettings();
+        if (s.opLogs && s.opLogs[oldName]) {
+            s.opLogs[newName] = s.opLogs[oldName];
+            delete s.opLogs[oldName];
+            saveSettings();
+        }
     }
 };
 

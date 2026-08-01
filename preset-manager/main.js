@@ -517,6 +517,17 @@ function ensurePanel() {
                                     <span class="zero-slider"></span>
                                 </label>
                             </div>
+                            <!-- 记录预设操作日志 -->
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 12px; margin-top: 4px;">
+                                <div style="flex: 1;">
+                                    <strong style="display: block; font-size: 13px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">记录预设操作日志</strong>
+                                    <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">在快照相机面板顶栏显示「日志」按钮，记录当前预设的开关、新增、删除及快照还原等最新 20 条操作。</span>
+                                </div>
+                                <label class="zero-switch">
+                                    <input type="checkbox" id="zero-setting-enable-op-log" class="interactable">
+                                    <span class="zero-slider"></span>
+                                </label>
+                            </div>
                         </div>
                     </div>
 
@@ -1496,6 +1507,12 @@ function ensurePanel() {
         toastr.success(checked ? '已开启快照二次确认' : '已关闭快照二次确认');
     });
 
+    $('body').off('change', '#zero-setting-enable-op-log').on('change', '#zero-setting-enable-op-log', function() {
+        const checked = $(this).is(':checked');
+        UiStateManager.save({ enablePresetOpLog: checked });
+        toastr.success(checked ? '已开启预设操作日志记录' : '已关闭预设操作日志记录');
+    });
+
     $('body').off('change', '#zero-setting-ui-search-anim').on('change', '#zero-setting-ui-search-anim', function() {
         const checked = $(this).is(':checked');
         UiStateManager.save({ searchBarAnimation: checked });
@@ -2364,6 +2381,7 @@ export function renderSettingsTab() {
     $('#zero-setting-toast-overwrite').prop('checked', state.toastOnSnapshotOverwrite === true);
     $('#zero-setting-toast-stitch').prop('checked', state.toastOnPresetStitch === true);
     $('#zero-setting-confirm-snapshot').prop('checked', state.confirmOnSnapshot === true);
+    $('#zero-setting-enable-op-log').prop('checked', state.enablePresetOpLog === true);
 
     // Stitch switches
     $('#zero-setting-stitch-collapse-b').prop('checked', state.collapseTargetBOnStitch === true);
