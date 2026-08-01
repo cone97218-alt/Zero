@@ -39,7 +39,7 @@ export async function openQuickEditor(presetName, itemName) {
     `).join('');
 
     const editHtml = `
-        <div id="zero-quick-editor" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: var(--SmartThemeBlurTintColor, rgba(15,15,15,0.95)); z-index: 20001; display: flex; flex-direction: column; padding: 20px; font-family: var(--mainFontFamily, sans-serif);">
+        <div id="zero-quick-editor" class="completion_prompt_manager_popup TH-script-editor-container regex_editor_template" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: var(--SmartThemeBlurTintColor, rgba(15,15,15,0.95)); z-index: 20001; display: flex; flex-direction: column; padding: 20px; font-family: var(--mainFontFamily, sans-serif);">
             <!-- Header with Title-style Name Input and Group Select Badge -->
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; color: var(--SmartThemeBodyColor); gap: 12px;">
                 <div style="display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0;">
@@ -114,7 +114,7 @@ export async function openQuickEditor(presetName, itemName) {
 
             <!-- Content Area (Main Focus) -->
             <div style="flex: 1; display: flex; flex-direction: column; gap: 10px; overflow: hidden;">
-                <textarea id="quick-edit-content" class="zero-quick-textarea" spellcheck="false" autocomplete="off" style="flex: 1; background: var(--SmartThemeChatTintColor, rgba(255,255,255,0.05)); border: 1px solid var(--SmartThemeBorderColor); color: var(--SmartThemeBodyColor); padding: 20px; border-radius: 12px; font-family: 'Consolas', 'Monaco', monospace; font-size: 15px; resize: none; outline: none; line-height: 1.6; box-shadow: none;">${escapeHtml(prompt.content)}</textarea>
+                <textarea id="quick-edit-content" class="zero-quick-textarea task_name_edit" data-for="world_entry_content_zero" spellcheck="false" autocomplete="off" style="flex: 1; background: var(--SmartThemeChatTintColor, rgba(255,255,255,0.05)); border: 1px solid var(--SmartThemeBorderColor); color: var(--SmartThemeBodyColor); padding: 20px; border-radius: 12px; font-family: 'Consolas', 'Monaco', monospace; font-size: 15px; resize: none; outline: none; line-height: 1.6; box-shadow: none;">${escapeHtml(prompt.content)}</textarea>
                 
                 <!-- Quick Phrases Section -->
                 <div id="quick-phrases-section" style="background: rgba(255,255,255,0.01); border: 1px solid var(--SmartThemeBorderColor); border-radius: 12px; padding: 12px; flex-shrink: 0;">

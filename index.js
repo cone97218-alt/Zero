@@ -43,7 +43,32 @@ function setupToastrFilter() {
         return origWarning.apply(this, arguments);
     };
 }
+}
 setupToastrFilter();
+
+// ── Third-Party Extension Compatibility & Input Interceptor Protection ─────
+function setupZeroInputProtection() {
+    if (window._zeroInputProtectionInstalled) return;
+    window._zeroInputProtectionInstalled = true;
+
+    function isZeroElement(target) {
+        if (!target) return false;
+        const el = target.element || target;
+        if (!el || typeof el.closest !== 'function') return false;
+        return Boolean(
+            el.closest('#zero-quick-editor, #zero-preset-manager-panel, #zero-modal, #zero-preset-manager-modal, #zero-entry-context-menu-modal, #zero-inject-var-modal, #links-manager-modal, [id*="zero-"], .zero-quick-textarea, [id*="shujuku_v120-zero"]')
+        );
+    }
+
+    ['input', 'change', 'keydown', 'keyup', 'keypress'].forEach(eventType => {
+        window.addEventListener(eventType, (e) => {
+            if (isZeroElement(e.target)) {
+                e.stopPropagation();
+            }
+        }, true);
+    });
+}
+setupZeroInputProtection();
 
 // ── Linkage Logic (Preset -> API Config) ──────────────────────────────────
 let isSwitchingPresetLinkage = false;

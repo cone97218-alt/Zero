@@ -113,7 +113,7 @@ export async function showManualLinksManager() {
     }).join('');
 
     const html = `
-        <div id="links-manager-modal" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.85); z-index: 20000; display: flex; align-items: center; justify-content: center; padding: 20px;">
+        <div id="links-manager-modal" class="completion_prompt_manager_popup TH-script-editor-container regex_editor_template" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.85); z-index: 20000; display: flex; align-items: center; justify-content: center; padding: 20px;">
             <div style="background: var(--SmartThemeBlurTintColor); padding: 24px; border-radius: 16px; width: 100%; max-width: 360px; border: 1px solid var(--SmartThemeBorderColor); display: flex; flex-direction: column; max-height: 80vh;">
                 <div style="font-weight: bold; margin-bottom: 4px; font-size: 16px;">手动匹配管理</div>
                 <div style="font-size: 11px; opacity: 0.6; margin-bottom: 16px;">${nameA} ⟷ ${nameB}</div>

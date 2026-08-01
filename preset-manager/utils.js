@@ -1238,7 +1238,7 @@ export async function showInjectVariableModal(promptOrName, presetName = '', onS
     const originalContent = prompt.content || '';
 
     const modalHtml = `
-        <div id="${modalId}" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.85); z-index: 21000; display: flex; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box;">
+        <div id="${modalId}" class="completion_prompt_manager_popup TH-script-editor-container regex_editor_template" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.85); z-index: 21000; display: flex; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box;">
             <div style="background: var(--SmartThemeBlurTintColor, #1f1f1f); border: 1px solid var(--SmartThemeBorderColor, #444); border-radius: 14px; width: 100%; max-width: 680px; display: flex; flex-direction: column; max-height: 90vh; overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,0.6);">
                 <!-- Header -->
                 <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--SmartThemeBorderColor, #333); flex-shrink: 0;">
@@ -1310,7 +1310,7 @@ export async function showInjectVariableModal(promptOrName, presetName = '', onS
                             <label style="font-size: 12px; opacity: 0.85; font-weight: bold;">条目文本内容编辑与定位区:</label>
                             <button id="zero-inject-var-insert-cursor-btn" class="interactable" style="display: none; padding: 4px 10px; font-size: 11px; border-radius: 6px; background: rgba(123,140,222,0.25); color: var(--SmartThemeQuoteColor); border: 1px solid rgba(123,140,222,0.4); cursor: pointer;"><i class="fa-solid fa-i-cursor" style="margin-right: 4px;"></i> 插入到下方选定光标处</button>
                         </div>
-                        <textarea id="zero-inject-var-editor-textarea" class="interactable" style="width: 100%; min-height: 220px; max-height: 500px; height: 320px; padding: 12px; background: rgba(0,0,0,0.15); border: 1px solid var(--SmartThemeBorderColor, #444); border-radius: 8px; font-size: 13px; font-family: monospace; color: inherit; box-sizing: border-box; resize: vertical; overflow-y: auto; line-height: 1.5;">${escapeHtml(originalContent)}</textarea>
+                        <textarea id="zero-inject-var-editor-textarea" class="interactable zero-quick-textarea task_name_edit" data-for="world_entry_content_zero" style="width: 100%; min-height: 220px; max-height: 500px; height: 320px; padding: 12px; background: rgba(0,0,0,0.15); border: 1px solid var(--SmartThemeBorderColor, #444); border-radius: 8px; font-size: 13px; font-family: monospace; color: inherit; box-sizing: border-box; resize: vertical; overflow-y: auto; line-height: 1.5;">${escapeHtml(originalContent)}</textarea>
                     </div>
 
                     <!-- Result Preview Area (Max 500px, internal scroll) -->

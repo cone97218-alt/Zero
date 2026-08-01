@@ -210,6 +210,7 @@ export async function openUI() {
 
     overlay = document.createElement('div');
     overlay.id = 'zero-overlay';
+    overlay.className = 'completion_prompt_manager_popup TH-script-editor-container regex_editor_template';
     Object.assign(overlay.style, {
         position: 'fixed', top: '0', left: '0', width: '100vw', height: '100vh',
         zIndex: '10001', background: 'rgba(0,0,0,0.55)',
@@ -236,7 +237,7 @@ export async function openUI() {
 
     overlay.addEventListener('click', (e) => { if (e.target === overlay) closeUI(); });
 
-    const modal = h('div', { class: 'zero-modal' });
+    const modal = h('div', { class: 'zero-modal completion_prompt_manager_popup TH-script-editor-container regex_editor_template', id: 'zero-modal' });
     Object.assign(modal.style, {
         animation: 'none',
         opacity: '1'
