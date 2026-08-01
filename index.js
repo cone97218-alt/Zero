@@ -43,7 +43,6 @@ function setupToastrFilter() {
         return origWarning.apply(this, arguments);
     };
 }
-}
 setupToastrFilter();
 
 // ── Third-Party Extension Compatibility & Input Interceptor Protection ─────
