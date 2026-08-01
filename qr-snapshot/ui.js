@@ -124,10 +124,10 @@ function showPrompt(modal, msg, defaultVal, onOk) {
 // ═══════════════════════════════════════
 //  HTML Templates (fast innerHTML)
 // ═══════════════════════════════════════
-function entryHTML(p) {
+function entryHTML(p, cachedActions = null) {
     const id = esc(p.identifier);
     const name = esc(p.name || p.identifier);
-    const actions = UiStateManager.get().entryActions || ['inject-var', 'folder', 'preview'];
+    const actions = cachedActions || UiStateManager.get().entryActions || ['inject-var', 'folder', 'preview'];
 
     let actionBtnsHtml = '';
     if (actions.includes('inject-var')) {
@@ -156,11 +156,12 @@ function entryHTML(p) {
     `</div>`;
 }
 
-function groupSectionHTML(group, members, isUngrouped) {
+function groupSectionHTML(group, members, isUngrouped, cachedActions = null) {
     const enabledCount = members.filter(p => p.enabled).length;
     const allOn = members.length > 0 && members.every(p => p.enabled);
     const collapsed = group.col;
-    const bodyContent = collapsed ? '' : members.map(entryHTML).join('');
+    const actions = cachedActions || UiStateManager.get().entryActions || ['inject-var', 'folder', 'preview'];
+    const bodyContent = collapsed ? '' : members.map(m => entryHTML(m, actions)).join('');
     
     const isSingle = group.single || false;
     const switchHTML = isSingle ? '' : `<label class="zero-switch"><input type="checkbox"${allOn ? ' checked' : ''}><span class="zero-slider"></span></label>`;
@@ -738,6 +739,7 @@ function renderEntries(panel, preset, modal) {
     ));
 
     const query = searchQuery ? searchQuery.trim().toLowerCase() : '';
+    const cachedActions = UiStateManager.get().entryActions || ['inject-var', 'folder', 'preview'];
 
     // Build all groups as one HTML string
     let html = '';
@@ -749,7 +751,7 @@ function renderEntries(panel, preset, modal) {
         }
         _groupMemberMap.set(g.id, members);
         if (!query || members.length > 0) {
-            html += groupSectionHTML(g, members, false);
+            html += groupSectionHTML(g, members, false, cachedActions);
         }
     });
 
@@ -761,7 +763,7 @@ function renderEntries(panel, preset, modal) {
     if (filteredUngrouped.length > 0) {
         const ugId = '__ungrouped';
         _groupMemberMap.set(ugId, filteredUngrouped);
-        html += groupSectionHTML({ id: ugId, name: '未分组', col: UiStateManager.get().ungroupedCol }, filteredUngrouped, true);
+        html += groupSectionHTML({ id: ugId, name: '未分组', col: UiStateManager.get().ungroupedCol }, filteredUngrouped, true, cachedActions);
     }
 
     if (!html.trim()) {

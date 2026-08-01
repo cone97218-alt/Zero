@@ -633,8 +633,6 @@
     border-radius: 8px;
     overflow: hidden;
     contain: layout style;
-    content-visibility: auto;
-    contain-intrinsic-size: 1px 44px;
 }
 .zero-group-header {
     display: flex;
