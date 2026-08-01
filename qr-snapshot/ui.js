@@ -127,7 +127,7 @@ function showPrompt(modal, msg, defaultVal, onOk) {
 function entryHTML(p, cachedActions = null) {
     const id = esc(p.identifier);
     const name = esc(p.name || p.identifier);
-    const actions = cachedActions || UiStateManager.get().entryActions || ['inject-var', 'folder', 'preview'];
+    const actions = (Array.isArray(cachedActions) ? cachedActions : null) || UiStateManager.get().entryActions || ['inject-var', 'folder', 'preview'];
 
     let actionBtnsHtml = '';
     if (actions.includes('inject-var')) {
@@ -160,7 +160,7 @@ function groupSectionHTML(group, members, isUngrouped, cachedActions = null) {
     const enabledCount = members.filter(p => p.enabled).length;
     const allOn = members.length > 0 && members.every(p => p.enabled);
     const collapsed = group.col;
-    const actions = cachedActions || UiStateManager.get().entryActions || ['inject-var', 'folder', 'preview'];
+    const actions = (Array.isArray(cachedActions) ? cachedActions : null) || UiStateManager.get().entryActions || ['inject-var', 'folder', 'preview'];
     const bodyContent = collapsed ? '' : members.map(m => entryHTML(m, actions)).join('');
     
     const isSingle = group.single || false;
