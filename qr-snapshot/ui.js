@@ -202,82 +202,27 @@ export function minimizeSnapshotUI() {
             position: fixed;
             bottom: 24px;
             right: 140px;
-            z-index: 999999;
+            z-index: 10001;
             display: flex;
             align-items: center;
             gap: 6px;
             padding: 7px 13px;
-            background: var(--SmartThemeChatTintColor, rgba(30,30,45,0.95));
-            border: 1px solid var(--SmartThemeBorderColor, #666);
-            color: var(--SmartThemeBodyColor, #fff);
+            background: var(--zero-bg-color, var(--SmartThemeBlurTintColor, rgba(20,20,30,0.95)));
+            border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #555));
+            color: var(--zero-text-color, var(--SmartThemeBodyColor, #fff));
             border-radius: 20px;
-            box-shadow: 0 6px 24px rgba(0,0,0,0.6);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.45);
             cursor: pointer;
             user-select: none;
             touch-action: none;
-            animation: zeroFadeIn 0.2s ease;
         `;
 
-        let isDragging = false;
-        let startX = 0, startY = 0;
-        let initLeft = 0, initTop = 0;
-
-        badge.addEventListener('pointerdown', (e) => {
-            isDragging = false;
-            startX = e.clientX;
-            startY = e.clientY;
-            const rect = badge.getBoundingClientRect();
-            initLeft = rect.left;
-            initTop = rect.top;
-
-            const onMove = (me) => {
-                const dx = me.clientX - startX;
-                const dy = me.clientY - startY;
-                if (!isDragging && Math.hypot(dx, dy) < 4) return;
-                isDragging = true;
-                badge.style.right = 'auto';
-                badge.style.bottom = 'auto';
-                badge.style.left = `${Math.max(0, Math.min(initLeft + dx, window.innerWidth - badge.offsetWidth))}px`;
-                badge.style.top = `${Math.max(0, Math.min(initTop + dy, window.innerHeight - badge.offsetHeight))}px`;
-            };
-
-            const onUp = () => {
-                document.removeEventListener('pointermove', onMove);
-                document.removeEventListener('pointerup', onUp);
-                if (!isDragging) {
-                    restoreSnapshotUI();
-                }
-                setTimeout(() => { isDragging = false; }, 50);
-            };
-
-            document.addEventListener('pointermove', onMove);
-            document.addEventListener('pointerup', onUp);
-        });
-
-        badge.addEventListener('click', (e) => {
-            if (isDragging) {
-                e.stopPropagation();
-                e.preventDefault();
-                return;
-            }
-            restoreSnapshotUI();
-        });
-
+        import('../preset-manager/window.js').then(({ WindowManager }) => {
+            WindowManager.initCapsuleDraggable(badge, () => restoreSnapshotUI());
+        }).catch(() => {});
         document.body.appendChild(badge);
     }
-
     badge.style.display = 'flex';
-    badge.style.opacity = '1';
-    badge.style.visibility = 'visible';
-
-    // Reset bounds if offscreen
-    const rect = badge.getBoundingClientRect();
-    if (rect.left > window.innerWidth - 30 || rect.top > window.innerHeight - 30 || rect.left < 0 || rect.top < 0) {
-        badge.style.left = 'auto';
-        badge.style.top = 'auto';
-        badge.style.bottom = '24px';
-        badge.style.right = '140px';
-    }
 }
 
 export function restoreSnapshotUI() {
@@ -330,7 +275,13 @@ export async function openUI() {
     const isDesktop = window.innerWidth >= 800;
     const isDesktopWindow = isDesktop && winMode !== 'fixed';
     
-    const floatingPos = (() => { try { return JSON.parse(localStorage.getItem('zero_snapshot_floating_pos') || 'null'); } catch { return null; } })();
+    const floatingPos = (() => {
+        try {
+            return JSON.parse(localStorage.getItem('zero_snapshot_floating_pos') || localStorage.getItem('zero_snapshot_modal_pos') || 'null');
+        } catch {
+            return null;
+        }
+    })();
     const dockRightWidth = state.snapshotDockRightWidth || localStorage.getItem('zero_snapshot_dock_right_width') || '450px';
     const dockLeftWidth = state.snapshotDockLeftWidth || localStorage.getItem('zero_snapshot_dock_left_width') || '450px';
 
