@@ -422,12 +422,21 @@ export const PresetManager = {
                 const name = p ? (p.name || p.identifier) : id;
                 OpLogManager.add(currentPresetName, 'toggle', '开关', name, en ? '切换为 [开启]' : '切换为 [关闭]');
             } else {
-                let onCount = 0;
-                let offCount = 0;
-                for (const en of toggleMap.values()) {
-                    if (en) onCount++; else offCount++;
+                const onNames = [];
+                const offNames = [];
+                for (const [id, en] of toggleMap.entries()) {
+                    const p = _preset?.prompts?.find(x => x.identifier === id || x.name === id);
+                    const name = p ? (p.name || p.identifier) : id;
+                    if (en) onNames.push(name); else offNames.push(name);
                 }
-                OpLogManager.add(currentPresetName, 'batch_toggle', '批量开关', `批量修改 ${toggleMap.size} 个条目`, `开启 ${onCount} 个，关闭 ${offCount} 个`);
+                OpLogManager.add(
+                    currentPresetName,
+                    'batch_toggle',
+                    '批量开关',
+                    `批量修改 ${toggleMap.size} 个条目`,
+                    `开启 ${onNames.length} 个，关闭 ${offNames.length} 个`,
+                    { on: onNames, off: offNames }
+                );
             }
         }
 
@@ -1941,7 +1950,7 @@ export const OpLogManager = {
         return s.opLogs[presetName] || [];
     },
 
-    add(presetName, type, typeText, itemName, detail) {
+    add(presetName, type, typeText, itemName, detail, itemsDetail = null) {
         if (!presetName) {
             presetName = _preset?.name || PresetManager.cached()?.name || 'Default';
         }
@@ -1956,7 +1965,8 @@ export const OpLogManager = {
             type: type || 'toggle',       // 'toggle' | 'add' | 'delete' | 'rename' | 'batch_toggle' | 'snapshot_apply' | 'stitch'
             typeText: typeText || '操作', // '开关' | '新增' | '删除' | '重命名' | '批量开关' | '应用快照' | '缝合'
             itemName: itemName || '',
-            detail: detail || ''
+            detail: detail || '',
+            itemsDetail: itemsDetail || null
         };
 
         list.unshift(entry);

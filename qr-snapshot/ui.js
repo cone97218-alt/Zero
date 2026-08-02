@@ -4476,6 +4476,28 @@ export function openOpLogModal(presetName) {
         logItemsHtml = logs.map(l => {
             const color = getTypeColor(l.type);
             const timeStr = formatTime(l.ts);
+            let detailHtml = '';
+            if (l.detail) {
+                detailHtml += `<div style="font-size: 12px; opacity: 0.75; line-height: 1.4; padding-left: 2px;">${escapeHtml(l.detail)}</div>`;
+            }
+            if (l.itemsDetail && (Array.isArray(l.itemsDetail.on) || Array.isArray(l.itemsDetail.off))) {
+                const onList = (l.itemsDetail.on || []).map(n => escapeHtml(n));
+                const offList = (l.itemsDetail.off || []).map(n => escapeHtml(n));
+                const totalCount = onList.length + offList.length;
+                if (totalCount > 0) {
+                    detailHtml += `
+                        <details style="margin-top: 4px; font-size: 11px; opacity: 0.9;">
+                            <summary class="interactable" style="outline: none; cursor: pointer; user-select: none; color: var(--SmartThemeQuoteColor, #7b8cde); font-weight: 600;">
+                                <i class="fa-solid fa-list-check" style="margin-right: 4px;"></i>查看变动条目列表 (${totalCount})
+                            </summary>
+                            <div style="margin-top: 6px; padding: 8px 10px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.06); border-radius: 6px; display: flex; flex-direction: column; gap: 4px; max-height: 150px; overflow-y: auto; word-break: break-all;">
+                                ${onList.length ? `<div><strong style="color:#4caf50;">[开启 ${onList.length}]:</strong> ${onList.join('、')}</div>` : ''}
+                                ${offList.length ? `<div><strong style="color:#ff5252;">[关闭 ${offList.length}]:</strong> ${offList.join('、')}</div>` : ''}
+                            </div>
+                        </details>
+                    `;
+                }
+            }
             return `
                 <div style="display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px;">
                     <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
@@ -4485,7 +4507,7 @@ export function openOpLogModal(presetName) {
                         </div>
                         <span style="font-size: 11px; opacity: 0.5; font-family: monospace; flex-shrink: 0;">${timeStr}</span>
                     </div>
-                    ${l.detail ? `<div style="font-size: 12px; opacity: 0.75; line-height: 1.4; padding-left: 2px;">${escapeHtml(l.detail)}</div>` : ''}
+                    ${detailHtml}
                 </div>
             `;
         }).join('');
