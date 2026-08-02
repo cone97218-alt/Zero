@@ -4,7 +4,7 @@
  */
 
 import { PresetManager, HistoryManager, getStringSimilarity } from '../qr-snapshot/state.js';
-import { getPresetPrompts, escapeHtml, savePresetWithoutRegexToast, showVariableRenameModal, showBatchVariableEditModal, showVariableEntryEditModal } from './utils.js';
+import { getPresetPrompts, escapeHtml, savePresetWithoutRegexToast, showVariableRenameModal, showBatchVariableEditModal, showBatchEntryVariableEditModal, showStepByStepReplaceModal } from './utils.js';
 
 export const Checker = {
     /**
@@ -357,8 +357,8 @@ export const Checker = {
                     <div class="var-filter-btn" data-filter="problem" style="padding: 4px 12px; font-size: 11px; border-radius: 14px; cursor: pointer; background: rgba(255,255,255,0.05); color: inherit; border: 1px solid var(--SmartThemeBorderColor);">问题变量</div>
                     <div class="var-filter-btn" data-filter="correct" style="padding: 4px 12px; font-size: 11px; border-radius: 14px; cursor: pointer; background: rgba(255,255,255,0.05); color: inherit; border: 1px solid var(--SmartThemeBorderColor);">正确变量</div>
                     <div class="var-filter-btn" data-filter="all" style="padding: 4px 12px; font-size: 11px; border-radius: 14px; cursor: pointer; background: rgba(255,255,255,0.05); color: inherit; border: 1px solid var(--SmartThemeBorderColor);">全部变量</div>
-                    <button id="check-toggle-batch-var-mode" class="interactable" title="开启/关闭批量选框模式" style="padding: 4px 10px; font-size: 11px; border-radius: 14px; cursor: pointer; background: rgba(255,255,255,0.06); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); display: inline-flex; align-items: center; justify-content: center; height: 26px;">
-                        <i class="fa-solid fa-list-check" style="margin-right: 4px;"></i> 批量管理
+                    <button id="check-toggle-batch-var-mode" class="interactable" title="批量管理" style="padding: 4px 10px; font-size: 11px; border-radius: 14px; cursor: pointer; background: rgba(255,255,255,0.06); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); display: inline-flex; align-items: center; justify-content: center; height: 26px;">
+                        <i class="fa-solid fa-list-check"></i>
                     </button>
                     <button id="check-batch-auto-inject-vars" class="interactable" title="一键自动注入所有缺失变量" style="padding: 4px 10px; font-size: 11px; border-radius: 14px; cursor: pointer; background: rgba(255,255,255,0.06); color: var(--SmartThemeQuoteColor); border: 1px solid var(--SmartThemeBorderColor); display: inline-flex; align-items: center; justify-content: center; height: 26px;">
                         <i class="fa-solid fa-wand-magic-sparkles"></i>
@@ -370,12 +370,12 @@ export const Checker = {
 
                 <!-- 批量选框操作栏 (默认隐藏) -->
                 <div id="check-var-batch-bar" style="display: none; align-items: center; gap: 10px; margin-bottom: 10px; padding: 6px 10px; background: rgba(255,255,255,0.04); border: 1px solid var(--SmartThemeBorderColor); border-radius: 8px; font-size: 11px;">
-                    <label style="display: inline-flex; align-items: center; gap: 4px; cursor: pointer; user-select: none; color: var(--SmartThemeBodyColor);">
+                    <label style="display: inline-flex; align-items: center; gap: 4px; cursor: pointer; user-select: none; color: var(--SmartThemeBodyColor);" title="全选/取消全选">
                         <input type="checkbox" id="check-var-select-all" class="interactable" style="cursor: pointer; accent-color: var(--SmartThemeQuoteColor);">
-                        <span>全选</span>
+                        <i class="fa-solid fa-check-double"></i>
                     </label>
-                    <button id="check-batch-edit-selected-vars" class="interactable" title="批量重命名或修改选中变量的语法类型" style="display: none; padding: 4px 12px; font-size: 11px; border-radius: 14px; cursor: pointer; background: var(--SmartThemeQuoteColor); color: white; border: none; font-weight: bold; align-items: center; gap: 4px; height: 24px;">
-                        <i class="fa-solid fa-pen-to-square"></i> 批量修改选中变量 (<span id="selected-var-count">0</span>)
+                    <button id="check-batch-edit-selected-vars" class="interactable" title="批量修改选中条目中引用的变量" style="display: none; padding: 4px 10px; font-size: 11px; border-radius: 14px; cursor: pointer; background: var(--SmartThemeQuoteColor); color: white; border: none; font-weight: bold; align-items: center; gap: 4px; height: 24px;">
+                        <i class="fa-solid fa-pen-to-square"></i> (<span id="selected-var-count">0</span>)
                     </button>
                 </div>
 
@@ -392,9 +392,53 @@ export const Checker = {
             </div>
 
             <div id="check-sub-all-entries" class="check-sub-content" style="display: none;">
-                <div style="margin-bottom: 10px;">
-                    <input type="text" id="check-entry-search" placeholder="搜索条目名称或内容..." style="width: 100%; padding: 8px; background: rgba(0,0,0,0.2); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 6px; font-size: 12px;">
+                <div style="margin-bottom: 10px; display: flex; gap: 8px; align-items: center;">
+                    <input type="text" id="check-entry-search" placeholder="搜索条目名称或内容..." style="flex: 1; padding: 8px; background: rgba(0,0,0,0.2); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 6px; font-size: 12px;">
+                    <button id="check-toggle-entry-replace-panel" class="interactable" title="批量查找与替换" style="padding: 7px 12px; font-size: 11px; border-radius: 6px; cursor: pointer; background: rgba(255,255,255,0.06); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); display: flex; align-items: center; gap: 6px; white-space: nowrap; height: 34px;">
+                        <i class="fa-solid fa-magnifying-glass-arrow-right"></i> <i class="fa-solid fa-chevron-down"></i>
+                    </button>
                 </div>
+
+                <!-- 批量查找替换面板 (默认折叠) -->
+                <div id="check-entry-replace-panel" style="display: none; padding: 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--SmartThemeBorderColor); border-radius: 8px; margin-bottom: 12px; font-size: 12px;">
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                            <div style="flex: 1; min-width: 160px;">
+                                <label style="font-weight: bold; display: block; margin-bottom: 4px;">查找文本:</label>
+                                <input type="text" id="check-replace-search-input" class="interactable" placeholder="要查找的字符/正则..." style="width: 100%; padding: 6px 10px; background: rgba(0,0,0,0.2); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 4px; font-size: 12px; box-sizing: border-box;">
+                            </div>
+                            <div style="flex: 1; min-width: 160px;">
+                                <label style="font-weight: bold; display: block; margin-bottom: 4px;">替换为:</label>
+                                <input type="text" id="check-replace-target-input" class="interactable" placeholder="替换后的新字符..." style="width: 100%; padding: 6px 10px; background: rgba(0,0,0,0.2); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 4px; font-size: 12px; box-sizing: border-box;">
+                            </div>
+                        </div>
+
+                        <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap; font-size: 11px;">
+                            <label style="cursor: pointer; display: flex; align-items: center; gap: 4px; user-select: none;">
+                                <input type="checkbox" id="check-replace-use-regex" class="interactable" style="cursor: pointer;">
+                                <span>使用正则表达式 (Regex)</span>
+                            </label>
+                            <label style="cursor: pointer; display: flex; align-items: center; gap: 4px; user-select: none;">
+                                <input type="checkbox" id="check-replace-match-case" class="interactable" style="cursor: pointer;">
+                                <span>区分大小写 (Match Case)</span>
+                            </label>
+                            <label style="cursor: pointer; display: flex; align-items: center; gap: 4px; user-select: none;">
+                                <input type="checkbox" id="check-replace-only-search-results" class="interactable" style="cursor: pointer;">
+                                <span>仅作用于上方搜索筛选出的条目</span>
+                            </label>
+                        </div>
+
+                        <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px;">
+                            <button id="check-execute-step-replace" class="interactable" title="逐个确认替换" style="padding: 6px 14px; font-size: 12px; font-weight: bold; border-radius: 6px; cursor: pointer; background: var(--SmartThemeQuoteColor); color: white; border: none; display: inline-flex; align-items: center; gap: 6px;">
+                                <i class="fa-solid fa-rotate"></i>
+                            </button>
+                            <button id="check-execute-batch-replace" class="interactable" title="全部一键替换" style="padding: 6px 14px; font-size: 12px; border-radius: 6px; cursor: pointer; background: rgba(255,255,255,0.08); color: inherit; border: 1px solid var(--SmartThemeBorderColor); display: inline-flex; align-items: center; gap: 6px;">
+                                <i class="fa-solid fa-bolt"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
                 <div id="check-entry-list"></div>
             </div>
         `;
@@ -432,20 +476,10 @@ export const Checker = {
         let _isBatchVarMode = false;
 
         const updateBatchBtnState = () => {
-            const checkedVars = $('.var-card-checkbox:checked').map((_, el) => $(el).data('name')).get();
-            const checkedEntries = $('.var-entry-checkbox:checked').map((_, el) => ({
-                varName: $(el).data('var'),
-                entryName: $(el).data('entry'),
-                occType: $(el).data('occ-type')
-            })).get();
-
-            const totalCount = checkedVars.length + checkedEntries.length;
-            $('#selected-var-count').text(totalCount);
-
-            if (checkedEntries.length > 0) {
-                $('#check-batch-edit-selected-vars').css('display', 'inline-flex').html(`<i class="fa-solid fa-pen-to-square"></i> 批量修改选中条目 (${checkedEntries.length})`);
-            } else if (checkedVars.length > 0) {
-                $('#check-batch-edit-selected-vars').css('display', 'inline-flex').html(`<i class="fa-solid fa-pen-to-square"></i> 批量修改选中变量 (${checkedVars.length})`);
+            const count = $('.occ-item-checkbox:checked').length;
+            $('#selected-var-count').text(count);
+            if (count > 0) {
+                $('#check-batch-edit-selected-vars').css('display', 'inline-flex');
             } else {
                 $('#check-batch-edit-selected-vars').hide();
             }
@@ -455,7 +489,7 @@ export const Checker = {
             _isBatchVarMode = !_isBatchVarMode;
             const $btn = $(this);
             const $batchBar = $('#check-var-batch-bar');
-            const $checkboxes = $('.var-card-checkbox, .var-entry-checkbox');
+            const $checkboxes = $('.occ-item-checkbox');
 
             if (_isBatchVarMode) {
                 $btn.css({
@@ -478,36 +512,28 @@ export const Checker = {
             }
         });
 
-        $('body').off('change', '.var-card-checkbox, .var-entry-checkbox').on('change', '.var-card-checkbox, .var-entry-checkbox', function() {
+        $('body').off('change', '.occ-item-checkbox').on('change', '.occ-item-checkbox', function() {
             updateBatchBtnState();
         });
 
         $('body').off('change', '#check-var-select-all').on('change', '#check-var-select-all', function() {
             const checked = $(this).is(':checked');
-            $('.var-card-checkbox, .var-entry-checkbox').prop('checked', checked);
+            $('.occ-item-checkbox').prop('checked', checked);
             updateBatchBtnState();
         });
 
         $('body').off('click', '#check-batch-edit-selected-vars').on('click', '#check-batch-edit-selected-vars', function() {
-            const checkedEntries = $('.var-entry-checkbox:checked').map((_, el) => ({
+            const selected = $('.occ-item-checkbox:checked').map((_, el) => ({
                 varName: $(el).data('var'),
                 entryName: $(el).data('entry'),
-                occType: $(el).data('occ-type')
+                macroType: $(el).data('macro-type')
             })).get();
 
+            if (selected.length === 0) return;
             const targetPreset = $('#check-preset-select').val();
-
-            if (checkedEntries.length > 0) {
-                showVariableEntryEditModal(checkedEntries, targetPreset, () => {
-                    Checker.refreshResultsInPlace(targetPreset);
-                });
-            } else {
-                const checkedVars = $('.var-card-checkbox:checked').map((_, el) => $(el).data('name')).get();
-                if (checkedVars.length === 0) return;
-                showBatchVariableEditModal(checkedVars, targetPreset, () => {
-                    Checker.refreshResultsInPlace(targetPreset);
-                });
-            }
+            showBatchEntryVariableEditModal(selected, targetPreset, () => {
+                Checker.refreshResultsInPlace(targetPreset);
+            });
         });
 
         // --- Render XML Issues ---
@@ -630,6 +656,204 @@ export const Checker = {
         renderEntries();
         $('#check-entry-search').on('input', function () {
             renderEntries($(this).val());
+        });
+
+        $('#check-toggle-entry-replace-panel').off('click').on('click', function () {
+            const $panel = $('#check-entry-replace-panel');
+            $panel.slideToggle(200);
+            $(this).find('i.fa-chevron-down, i.fa-chevron-up').toggleClass('fa-chevron-down fa-chevron-up');
+        });
+
+        const collectMatches = ({ searchVal, replaceVal, useRegex, matchCase, onlyFiltered, searchFilter, targetPresetName }) => {
+            const pm = SillyTavern.getContext().getPresetManager('openai');
+            if (!pm) throw new Error('无法获取预设管理器');
+            const presetObj = pm.getCompletionPresetByName(targetPresetName);
+            if (!presetObj || !Array.isArray(presetObj.prompts)) throw new Error('未找到对应预设条目');
+
+            let regex;
+            if (useRegex) {
+                const flags = matchCase ? 'g' : 'gi';
+                regex = new RegExp(searchVal, flags);
+            } else {
+                const escapeRegExp = str => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const flags = matchCase ? 'g' : 'gi';
+                regex = new RegExp(escapeRegExp(searchVal), flags);
+            }
+
+            const matches = [];
+            presetObj.prompts.forEach(p => {
+                if (!p.content) return;
+
+                if (onlyFiltered && searchFilter) {
+                    const name = (p.name || p.identifier || '').toLowerCase();
+                    const content = p.content.toLowerCase();
+                    if (!name.includes(searchFilter) && !content.includes(searchFilter)) return;
+                }
+
+                const localFlags = regex.flags.includes('g') ? regex.flags : regex.flags + 'g';
+                const localRegex = new RegExp(regex.source, localFlags);
+                let m;
+                while ((m = localRegex.exec(p.content)) !== null) {
+                    const matchIndex = m.index;
+                    const matchText = m[0];
+                    const replacementText = matchText.replace(regex, replaceVal);
+
+                    const start = Math.max(0, matchIndex - 30);
+                    const end = Math.min(p.content.length, matchIndex + matchText.length + 30);
+
+                    const snippetBefore = (start > 0 ? '...' : '') + p.content.substring(start, matchIndex);
+                    const snippetAfter = p.content.substring(matchIndex + matchText.length, end) + (end < p.content.length ? '...' : '');
+
+                    matches.push({
+                        entryName: p.name || p.identifier || '未命名条目',
+                        promptObj: p,
+                        matchIndex,
+                        matchText,
+                        replacementText,
+                        snippetBefore,
+                        snippetAfter,
+                        doReplace: function() {
+                            p.content = p.content.substring(0, this.matchIndex) + replacementText + p.content.substring(this.matchIndex + matchText.length);
+                            return replacementText.length - matchText.length;
+                        }
+                    });
+                }
+            });
+
+            return { pm, presetObj, matches };
+        };
+
+        $('#check-execute-step-replace').off('click').on('click', async () => {
+            const searchVal = $('#check-replace-search-input').val();
+            const replaceVal = $('#check-replace-target-input').val() || '';
+            const useRegex = $('#check-replace-use-regex').is(':checked');
+            const matchCase = $('#check-replace-match-case').is(':checked');
+            const onlyFiltered = $('#check-replace-only-search-results').is(':checked');
+            const searchFilter = $('#check-entry-search').val().trim().toLowerCase();
+
+            if (!searchVal) {
+                toastr.warning('请输入要查找的文本');
+                return;
+            }
+
+            try {
+                const targetPresetName = $('#check-preset-select').val();
+                let result;
+                try {
+                    result = collectMatches({ searchVal, replaceVal, useRegex, matchCase, onlyFiltered, searchFilter, targetPresetName });
+                } catch (e) {
+                    toastr.error('正则表达式语法错误: ' + e.message);
+                    return;
+                }
+
+                const { pm, presetObj, matches } = result;
+
+                if (matches.length === 0) {
+                    toastr.info('未匹配到包含该查找文本的条目内容');
+                    return;
+                }
+
+                HistoryManager.record();
+
+                showStepByStepReplaceModal({
+                    matches,
+                    searchVal,
+                    replaceVal,
+                    presetName: targetPresetName,
+                    callback: async ({ replacedCount, skippedCount }) => {
+                        if (replacedCount > 0) {
+                            const isActive = pm.getSelectedPresetName() === targetPresetName;
+                            await savePresetWithoutRegexToast(pm, targetPresetName, presetObj, { skipUpdate: !isActive });
+
+                            toastr.success(`逐个确认替换完成：已替换 ${replacedCount} 处 (跳过 ${skippedCount} 处)`);
+                            this.addLog('逐个确认替换', `查找 "${searchVal}" 替换为 "${replaceVal}" (替换 ${replacedCount} 处, 跳过 ${skippedCount} 处)`);
+
+                            await this.refreshResultsInPlace(targetPresetName);
+                            window.dispatchEvent(new CustomEvent('zero-content-updated', { detail: { presetName: targetPresetName } }));
+                        } else {
+                            toastr.info('已取消，未作任何替换');
+                        }
+                    }
+                });
+            } catch (err) {
+                console.error('[Zero] Step replace failed:', err);
+                toastr.error('执行失败: ' + err.message);
+            }
+        });
+
+        $('#check-execute-batch-replace').off('click').on('click', async () => {
+            const searchVal = $('#check-replace-search-input').val();
+            const replaceVal = $('#check-replace-target-input').val() || '';
+            const useRegex = $('#check-replace-use-regex').is(':checked');
+            const matchCase = $('#check-replace-match-case').is(':checked');
+            const onlyFiltered = $('#check-replace-only-search-results').is(':checked');
+            const searchFilter = $('#check-entry-search').val().trim().toLowerCase();
+
+            if (!searchVal) {
+                toastr.warning('请输入要查找的文本');
+                return;
+            }
+
+            try {
+                const pm = SillyTavern.getContext().getPresetManager('openai');
+                if (!pm) throw new Error('无法获取预设管理器');
+                const targetPresetName = $('#check-preset-select').val();
+                const presetObj = pm.getCompletionPresetByName(targetPresetName);
+                if (!presetObj || !Array.isArray(presetObj.prompts)) throw new Error('未找到对应预设条目');
+
+                let regex;
+                try {
+                    if (useRegex) {
+                        const flags = matchCase ? 'g' : 'gi';
+                        regex = new RegExp(searchVal, flags);
+                    } else {
+                        const escapeRegExp = str => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                        const flags = matchCase ? 'g' : 'gi';
+                        regex = new RegExp(escapeRegExp(searchVal), flags);
+                    }
+                } catch (e) {
+                    toastr.error('正则表达式语法错误: ' + e.message);
+                    return;
+                }
+
+                HistoryManager.record();
+
+                let modifiedEntriesCount = 0;
+                let totalReplacementsCount = 0;
+
+                presetObj.prompts.forEach(p => {
+                    if (!p.content) return;
+
+                    if (onlyFiltered && searchFilter) {
+                        const name = (p.name || p.identifier || '').toLowerCase();
+                        const content = p.content.toLowerCase();
+                        if (!name.includes(searchFilter) && !content.includes(searchFilter)) return;
+                    }
+
+                    const matches = p.content.match(regex);
+                    if (matches && matches.length > 0) {
+                        p.content = p.content.replace(regex, replaceVal);
+                        modifiedEntriesCount++;
+                        totalReplacementsCount += matches.length;
+                    }
+                });
+
+                if (modifiedEntriesCount > 0) {
+                    const isActive = pm.getSelectedPresetName() === targetPresetName;
+                    await savePresetWithoutRegexToast(pm, targetPresetName, presetObj, { skipUpdate: !isActive });
+
+                    toastr.success(`批量替换完成：在 ${modifiedEntriesCount} 个条目中共替换了 ${totalReplacementsCount} 处`);
+                    this.addLog('批量替换文本', `查找 "${searchVal}" 替换为 "${replaceVal}" (${modifiedEntriesCount} 个条目, ${totalReplacementsCount} 处)`);
+                    
+                    await this.refreshResultsInPlace(targetPresetName);
+                    window.dispatchEvent(new CustomEvent('zero-content-updated', { detail: { presetName: targetPresetName } }));
+                } else {
+                    toastr.info('未匹配到包含该查找文本的条目内容');
+                }
+            } catch (err) {
+                console.error('[Zero] Batch replace failed:', err);
+                toastr.error('批量替换失败: ' + err.message);
+            }
         });
 
         const self = this;
@@ -789,7 +1013,6 @@ export const Checker = {
     },
 
     buildVariableRow(v, presetName, allVars) {
-        const isBatchActive = $('#check-var-batch-bar').is(':visible');
         const treatUninitAsProblem = localStorage.getItem('zero_check_treat_uninit_as_problem') === 'true';
 
         const isInitProblem = (treatUninitAsProblem && !v.hasInit) || (v.initCount > 1);
@@ -863,12 +1086,11 @@ export const Checker = {
             });
         }
 
+        const isBatchActive = $('#check-var-batch-bar').is(':visible');
         const occHtml = occurrences.map(o => `
-            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; opacity: 0.85; margin-top: 4px; padding: 3px 6px; background: rgba(0,0,0,0.1); border-radius: 4px;">
-                <div style="display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0;">
-                    <input type="checkbox" class="var-entry-checkbox interactable" data-var="${escapeHtml(v.name)}" data-entry="${escapeHtml(o.name)}" data-occ-type="${o.type}" style="display: ${isBatchActive ? 'inline-block' : 'none'}; cursor: pointer; accent-color: var(--SmartThemeQuoteColor);">
-                    <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">[${o.type.toUpperCase()}] ${escapeHtml(o.name)}</span>
-                </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; opacity: 0.7; margin-top: 4px; padding: 2px 4px; background: rgba(0,0,0,0.1); border-radius: 4px;">
+                <input type="checkbox" class="occ-item-checkbox interactable" data-var="${escapeHtml(v.name)}" data-entry="${escapeHtml(o.name)}" data-macro-type="${escapeHtml(o.type)}" style="display: ${isBatchActive ? 'inline-block' : 'none'}; cursor: pointer; accent-color: var(--SmartThemeQuoteColor); margin-right: 6px;">
+                <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">[${o.type.toUpperCase()}] ${escapeHtml(o.name)}</span>
                 <button class="occ-edit-btn interactable" data-entry="${escapeHtml(o.name)}" title="修改对应条目" style="background: none; border: none; color: inherit; cursor: pointer; padding: 2px 5px;"><i class="fa-solid fa-pencil"></i></button>
             </div>
         `).join('');
@@ -890,11 +1112,12 @@ export const Checker = {
             const name = p.name || p.identifier || `Entry ${idx + 1}`;
             const isRec = idx === recommendedPromptIndex;
             return `<option value="${idx}" ${isRec ? 'selected' : ''}>${escapeHtml(name)}${isRec ? ' [推荐]' : ''}</option>`;
+        }).join('');
+
         const row = $(`
             <div class="check-var-row" style="padding: 10px; background: rgba(255,255,255,0.03); border-radius: 8px; margin-bottom: 8px; border-left: 3px solid ${v.isProblem ? 'var(--SmartThemeQuoteColor)' : 'var(--SmartThemeBorderColor)'};">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <div style="display: flex; align-items: center; gap: 6px;">
-                        <input type="checkbox" class="var-card-checkbox interactable" data-name="${escapeHtml(v.name)}" style="display: ${isBatchActive ? 'inline-block' : 'none'}; cursor: pointer; accent-color: var(--SmartThemeQuoteColor);">
                         <div style="font-size: 13px; font-weight: bold; color: ${v.isProblem ? 'var(--SmartThemeQuoteColor)' : 'inherit'}">${escapeHtml(v.name)}</div>
                         <button class="var-rename-btn interactable" data-name="${escapeHtml(v.name)}" title="重命名此变量" style="background: none; border: none; color: var(--SmartThemeBodyColor); opacity: 0.6; cursor: pointer; padding: 2px 4px; font-size: 11px;"><i class="fa-solid fa-pen-to-square"></i></button>
                     </div>

@@ -1519,8 +1519,8 @@ export function showVariableRenameModal(oldName, presetName, callback) {
     $('#zero-var-rename-modal').remove();
 
     const modalHtml = `
-        <div id="zero-var-rename-modal" class="zero-modal-overlay" style="position: fixed; inset: 0; background: rgba(0, 0, 0, 0.65); backdrop-filter: blur(4px); z-index: 20000; display: flex; align-items: center; justify-content: center; padding: 20px;">
-            <div class="zero-modal-content" style="background: var(--SmartThemeChatTintColor, #222); border: 1px solid var(--SmartThemeBorderColor, #444); border-radius: 12px; width: 100%; max-width: 440px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); overflow: hidden; display: flex; flex-direction: column; color: var(--SmartThemeBodyColor, #ccc); font-family: inherit;">
+        <div id="zero-var-rename-modal" class="zero-modal-overlay" style="position: absolute; inset: 0; background: var(--SmartThemeChatTintColor, #1e1e2d); opacity: 1; border-radius: inherit; z-index: 20000; display: flex; align-items: center; justify-content: center; padding: 16px;">
+            <div class="zero-modal-content" style="background: var(--SmartThemeChatTintColor, #1e1e2d); border: 1px solid var(--SmartThemeBorderColor, #444); border-radius: 10px; width: 100%; max-width: 440px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); overflow: hidden; display: flex; flex-direction: column; color: var(--SmartThemeBodyColor, #ccc); font-family: inherit;">
                 <!-- Header -->
                 <div style="padding: 14px 16px; border-bottom: 1px solid var(--SmartThemeBorderColor, #444); display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.03);">
                     <div style="font-weight: bold; font-size: 14px; display: flex; align-items: center; gap: 8px;">
@@ -1554,14 +1554,18 @@ export function showVariableRenameModal(oldName, presetName, callback) {
 
                 <!-- Footer -->
                 <div style="padding: 12px 16px; border-top: 1px solid var(--SmartThemeBorderColor, #444); display: flex; justify-content: flex-end; gap: 10px; background: rgba(0,0,0,0.1);">
-                    <button id="cancel-rename-var-btn" class="interactable" style="padding: 6px 14px; background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor, #444); border-radius: 6px; color: inherit; cursor: pointer; font-size: 12px;">取消</button>
-                    <button id="confirm-rename-var-btn" class="interactable" style="padding: 6px 16px; background: var(--SmartThemeQuoteColor, #7b8cde); border: none; border-radius: 6px; color: white; cursor: pointer; font-size: 12px; font-weight: bold;">确认修改</button>
+                    <button id="cancel-rename-var-btn" class="interactable" title="取消" style="padding: 6px 14px; background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor, #444); border-radius: 6px; color: inherit; cursor: pointer; font-size: 12px;"><i class="fa-solid fa-xmark"></i></button>
+                    <button id="confirm-rename-var-btn" class="interactable" title="确认修改" style="padding: 6px 14px; background: var(--SmartThemeQuoteColor, #7b8cde); border: none; border-radius: 6px; color: white; cursor: pointer; font-size: 12px;"><i class="fa-solid fa-check"></i></button>
                 </div>
             </div>
         </div>
     `;
 
-    $('body').append(modalHtml);
+    const $container = $('#zero-preset-manager').length ? $('#zero-preset-manager') : ($('#zero-preset-dialog').length ? $('#zero-preset-dialog') : $('body'));
+    if ($container.css('position') === 'static') {
+        $container.css('position', 'relative');
+    }
+    $container.append(modalHtml);
     const $modal = $('#zero-var-rename-modal');
     $modal.find('#zero-rename-var-name-input').focus().select();
 
@@ -1649,8 +1653,8 @@ export function showBatchVariableEditModal(selectedNames, presetName, callback) 
     `).join('');
 
     const modalHtml = `
-        <div id="zero-batch-var-modal" class="zero-modal-overlay" style="position: fixed; inset: 0; background: rgba(0, 0, 0, 0.65); backdrop-filter: blur(4px); z-index: 20000; display: flex; align-items: center; justify-content: center; padding: 20px;">
-            <div class="zero-modal-content" style="background: var(--SmartThemeChatTintColor, #222); border: 1px solid var(--SmartThemeBorderColor, #444); border-radius: 12px; width: 100%; max-width: 480px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); overflow: hidden; display: flex; flex-direction: column; color: var(--SmartThemeBodyColor, #ccc); font-family: inherit;">
+        <div id="zero-batch-var-modal" class="zero-modal-overlay" style="position: absolute; inset: 0; background: var(--SmartThemeChatTintColor, #1e1e2d); opacity: 1; border-radius: inherit; z-index: 20000; display: flex; align-items: center; justify-content: center; padding: 16px;">
+            <div class="zero-modal-content" style="background: var(--SmartThemeChatTintColor, #1e1e2d); border: 1px solid var(--SmartThemeBorderColor, #444); border-radius: 10px; width: 100%; max-width: 480px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); overflow: hidden; display: flex; flex-direction: column; color: var(--SmartThemeBodyColor, #ccc); font-family: inherit;">
                 <!-- Header -->
                 <div style="padding: 14px 16px; border-bottom: 1px solid var(--SmartThemeBorderColor, #444); display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.03);">
                     <div style="font-weight: bold; font-size: 14px; display: flex; align-items: center; gap: 8px;">
@@ -1707,14 +1711,18 @@ export function showBatchVariableEditModal(selectedNames, presetName, callback) 
 
                 <!-- Footer -->
                 <div style="padding: 12px 16px; border-top: 1px solid var(--SmartThemeBorderColor, #444); display: flex; justify-content: flex-end; gap: 10px; background: rgba(0,0,0,0.1);">
-                    <button id="cancel-batch-var-btn" class="interactable" style="padding: 6px 14px; background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor, #444); border-radius: 6px; color: inherit; cursor: pointer; font-size: 12px;">取消</button>
-                    <button id="confirm-batch-var-btn" class="interactable" style="padding: 6px 16px; background: var(--SmartThemeQuoteColor, #7b8cde); border: none; border-radius: 6px; color: white; cursor: pointer; font-size: 12px; font-weight: bold;">应用批量修改</button>
+                    <button id="cancel-batch-var-btn" class="interactable" title="取消" style="padding: 6px 14px; background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor, #444); border-radius: 6px; color: inherit; cursor: pointer; font-size: 12px;"><i class="fa-solid fa-xmark"></i></button>
+                    <button id="confirm-batch-var-btn" class="interactable" title="应用批量修改" style="padding: 6px 14px; background: var(--SmartThemeQuoteColor, #7b8cde); border: none; border-radius: 6px; color: white; cursor: pointer; font-size: 12px;"><i class="fa-solid fa-check"></i></button>
                 </div>
             </div>
         </div>
     `;
 
-    $('body').append(modalHtml);
+    const $container = $('#zero-preset-manager').length ? $('#zero-preset-manager') : ($('#zero-preset-dialog').length ? $('#zero-preset-dialog') : $('body'));
+    if ($container.css('position') === 'static') {
+        $container.css('position', 'relative');
+    }
+    $container.append(modalHtml);
     const $modal = $('#zero-batch-var-modal');
     const closeModal = () => $modal.remove();
 
@@ -1817,33 +1825,33 @@ export function showBatchVariableEditModal(selectedNames, presetName, callback) 
     });
 }
 
-export function showVariableEntryEditModal(selectedItems, presetName, callback) {
+export function showBatchEntryVariableEditModal(selectedItems, presetName, callback) {
     if (!Array.isArray(selectedItems) || selectedItems.length === 0) {
         toastr.info('请先勾选需要修改的条目');
         return;
     }
 
-    $('#zero-entry-var-modal').remove();
+    $('#zero-batch-entry-var-modal').remove();
 
-    const varNames = [...new Set(selectedItems.map(item => item.varName))];
-    const defaultVarName = varNames.length === 1 ? varNames[0] : '';
-
-    const entriesHtml = selectedItems.map(item => `
-        <div style="font-size: 11px; padding: 4px 8px; background: rgba(255,255,255,0.04); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; display: flex; align-items: center; justify-content: space-between; gap: 6px;">
-            <span style="font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">${escapeHtml(item.entryName)}</span>
-            <span style="opacity: 0.7; font-size: 10px;">[${escapeHtml((item.occType || 'var').toUpperCase())}] 变量: <strong style="color: var(--SmartThemeQuoteColor);">${escapeHtml(item.varName)}</strong></span>
+    const entriesListHtml = selectedItems.map(item => `
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; padding: 4px 8px; background: rgba(255,255,255,0.05); border-radius: 4px; border: 1px solid var(--SmartThemeBorderColor);">
+            <span style="font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(item.entryName)}</span>
+            <span style="opacity: 0.7; font-size: 10px; margin-left: 8px; flex-shrink: 0;">(变量: ${escapeHtml(item.varName)}, 语法: ${escapeHtml(item.macroType.toUpperCase())})</span>
         </div>
     `).join('');
 
+    const defaultVarName = selectedItems[0].varName;
+    const sameVarName = selectedItems.every(i => i.varName === defaultVarName);
+
     const modalHtml = `
-        <div id="zero-entry-var-modal" class="zero-modal-overlay" style="position: fixed; inset: 0; background: rgba(0, 0, 0, 0.65); backdrop-filter: blur(4px); z-index: 20000; display: flex; align-items: center; justify-content: center; padding: 20px;">
-            <div class="zero-modal-content" style="background: var(--SmartThemeChatTintColor, #222); border: 1px solid var(--SmartThemeBorderColor, #444); border-radius: 12px; width: 100%; max-width: 480px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); overflow: hidden; display: flex; flex-direction: column; color: var(--SmartThemeBodyColor, #ccc); font-family: inherit;">
+        <div id="zero-batch-entry-var-modal" class="zero-modal-overlay" style="position: absolute; inset: 0; background: var(--SmartThemeChatTintColor, #1e1e2d); opacity: 1; border-radius: inherit; z-index: 20000; display: flex; align-items: center; justify-content: center; padding: 16px;">
+            <div class="zero-modal-content" style="background: var(--SmartThemeChatTintColor, #1e1e2d); border: 1px solid var(--SmartThemeBorderColor, #444); border-radius: 10px; width: 100%; max-width: 480px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); overflow: hidden; display: flex; flex-direction: column; color: var(--SmartThemeBodyColor, #ccc); font-family: inherit;">
                 <!-- Header -->
                 <div style="padding: 14px 16px; border-bottom: 1px solid var(--SmartThemeBorderColor, #444); display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.03);">
                     <div style="font-weight: bold; font-size: 14px; display: flex; align-items: center; gap: 8px;">
-                        <i class="fa-solid fa-pen-to-square" style="color: var(--SmartThemeQuoteColor);"></i> 批量修改选中条目中的变量 (${selectedItems.length} 个条目)
+                        <i class="fa-solid fa-list-check" style="color: var(--SmartThemeQuoteColor);"></i> 批量修改选中条目中的变量 (${selectedItems.length} 个条目)
                     </div>
-                    <div id="close-entry-var-modal" class="interactable" style="cursor: pointer; padding: 4px 8px; opacity: 0.7;"><i class="fa-solid fa-xmark"></i></div>
+                    <div id="close-batch-entry-var-modal" class="interactable" style="cursor: pointer; padding: 4px 8px; opacity: 0.7;"><i class="fa-solid fa-xmark"></i></div>
                 </div>
 
                 <!-- Body -->
@@ -1851,14 +1859,14 @@ export function showVariableEntryEditModal(selectedItems, presetName, callback) 
                     <div>
                         <label style="font-weight: bold; display: block; margin-bottom: 6px; color: var(--SmartThemeBodyColor);">已选条目 (${selectedItems.length} 个):</label>
                         <div style="display: flex; flex-direction: column; gap: 4px; max-height: 120px; overflow-y: auto; padding: 6px; background: rgba(0,0,0,0.2); border: 1px solid var(--SmartThemeBorderColor); border-radius: 6px;">
-                            ${entriesHtml}
+                            ${entriesListHtml}
                         </div>
                     </div>
 
                     <!-- Macro Type Change -->
                     <div>
-                        <label style="font-weight: bold; display: block; margin-bottom: 6px; color: var(--SmartThemeBodyColor);">1. 更改选中条目中的语法类型:</label>
-                        <select id="zero-entry-var-type-select" class="interactable" style="width: 100%; padding: 8px 10px; background: rgba(0,0,0,0.15); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 6px; font-size: 12px; box-sizing: border-box;">
+                        <label style="font-weight: bold; display: block; margin-bottom: 6px; color: var(--SmartThemeBodyColor);">1. 批量修改选中条目中的宏语法类型:</label>
+                        <select id="zero-batch-entry-type-select" class="interactable" style="width: 100%; padding: 8px 10px; background: rgba(0,0,0,0.15); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 6px; font-size: 12px; box-sizing: border-box;">
                             <option value="keep" selected>保持原语法类型 (不变动 set / add / get)</option>
                             <option value="set">统一转换为 set (赋值/设置，例: {{setvar::变量名::...}})</option>
                             <option value="add">统一转换为 add (累加/追加，例: {{addvar::变量名::...}})</option>
@@ -1866,34 +1874,38 @@ export function showVariableEntryEditModal(selectedItems, presetName, callback) 
                         </select>
                     </div>
 
-                    <!-- Rename Option -->
+                    <!-- Variable Rename -->
                     <div>
-                        <label style="font-weight: bold; display: block; margin-bottom: 6px; color: var(--SmartThemeBodyColor);">2. 重命名变量 (选填，留空则保持原名):</label>
-                        <input type="text" id="zero-entry-var-newname-input" class="interactable" value="${escapeHtml(defaultVarName)}" placeholder="${varNames.length === 1 ? '输入新变量名称...' : '多变量选定时留空保持各自原名'}" style="width: 100%; padding: 8px 10px; background: rgba(0,0,0,0.15); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 6px; font-size: 13px; box-sizing: border-box;">
+                        <label style="font-weight: bold; display: block; margin-bottom: 6px; color: var(--SmartThemeBodyColor);">2. 批量重命名变量 (留空则不更名):</label>
+                        <input type="text" id="zero-batch-entry-var-name-input" class="interactable" value="${sameVarName ? escapeHtml(defaultVarName) : ''}" placeholder="${sameVarName ? '输入新的变量名...' : '多选不同变量时，输入新统一变量名...'}" style="width: 100%; padding: 8px 10px; background: rgba(0,0,0,0.15); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 6px; font-size: 12px; box-sizing: border-box;">
                     </div>
                 </div>
 
                 <!-- Footer -->
                 <div style="padding: 12px 16px; border-top: 1px solid var(--SmartThemeBorderColor, #444); display: flex; justify-content: flex-end; gap: 10px; background: rgba(0,0,0,0.1);">
-                    <button id="cancel-entry-var-btn" class="interactable" style="padding: 6px 14px; background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor, #444); border-radius: 6px; color: inherit; cursor: pointer; font-size: 12px;">取消</button>
-                    <button id="confirm-entry-var-btn" class="interactable" style="padding: 6px 16px; background: var(--SmartThemeQuoteColor, #7b8cde); border: none; border-radius: 6px; color: white; cursor: pointer; font-size: 12px; font-weight: bold;">应用修改</button>
+                    <button id="cancel-batch-entry-var-btn" class="interactable" title="取消" style="padding: 6px 14px; background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor, #444); border-radius: 6px; color: inherit; cursor: pointer; font-size: 12px;"><i class="fa-solid fa-xmark"></i></button>
+                    <button id="confirm-batch-entry-var-btn" class="interactable" title="应用修改" style="padding: 6px 14px; background: var(--SmartThemeQuoteColor, #7b8cde); border: none; border-radius: 6px; color: white; cursor: pointer; font-size: 12px;"><i class="fa-solid fa-check"></i></button>
                 </div>
             </div>
         </div>
     `;
 
-    $('body').append(modalHtml);
-    const $modal = $('#zero-entry-var-modal');
+    const $container = $('#zero-preset-manager').length ? $('#zero-preset-manager') : ($('#zero-preset-dialog').length ? $('#zero-preset-dialog') : $('body'));
+    if ($container.css('position') === 'static') {
+        $container.css('position', 'relative');
+    }
+    $container.append(modalHtml);
+    const $modal = $('#zero-batch-entry-var-modal');
     const closeModal = () => $modal.remove();
 
-    $modal.find('#close-entry-var-modal, #cancel-entry-var-btn').on('click', closeModal);
+    $modal.find('#close-batch-entry-var-modal, #cancel-batch-entry-var-btn').on('click', closeModal);
 
-    $modal.find('#confirm-entry-var-btn').on('click', async () => {
-        const targetType = $modal.find('#zero-entry-var-type-select').val();
-        const newNameInput = $modal.find('#zero-entry-var-newname-input').val().trim();
+    $modal.find('#confirm-batch-entry-var-btn').on('click', async () => {
+        const targetType = $modal.find('#zero-batch-entry-type-select').val();
+        const newVarInput = $modal.find('#zero-batch-entry-var-name-input').val().trim();
 
-        if (targetType === 'keep' && !newNameInput) {
-            toastr.info('未做任何变动设置');
+        if (targetType === 'keep' && !newVarInput) {
+            toastr.info('未做任何修改');
             return;
         }
 
@@ -1908,65 +1920,192 @@ export function showVariableEntryEditModal(selectedItems, presetName, callback) 
 
             HistoryManager.record();
 
-            const entryMap = new Map();
             selectedItems.forEach(item => {
-                if (!entryMap.has(item.entryName)) entryMap.set(item.entryName, []);
-                entryMap.get(item.entryName).push(item);
-            });
+                const targetPrompt = presetObj.prompts.find(p => (p.name || p.identifier) === item.entryName);
+                if (!targetPrompt || !targetPrompt.content) return;
 
-            presetObj.prompts.forEach(p => {
-                const entryName = p.name || p.identifier;
-                if (!entryMap.has(entryName) || !p.content) return;
+                const oldVar = item.varName;
+                const newVar = newVarInput || oldVar;
 
-                const items = entryMap.get(entryName);
-                let entryChanged = false;
+                const regex = new RegExp(`(\\{\\{)(set|setglobal|add|addglobal|get|getglobal)(var::)${escapeRegExp(oldVar)}(::[\\s\\S]*?|\\}\\})`, 'gi');
 
-                items.forEach(item => {
-                    const oldName = item.varName;
-                    const targetName = newNameInput || oldName;
-                    const regex = new RegExp(`(\\{\\{)(set|setglobal|add|addglobal|get|getglobal)(var::)${escapeRegExp(oldName)}(::[\\s\\S]*?|\\}\\})`, 'gi');
+                let modified = false;
+                targetPrompt.content = targetPrompt.content.replace(regex, (match, p1, p2, p3, p4) => {
+                    modified = true;
+                    let newType = p2;
+                    if (targetType === 'set') {
+                        newType = p2.includes('global') ? 'setglobal' : 'set';
+                    } else if (targetType === 'add') {
+                        newType = p2.includes('global') ? 'addglobal' : 'add';
+                    } else if (targetType === 'get') {
+                        newType = p2.includes('global') ? 'getglobal' : 'get';
+                    }
 
-                    p.content = p.content.replace(regex, (match, p1, p2, p3, p4) => {
-                        entryChanged = true;
-                        let newType = p2;
-                        if (targetType === 'set') {
-                            newType = p2.includes('global') ? 'setglobal' : 'set';
-                        } else if (targetType === 'add') {
-                            newType = p2.includes('global') ? 'addglobal' : 'add';
-                        } else if (targetType === 'get') {
-                            newType = p2.includes('global') ? 'getglobal' : 'get';
-                        }
+                    if (targetType === 'get' || newType.startsWith('get')) {
+                        return `{{${newType}var::${newVar}}}`;
+                    }
 
-                        if (targetType === 'get' || newType.startsWith('get')) {
-                            return `{{${newType}var::${targetName}}}`;
-                        }
-
-                        let tail = p4;
-                        if (p4 === '}}') tail = '::}}';
-                        return `{{${newType}var::${targetName}${tail}}`;
-                    });
+                    let tail = p4;
+                    if (p4 === '}}') tail = '::}}';
+                    return `{{${newType}var::${newVar}${tail}}`;
                 });
 
-                if (entryChanged) modifiedEntriesCount++;
+                if (modified) modifiedEntriesCount++;
             });
 
             if (modifiedEntriesCount > 0) {
                 const isActive = pm.getSelectedPresetName() === presetName;
                 await savePresetWithoutRegexToast(pm, presetName, presetObj, { skipUpdate: !isActive });
 
-                toastr.success(`已成功在 ${modifiedEntriesCount} 个条目中完成变量修改`);
+                toastr.success(`已成功修改 ${modifiedEntriesCount} 个指定条目中的变量语法`);
                 closeModal();
                 window.dispatchEvent(new CustomEvent('zero-content-updated', { detail: { presetName } }));
                 if (typeof callback === 'function') callback({ modifiedEntriesCount });
             } else {
-                toastr.info('未找到对应的变量匹配项');
+                toastr.info('选中的条目中未匹配到可修改的变量');
                 closeModal();
             }
         } catch (err) {
-            console.error('[Zero] Entry variable edit failed:', err);
-            toastr.error('操作失败: ' + err.message);
+            console.error('[Zero] Batch edit entry variables failed:', err);
+            toastr.error('修改失败: ' + err.message);
         }
     });
+}
+
+export function showStepByStepReplaceModal({ matches, searchVal, replaceVal, presetName, callback }) {
+    if (!Array.isArray(matches) || matches.length === 0) {
+        toastr.info('未找到任何匹配项');
+        return;
+    }
+
+    $('#zero-replace-confirm-modal').remove();
+
+    let currentIndex = 0;
+    let replacedCount = 0;
+    let skippedCount = 0;
+
+    const modalHtml = `
+        <div id="zero-replace-confirm-modal" class="zero-modal-overlay" style="position: absolute; inset: 0; background: var(--SmartThemeChatTintColor, #1e1e2d); opacity: 1; border-radius: inherit; z-index: 20000; display: flex; align-items: center; justify-content: center; padding: 16px;">
+            <div class="zero-modal-content" style="background: var(--SmartThemeChatTintColor, #1e1e2d); border: 1px solid var(--SmartThemeBorderColor, #444); border-radius: 10px; width: 100%; max-width: 540px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); overflow: hidden; display: flex; flex-direction: column; color: var(--SmartThemeBodyColor, #ccc); font-family: inherit;">
+                <!-- Header -->
+                <div style="padding: 14px 16px; border-bottom: 1px solid var(--SmartThemeBorderColor, #444); display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.03);">
+                    <div style="font-weight: bold; font-size: 14px; display: flex; align-items: center; gap: 8px;">
+                        <i class="fa-solid fa-rotate" style="color: var(--SmartThemeQuoteColor);"></i> 逐个确认替换
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div id="confirm-step-progress" style="font-size: 11px; opacity: 0.85; font-weight: bold; background: rgba(255,255,255,0.08); padding: 3px 10px; border-radius: 10px;">
+                            1 / ${matches.length}
+                        </div>
+                        <div id="close-step-replace-modal" class="interactable" style="cursor: pointer; padding: 4px 8px; opacity: 0.7;"><i class="fa-solid fa-xmark"></i></div>
+                    </div>
+                </div>
+
+                <!-- Body -->
+                <div style="padding: 16px; display: flex; flex-direction: column; gap: 12px; font-size: 12px; overflow-y: auto; max-height: 60vh;">
+                    <div>
+                        <span style="opacity: 0.7;">当前条目：</span>
+                        <strong id="step-entry-name" style="font-size: 13px; color: var(--SmartThemeBodyColor);"></strong>
+                    </div>
+
+                    <div>
+                        <label style="font-weight: bold; display: block; margin-bottom: 4px; color: var(--SmartThemeEmColor);">替换前文本:</label>
+                        <div id="step-before-snippet" style="padding: 8px 10px; background: rgba(0,0,0,0.25); border: 1px dashed rgba(255, 100, 100, 0.4); border-radius: 6px; font-family: monospace; font-size: 11px; line-height: 1.4; word-break: break-all; white-space: pre-wrap;"></div>
+                    </div>
+
+                    <div>
+                        <label style="font-weight: bold; display: block; margin-bottom: 4px; color: var(--zero-success-color, #44cc77);">替换后预览:</label>
+                        <div id="step-after-snippet" style="padding: 8px 10px; background: rgba(0,0,0,0.25); border: 1px dashed rgba(100, 220, 120, 0.4); border-radius: 6px; font-family: monospace; font-size: 11px; line-height: 1.4; word-break: break-all; white-space: pre-wrap;"></div>
+                    </div>
+                </div>
+
+                <!-- Footer Actions -->
+                <div style="padding: 12px 16px; border-top: 1px solid var(--SmartThemeBorderColor, #444); display: flex; align-items: center; justify-content: space-between; gap: 8px; background: rgba(0,0,0,0.1); flex-wrap: wrap;">
+                    <button id="step-btn-all" class="interactable" title="剩余全部替换" style="padding: 6px 12px; background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor); border-radius: 6px; color: inherit; cursor: pointer; font-size: 11px;"><i class="fa-solid fa-angles-right"></i></button>
+                    <div style="display: flex; gap: 8px;">
+                        <button id="step-btn-skip" class="interactable" title="跳过当前匹配项" style="padding: 6px 14px; background: rgba(255,255,255,0.08); border: 1px solid var(--SmartThemeBorderColor); border-radius: 6px; color: inherit; cursor: pointer; font-size: 12px;"><i class="fa-solid fa-forward"></i></button>
+                        <button id="step-btn-replace" class="interactable" title="替换当前匹配项" style="padding: 6px 16px; background: var(--SmartThemeQuoteColor); border: none; border-radius: 6px; color: white; cursor: pointer; font-size: 12px;"><i class="fa-solid fa-check"></i></button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    const $container = $('#zero-preset-manager').length ? $('#zero-preset-manager') : ($('#zero-preset-dialog').length ? $('#zero-preset-dialog') : $('body'));
+    if ($container.css('position') === 'static') {
+        $container.css('position', 'relative');
+    }
+    $container.append(modalHtml);
+    const $modal = $('#zero-replace-confirm-modal');
+
+    const updateStepView = () => {
+        if (currentIndex >= matches.length) {
+            finishProcess();
+            return;
+        }
+
+        const item = matches[currentIndex];
+        $modal.find('#confirm-step-progress').text(`${currentIndex + 1} / ${matches.length}`);
+        $modal.find('#step-entry-name').text(item.entryName);
+
+        const beforeHtml = escapeHtml(item.snippetBefore) +
+            `<span style="background: rgba(255, 60, 60, 0.35); color: #ff9999; font-weight: bold; border-radius: 2px; padding: 0 2px;">${escapeHtml(item.matchText)}</span>` +
+            escapeHtml(item.snippetAfter);
+
+        const afterHtml = escapeHtml(item.snippetBefore) +
+            `<span style="background: rgba(40, 200, 100, 0.35); color: #77ffbb; font-weight: bold; border-radius: 2px; padding: 0 2px;">${escapeHtml(item.replacementText)}</span>` +
+            escapeHtml(item.snippetAfter);
+
+        $modal.find('#step-before-snippet').html(beforeHtml);
+        $modal.find('#step-after-snippet').html(afterHtml);
+    };
+
+    const finishProcess = async () => {
+        $modal.remove();
+        if (typeof callback === 'function') {
+            await callback({ replacedCount, skippedCount });
+        }
+    };
+
+    $modal.find('#close-step-replace-modal').on('click', finishProcess);
+
+    $modal.find('#step-btn-replace').on('click', () => {
+        const item = matches[currentIndex];
+        const delta = item.doReplace();
+
+        // Adjust matchIndex for remaining matches in the same prompt
+        for (let i = currentIndex + 1; i < matches.length; i++) {
+            if (matches[i].promptObj === item.promptObj) {
+                matches[i].matchIndex += delta;
+            }
+        }
+
+        replacedCount++;
+        currentIndex++;
+        updateStepView();
+    });
+
+    $modal.find('#step-btn-skip').on('click', () => {
+        skippedCount++;
+        currentIndex++;
+        updateStepView();
+    });
+
+    $modal.find('#step-btn-all').on('click', () => {
+        while (currentIndex < matches.length) {
+            const item = matches[currentIndex];
+            const delta = item.doReplace();
+            for (let i = currentIndex + 1; i < matches.length; i++) {
+                if (matches[i].promptObj === item.promptObj) {
+                    matches[i].matchIndex += delta;
+                }
+            }
+            replacedCount++;
+            currentIndex++;
+        }
+        updateStepView();
+    });
+
+    updateStepView();
 }
 
 

@@ -182,8 +182,8 @@ export async function performAutoMatch(forceRefresh = false) {
         return;
     }
     
-    if (!nameA || !nameB) {
-        $list.html('<p style="text-align: center; opacity: 0.5; margin-top: 40px;">请分别在上方选择对比预设 A 与预设 B</p>');
+    if (!nameA && !nameB) {
+        $list.html('<p style="text-align: center; opacity: 0.5; margin-top: 20px;">请至少选择一个预设</p>');
         return;
     }
 
