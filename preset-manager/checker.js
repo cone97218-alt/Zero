@@ -418,13 +418,21 @@ export const Checker = {
                                 <input type="checkbox" id="check-replace-use-regex" class="interactable" style="cursor: pointer;">
                                 <span>使用正则表达式 (Regex)</span>
                             </label>
-                            <label style="cursor: pointer; display: flex; align-items: center; gap: 4px; user-select: none;">
+                            <label style="cursor: pointer; display: flex; align-items: center; gap: 4px; user-select: none;" title="区分大小写">
                                 <input type="checkbox" id="check-replace-match-case" class="interactable" style="cursor: pointer;">
                                 <span>区分大小写 (Match Case)</span>
                             </label>
-                            <label style="cursor: pointer; display: flex; align-items: center; gap: 4px; user-select: none;">
+                            <label style="cursor: pointer; display: flex; align-items: center; gap: 4px; user-select: none;" title="仅在包含上方搜索框结果的条目中查找替换">
                                 <input type="checkbox" id="check-replace-only-search-results" class="interactable" style="cursor: pointer;">
-                                <span>仅作用于上方搜索筛选出的条目</span>
+                                <span>仅作用于搜索筛选出的条目</span>
+                            </label>
+                            <label style="cursor: pointer; display: flex; align-items: center; gap: 4px; user-select: none;" title="仅在下方勾选选中的条目中查找替换">
+                                <input type="checkbox" id="check-replace-only-checked-entries" class="interactable" style="cursor: pointer; accent-color: var(--SmartThemeQuoteColor);">
+                                <span>仅作用于勾选条目 (<span id="checked-entry-count">0</span>)</span>
+                            </label>
+                            <label style="cursor: pointer; display: flex; align-items: center; gap: 4px; user-select: none;" title="全选/取消全选当前显示的条目">
+                                <input type="checkbox" id="check-entry-select-all" class="interactable" style="cursor: pointer; accent-color: var(--SmartThemeQuoteColor);">
+                                <span>全选列表</span>
                             </label>
                         </div>
 
@@ -622,6 +630,16 @@ export const Checker = {
 
         // --- Render All Entries ---
         const $entryList = $('#check-entry-list');
+        const selectedEntryNames = new Set();
+
+        const updateCheckedEntryCount = () => {
+            const count = selectedEntryNames.size;
+            $('#checked-entry-count').text(count);
+            if (count > 0) {
+                $('#check-replace-only-checked-entries').prop('checked', true);
+            }
+        };
+
         const renderEntries = (filter = '') => {
             $entryList.empty();
             const lowerFilter = filter.toLowerCase();
@@ -635,10 +653,15 @@ export const Checker = {
 
                 if (filter && !nameMatch && !contentMatch) return;
 
+                const isChecked = selectedEntryNames.has(name);
+
                 const row = $(`
                     <div class="check-entry-row" style="display: flex; flex-direction: column; gap: 4px; padding: 10px; background: rgba(255,255,255,0.03); border-radius: 8px; margin-bottom: 6px; font-size: 13px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span style="font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">${escapeHtml(name)}</span>
+                        <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+                            <label style="display: flex; align-items: center; gap: 8px; flex: 1; overflow: hidden; margin: 0; cursor: pointer; user-select: none;">
+                                <input type="checkbox" class="entry-item-checkbox interactable" data-entry="${escapeHtml(name)}" style="cursor: pointer; accent-color: var(--SmartThemeQuoteColor);" ${isChecked ? 'checked' : ''}>
+                                <span style="font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">${escapeHtml(name)}</span>
+                            </label>
                             <button class="entry-edit-btn interactable" title="修改条目" style="padding: 4px 8px; background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; color: inherit; cursor: pointer; font-size: 11px;"><i class="fa-solid fa-pencil"></i></button>
                         </div>
                         ${filter && contentMatch ? `
@@ -654,8 +677,33 @@ export const Checker = {
         };
 
         renderEntries();
+
         $('#check-entry-search').on('input', function () {
             renderEntries($(this).val());
+        });
+
+        $('body').off('change', '.entry-item-checkbox').on('change', '.entry-item-checkbox', function() {
+            const entryName = $(this).attr('data-entry');
+            if (!entryName) return;
+            if ($(this).is(':checked')) {
+                selectedEntryNames.add(entryName);
+            } else {
+                selectedEntryNames.delete(entryName);
+            }
+            updateCheckedEntryCount();
+        });
+
+        $('body').off('change', '#check-entry-select-all').on('change', '#check-entry-select-all', function() {
+            const isChecked = $(this).is(':checked');
+            $('.entry-item-checkbox').each(function() {
+                $(this).prop('checked', isChecked);
+                const entryName = $(this).attr('data-entry');
+                if (entryName) {
+                    if (isChecked) selectedEntryNames.add(entryName);
+                    else selectedEntryNames.delete(entryName);
+                }
+            });
+            updateCheckedEntryCount();
         });
 
         $('#check-toggle-entry-replace-panel').off('click').on('click', function () {
@@ -664,7 +712,7 @@ export const Checker = {
             $(this).find('i.fa-chevron-down, i.fa-chevron-up').toggleClass('fa-chevron-down fa-chevron-up');
         });
 
-        const collectMatches = ({ searchVal, replaceVal, useRegex, matchCase, onlyFiltered, searchFilter, targetPresetName }) => {
+        const collectMatches = ({ searchVal, replaceVal, useRegex, matchCase, onlyFiltered, searchFilter, onlyChecked, targetPresetName }) => {
             const pm = SillyTavern.getContext().getPresetManager('openai');
             if (!pm) throw new Error('无法获取预设管理器');
             const presetObj = pm.getCompletionPresetByName(targetPresetName);
@@ -683,11 +731,16 @@ export const Checker = {
             const matches = [];
             presetObj.prompts.forEach(p => {
                 if (!p.content) return;
+                const entryName = p.name || p.identifier || '';
+
+                if (onlyChecked && selectedEntryNames.size > 0) {
+                    if (!selectedEntryNames.has(entryName)) return;
+                }
 
                 if (onlyFiltered && searchFilter) {
-                    const name = (p.name || p.identifier || '').toLowerCase();
-                    const content = p.content.toLowerCase();
-                    if (!name.includes(searchFilter) && !content.includes(searchFilter)) return;
+                    const nameLower = entryName.toLowerCase();
+                    const contentLower = p.content.toLowerCase();
+                    if (!nameLower.includes(searchFilter) && !contentLower.includes(searchFilter)) return;
                 }
 
                 const localFlags = regex.flags.includes('g') ? regex.flags : regex.flags + 'g';
@@ -705,7 +758,7 @@ export const Checker = {
                     const snippetAfter = p.content.substring(matchIndex + matchText.length, end) + (end < p.content.length ? '...' : '');
 
                     matches.push({
-                        entryName: p.name || p.identifier || '未命名条目',
+                        entryName: entryName || '未命名条目',
                         promptObj: p,
                         matchIndex,
                         matchText,
@@ -729,6 +782,7 @@ export const Checker = {
             const useRegex = $('#check-replace-use-regex').is(':checked');
             const matchCase = $('#check-replace-match-case').is(':checked');
             const onlyFiltered = $('#check-replace-only-search-results').is(':checked');
+            const onlyChecked = $('#check-replace-only-checked-entries').is(':checked');
             const searchFilter = $('#check-entry-search').val().trim().toLowerCase();
 
             if (!searchVal) {
@@ -740,7 +794,7 @@ export const Checker = {
                 const targetPresetName = $('#check-preset-select').val();
                 let result;
                 try {
-                    result = collectMatches({ searchVal, replaceVal, useRegex, matchCase, onlyFiltered, searchFilter, targetPresetName });
+                    result = collectMatches({ searchVal, replaceVal, useRegex, matchCase, onlyFiltered, searchFilter, onlyChecked, targetPresetName });
                 } catch (e) {
                     toastr.error('正则表达式语法错误: ' + e.message);
                     return;
@@ -787,6 +841,7 @@ export const Checker = {
             const useRegex = $('#check-replace-use-regex').is(':checked');
             const matchCase = $('#check-replace-match-case').is(':checked');
             const onlyFiltered = $('#check-replace-only-search-results').is(':checked');
+            const onlyChecked = $('#check-replace-only-checked-entries').is(':checked');
             const searchFilter = $('#check-entry-search').val().trim().toLowerCase();
 
             if (!searchVal) {
@@ -795,48 +850,33 @@ export const Checker = {
             }
 
             try {
-                const pm = SillyTavern.getContext().getPresetManager('openai');
-                if (!pm) throw new Error('无法获取预设管理器');
                 const targetPresetName = $('#check-preset-select').val();
-                const presetObj = pm.getCompletionPresetByName(targetPresetName);
-                if (!presetObj || !Array.isArray(presetObj.prompts)) throw new Error('未找到对应预设条目');
-
-                let regex;
+                let result;
                 try {
-                    if (useRegex) {
-                        const flags = matchCase ? 'g' : 'gi';
-                        regex = new RegExp(searchVal, flags);
-                    } else {
-                        const escapeRegExp = str => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                        const flags = matchCase ? 'g' : 'gi';
-                        regex = new RegExp(escapeRegExp(searchVal), flags);
-                    }
+                    result = collectMatches({ searchVal, replaceVal, useRegex, matchCase, onlyFiltered, searchFilter, onlyChecked, targetPresetName });
                 } catch (e) {
                     toastr.error('正则表达式语法错误: ' + e.message);
+                    return;
+                }
+
+                const { pm, presetObj, matches } = result;
+
+                if (matches.length === 0) {
+                    toastr.info('未匹配到包含该查找文本的条目内容');
                     return;
                 }
 
                 HistoryManager.record();
 
                 let modifiedEntriesCount = 0;
-                let totalReplacementsCount = 0;
+                let totalReplacementsCount = matches.length;
+                const modifiedPromptsSet = new Set();
 
-                presetObj.prompts.forEach(p => {
-                    if (!p.content) return;
-
-                    if (onlyFiltered && searchFilter) {
-                        const name = (p.name || p.identifier || '').toLowerCase();
-                        const content = p.content.toLowerCase();
-                        if (!name.includes(searchFilter) && !content.includes(searchFilter)) return;
-                    }
-
-                    const matches = p.content.match(regex);
-                    if (matches && matches.length > 0) {
-                        p.content = p.content.replace(regex, replaceVal);
-                        modifiedEntriesCount++;
-                        totalReplacementsCount += matches.length;
-                    }
+                matches.forEach(m => {
+                    m.doReplace();
+                    modifiedPromptsSet.add(m.promptObj);
                 });
+                modifiedEntriesCount = modifiedPromptsSet.size;
 
                 if (modifiedEntriesCount > 0) {
                     const isActive = pm.getSelectedPresetName() === targetPresetName;
