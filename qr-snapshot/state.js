@@ -262,10 +262,15 @@ export const PresetManager = {
 
         const ctx = window.SillyTavern?.getContext?.();
         const pm = ctx?.getPresetManager?.('openai');
-        if (!pm) return false;
+        console.log('[Zero:switchPreset] target:', name, '| pm:', pm ? 'OK' : 'NULL');
+        if (!pm) {
+            console.error('[Zero:switchPreset] No presetManager found via getContext().getPresetManager("openai")');
+            return false;
+        }
 
         // Check if already selected
         const currentName = pm.getSelectedPresetName?.();
+        console.log('[Zero:switchPreset] current:', currentName);
         if (currentName === name) {
             await this.load();
             return true;
@@ -281,6 +286,7 @@ export const PresetManager = {
             selectEl = document.getElementById('settings_preset_openai');
             if (selectEl) pm.select = selectEl;
         }
+        console.log('[Zero:switchPreset] selectEl:', selectEl, '| options.length:', selectEl?.options?.length);
 
         let switched = false;
 
@@ -288,6 +294,7 @@ export const PresetManager = {
             // Use pm API with real select (it knows the correct option values)
             try {
                 const targetVal = pm.findPreset?.(name);
+                console.log('[Zero:switchPreset] findPreset("' + name + '") =>', targetVal);
                 if (targetVal !== undefined && targetVal !== null && targetVal !== '') {
                     const eventSource = ctx?.eventSource;
                     const event_types = ctx?.event_types;
@@ -304,10 +311,15 @@ export const PresetManager = {
                     pm.selectPreset(targetVal);
                     await switchPromise;
                     switched = true;
+                    console.log('[Zero:switchPreset] pm.selectPreset succeeded');
+                } else {
+                    console.warn('[Zero:switchPreset] findPreset returned empty/null for:', name, '| All options:', Array.from(selectEl.options).map(o => o.textContent.trim()));
                 }
             } catch (e) {
-                console.warn('[Zero] pm.selectPreset failed:', e);
+                console.error('[Zero:switchPreset] pm.selectPreset threw:', e);
             }
+        } else {
+            console.warn('[Zero:switchPreset] selectEl missing or empty. selectEl:', selectEl);
         }
 
         // Fallback: manually set the select value and fire change
@@ -315,12 +327,14 @@ export const PresetManager = {
             const opt = Array.from(selectEl.options).find(
                 o => o.textContent.trim() === name || o.value === name
             );
+            console.log('[Zero:switchPreset] fallback DOM option:', opt);
             if (opt) {
                 selectEl.value = opt.value;
                 selectEl.dispatchEvent(new Event('change', { bubbles: true }));
                 if (typeof $ !== 'undefined') $(selectEl).trigger('change');
                 await new Promise(r => setTimeout(r, 200));
                 switched = true;
+                console.log('[Zero:switchPreset] fallback DOM switch done');
             }
         }
 
@@ -330,7 +344,7 @@ export const PresetManager = {
                 window.triggerZeroApiLinkage(name);
             }
         } else {
-            console.warn('[Zero] switchPreset: could not find preset in select:', name);
+            console.error('[Zero:switchPreset] FAILED to switch to:', name, '| pm.select:', pm.select);
         }
 
         return switched;
@@ -370,6 +384,7 @@ export const PresetManager = {
         //    Do NOT rely on promptManager.activeCharacter — it may be null.
         const openai = await getOpenai();
         const promptManager = openai?.promptManager;
+        console.log('[Zero:togglePrompt]', identifier, enabled, '| pm:', !!promptManager, '| serviceSettings:', !!promptManager?.serviceSettings, '| prompt_order len:', promptManager?.serviceSettings?.prompt_order?.length);
         if (promptManager) {
             // Resolve display name before modifying order
             if (!itemName || itemName === identifier) {
@@ -391,11 +406,16 @@ export const PresetManager = {
                 const o = order.find(item => item.identifier === identifier);
                 if (o) { o.enabled = enabled; changed = true; }
             });
+            console.log('[Zero:togglePrompt] allOrders.length:', allOrders.length, '| changed:', changed);
 
             if (changed) {
                 promptManager.saveServiceSettings?.();
                 // Do NOT call render() here — it can conflict with Zero's panel state.
+            } else {
+                console.warn('[Zero:togglePrompt] identifier not found in any prompt_order! identifier:', identifier, '\nAll identifiers in first order:', promptManager?.serviceSettings?.prompt_order?.[0]?.order?.map(o => o.identifier));
             }
+        } else {
+            console.error('[Zero:togglePrompt] promptManager is null! openai module:', openai);
         }
 
         // Record operation log
@@ -404,6 +424,7 @@ export const PresetManager = {
             'toggle', '开关', itemName,
             enabled ? '切换为 [开启]' : '切换为 [关闭]'
         );
+        console.log('[Zero:togglePrompt] OpLog added, preset:', _preset?.name || pm?.getSelectedPresetName?.());
 
         import('../preset-manager/utils.js')
             .then(m => m.syncBoundRegexOnPromptToggle([{ identifier, enabled }]))
@@ -414,6 +435,8 @@ export const PresetManager = {
     async batchToggleMap(toggleMap, skipOpLog = false) {
         HistoryManager.record();
         if (!_preset) await this.load();
+
+        console.log('[Zero:batchToggleMap] called, size:', toggleMap.size, 'skipOpLog:', skipOpLog, 'entries:', Array.from(toggleMap.entries()));
 
         // 1. Mutate Zero's internal cache
         if (_preset && Array.isArray(_preset.prompts)) {
@@ -450,6 +473,7 @@ export const PresetManager = {
         //    Do NOT use promptManager.activeCharacter — it may be null.
         const openai = await getOpenai();
         const promptManager = openai?.promptManager;
+        console.log('[Zero:batchToggleMap] promptManager:', !!promptManager, '| serviceSettings:', !!promptManager?.serviceSettings, '| prompt_order:', promptManager?.serviceSettings?.prompt_order?.length);
         if (promptManager) {
             const tokenCounts = (promptManager.tokenHandler &&
                 typeof promptManager.tokenHandler.getCounts === 'function')
@@ -467,16 +491,22 @@ export const PresetManager = {
                     }
                 });
             });
+            console.log('[Zero:batchToggleMap] allOrders.length:', allOrders.length, '| changed:', changed);
 
             if (changed) {
                 promptManager.saveServiceSettings?.();
                 // Do NOT call render() — it can conflict with Zero's panel state.
+            } else {
+                console.warn('[Zero:batchToggleMap] No matching identifiers found in any prompt_order!', '\nFirst order identifiers:', promptManager?.serviceSettings?.prompt_order?.[0]?.order?.map(o => o.identifier), '\nToggle map keys:', Array.from(toggleMap.keys()));
             }
+        } else {
+            console.error('[Zero:batchToggleMap] promptManager is null! openai:', openai);
         }
 
         // 4. Record operation log (always, regardless of promptManager availability)
         if (!skipOpLog && toggleMap && toggleMap.size > 0) {
             const currentPresetName = _preset?.name || pm?.getSelectedPresetName?.();
+            console.log('[Zero:batchToggleMap] recording log for preset:', currentPresetName);
             if (toggleMap.size === 1) {
                 const [id, en] = Array.from(toggleMap.entries())[0];
                 const p = _preset?.prompts?.find(x => x.identifier === id || x.name === id);
