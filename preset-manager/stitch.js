@@ -1,5 +1,5 @@
 import { getPresetPrompts, escapeHtml, debounce, savePresetWithoutRegexToast, getPresetRegexScripts, showBindRegexModal, syncBoundRegexOnPromptToggle } from './utils.js';
-import { HistoryManager, UiStateManager, GroupManager } from '../qr-snapshot/state.js';
+import { HistoryManager, UiStateManager, GroupManager, OpLogManager } from '../qr-snapshot/state.js';
 import { matchStitch, highlightText as highlightTextUtil } from '../qr-snapshot/search-util.js';
 
 export let stitch_batch_mode = false;
@@ -442,6 +442,7 @@ export async function performStitch(itemsA, targetName, position) {
         }).catch(err => {
             console.error('[Zero] Background save/load failed in performStitch:', err);
         });
+        OpLogManager.add(targetName, 'stitch', '缝合', items.length === 1 ? (items[0].name || items[0].identifier) : `缝合 ${items.length} 个条目`, `从「${sourcePresetName || '其它预设'}」缝合至此预设`);
         if (UiStateManager.get().toastOnPresetStitch === true) {
             toastr.success(`成功缝合至预设「${targetName}」`);
         }
