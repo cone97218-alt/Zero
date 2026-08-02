@@ -2,7 +2,7 @@
  * Zero Preset Manager - UI
  * Performance-optimized v2: innerHTML templates, event delegation, lazy rendering.
  */
-import { PresetManager, SnapshotManager, GroupManager, HiddenManager, UiStateManager, LinkageManager, zeroTranslate, HistoryManager, ModelProfileManager, SamplingParamsHelper, SnapshotGroupManager, getPresetPromptsWithEnabled, getStringSimilarity, detectPresetRenames, getOpenai } from './state.js';
+import { PresetManager, SnapshotManager, GroupManager, HiddenManager, UiStateManager, LinkageManager, zeroTranslate, HistoryManager, ModelProfileManager, SamplingParamsHelper, SnapshotGroupManager, getPresetPromptsWithEnabled, getStringSimilarity, detectPresetRenames, getOpenai, OpLogManager } from './state.js';
 import { matchPrompt } from './search-util.js';
 
 let overlay = null;
@@ -567,7 +567,7 @@ function buildModal(modal, preset, listInfo) {
             class: 'zero-op-log-btn',
             title: '查看预设操作日志 (最新20条)',
             html: '<i class="fa-solid fa-clock-rotate-left"></i>',
-            onclick: () => openOpLogModal(preset.name)
+            onclick: () => openOpLogModal((select && select.value) ? select.value : preset.name)
         }));
     }
     headerChildren.push(
@@ -4430,6 +4430,7 @@ async function showSnapshotMigrationModal(preset, preselectedSourceOrSnap = null
 //  Preset Operation Log Modal
 // ═══════════════════════════════════════
 export function openOpLogModal(presetName) {
+    if (!presetName) presetName = PresetManager.cached()?.name || 'Default';
     const escapeHtml = esc;
     const existing = document.getElementById('zero-op-log-modal');
     if (existing) existing.remove();
