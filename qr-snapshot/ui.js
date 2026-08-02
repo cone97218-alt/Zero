@@ -4457,7 +4457,7 @@ export function openOpLogModal(presetName) {
         zIndex: '22000',
         display: 'flex',
         alignItems: 'center',
-        justify-content: 'center',
+        justifyContent: 'center',
         padding: '16px',
         boxSizing: 'border-box'
     });
