@@ -88,8 +88,8 @@ export async function populatePresetSelects() {
         const normalNames = list.names.filter(n => !n.startsWith('★'));
         const favNames = list.names.filter(n => n.startsWith('★'));
 
-        const buildOptionsHtml = (includeNone = true) => {
-            let html = includeNone ? '<option value="">-- 无 --</option>' : '';
+        const buildOptionsHtml = (placeholderText = '-- 请选择预设 --') => {
+            let html = `<option value="">${placeholderText}</option>`;
             if (normalNames.length > 0) {
                 html += `<optgroup label="📂 我的预设">`;
                 normalNames.forEach(name => {
@@ -108,11 +108,11 @@ export async function populatePresetSelects() {
             return html;
         };
 
-        $selectA.html(buildOptionsHtml(true));
-        $selectB.html(buildOptionsHtml(true));
-        $stitchA.html(buildOptionsHtml(true));
-        $stitchB.html(buildOptionsHtml(true));
-        $checkS.html(buildOptionsHtml(false));
+        $selectA.html(buildOptionsHtml('-- 请选择对比预设 A --'));
+        $selectB.html(buildOptionsHtml('-- 请选择对比预设 B --'));
+        $stitchA.html(buildOptionsHtml('-- 请选择源预设 A --'));
+        $stitchB.html(buildOptionsHtml('-- 请选择目标预设 B --'));
+        $checkS.html(buildOptionsHtml('-- 请选择自查预设 --'));
 
         if (_contrast) _contrast.pruneManualLinks(list.names);
         if (_regex) _regex.populateRegexSelects(list);
@@ -121,18 +121,15 @@ export async function populatePresetSelects() {
         const lastB = localStorage.getItem('zero_last_b');
         const lastStitchA = localStorage.getItem('zero_last_stitch_a');
         const lastStitchB = localStorage.getItem('zero_last_stitch_b');
-        
-        if (lastA && list.names.includes(lastA)) $selectA.val(lastA);
-        if (lastB && list.names.includes(lastB)) $selectB.val(lastB);
-        else if (list.names.length > 1 && !lastB) $selectB.val(list.names[1]);
-        
-        if (lastStitchA && list.names.includes(lastStitchA)) $stitchA.val(lastStitchA);
-        if (lastStitchB && list.names.includes(lastStitchB)) $stitchB.val(lastStitchB);
-        else if (list.names.length > 1 && !lastStitchB) $stitchB.val(list.names[1]);
-        
         const lastCheck = localStorage.getItem('zero_last_check_preset');
-        if (lastCheck && list.names.includes(lastCheck)) $checkS.val(lastCheck);
-        else $checkS.val(list.active);
+        
+        if (lastA && list.names.includes(lastA)) $selectA.val(lastA); else $selectA.val('');
+        if (lastB && list.names.includes(lastB)) $selectB.val(lastB); else $selectB.val('');
+        
+        if (lastStitchA && list.names.includes(lastStitchA)) $stitchA.val(lastStitchA); else $stitchA.val('');
+        if (lastStitchB && list.names.includes(lastStitchB)) $stitchB.val(lastStitchB); else $stitchB.val('');
+        
+        if (lastCheck && list.names.includes(lastCheck)) $checkS.val(lastCheck); else $checkS.val('');
         
     } catch (e) {
         console.error('[Zero] Failed to populate presets:', e);
@@ -2139,7 +2136,7 @@ function ensurePanel() {
         WindowManager.minimize();
     });
 
-    $('#contrast-auto-match').on('click', () => _contrast.performAutoMatch());
+    $('#contrast-auto-match').on('click', () => _contrast.performAutoMatch(true));
     $('#contrast-start').on('click', () => _contrast.startComparison());
     $('#contrast-summary-btn').on('click', () => _contrast.showContrastSummaryModal());
     $('#manage-manual-matches').on('click', () => _contrast.showManualLinksManager());
@@ -2147,7 +2144,7 @@ function ensurePanel() {
         const nameA = $('#contrast-preset-a').val();
         const nameB = $('#contrast-preset-b').val();
         const { showStandaloneRegexManagerModal } = await import('./utils.js');
-        showStandaloneRegexManagerModal(nameA, nameB, () => _contrast.performAutoMatch());
+        showStandaloneRegexManagerModal(nameA, nameB, () => _contrast.performAutoMatch(true));
     });
 
     const autoMigrateInit = UiStateManager.get().autoMigrateBoundRegex !== false;
@@ -2160,13 +2157,13 @@ function ensurePanel() {
         $('#contrast-search-input').val('');
         $('#contrast-search-clear').hide();
         localStorage.setItem('zero_last_a', $(this).val());
-        _contrast.performAutoMatch();
+        _contrast.performAutoMatch(true);
     });
     $('#contrast-preset-b').on('change', function() {
         $('#contrast-search-input').val('');
         $('#contrast-search-clear').hide();
         localStorage.setItem('zero_last_b', $(this).val());
-        _contrast.performAutoMatch();
+        _contrast.performAutoMatch(true);
     });
 
     let contrastSearchTimeout = null;
@@ -2175,7 +2172,7 @@ function ensurePanel() {
     $('body').off('change', '#zero-setting-contrast-similarity-enable').on('change', '#zero-setting-contrast-similarity-enable', function() {
         const checked = $(this).is(':checked');
         localStorage.setItem('zero_contrast_similarity_enable', checked.toString());
-        _contrast.performAutoMatch();
+        _contrast.performAutoMatch(true);
     });
 
     $('body').off('input change', '#zero-setting-contrast-similarity-threshold').on('input change', '#zero-setting-contrast-similarity-threshold', function(e) {

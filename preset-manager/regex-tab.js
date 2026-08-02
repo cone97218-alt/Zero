@@ -12,8 +12,8 @@ export async function populateRegexSelects(presetList) {
         const normalNames = (presetList?.names || []).filter(n => !n.startsWith('★'));
         const favNames = (presetList?.names || []).filter(n => n.startsWith('★'));
 
-        const buildOptionsHtml = (includeNone = true) => {
-            let html = includeNone ? '<option value="">-- 无 --</option>' : '';
+        const buildOptionsHtml = (placeholderText = '-- 请选择预设 --') => {
+            let html = `<option value="">${placeholderText}</option>`;
             if (normalNames.length > 0) {
                 html += `<optgroup label="📂 我的预设">`;
                 normalNames.forEach(name => {
@@ -35,20 +35,19 @@ export async function populateRegexSelects(presetList) {
         const currentSrc = $source.val();
         const currentTgt = $target.val();
 
-        $source.html(buildOptionsHtml(false));
-        $target.html(buildOptionsHtml(true));
+        $source.html(buildOptionsHtml('-- 请选择源预设 A --'));
+        $target.html(buildOptionsHtml('-- 请选择目标预设 B --'));
 
         if (currentSrc && presetList.names.includes(currentSrc)) {
             $source.val(currentSrc);
-        } else if (presetList.active) {
-            $source.val(presetList.active);
+        } else {
+            $source.val('');
         }
 
         if (currentTgt && presetList.names.includes(currentTgt)) {
             $target.val(currentTgt);
-        } else if (presetList.names.length > 1) {
-            const defaultTgt = presetList.names.find(n => n !== $source.val());
-            if (defaultTgt) $target.val(defaultTgt);
+        } else {
+            $target.val('');
         }
     } catch (e) {
         console.error('[Zero] Failed to populate regex selects:', e);

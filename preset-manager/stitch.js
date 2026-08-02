@@ -352,6 +352,39 @@ export async function renderStitchList(forceRefresh = true) {
     }
 }
 
+let _lastStitchAutoGroupState = null;
+
+export async function undoLastStitchGroup() {
+    if (!_lastStitchAutoGroupState || !_lastStitchAutoGroupState.targetPresetName) {
+        toastr.info('暂无可撤回的缝合分组变动');
+        return;
+    }
+
+    const { targetPresetName, items } = _lastStitchAutoGroupState;
+    const tgtGroups = GroupManager.get(targetPresetName);
+
+    items.forEach(item => {
+        tgtGroups.forEach(g => {
+            if (g.ids.includes(item.clonedIdentifier)) {
+                GroupManager.unassign(targetPresetName, item.clonedIdentifier);
+            }
+        });
+
+        if (item.originalSourceGroupName) {
+            let origGroup = tgtGroups.find(g => g.name === item.originalSourceGroupName);
+            if (!origGroup) {
+                origGroup = GroupManager.create(targetPresetName, item.originalSourceGroupName);
+            }
+            GroupManager.assign(targetPresetName, origGroup.id, [item.clonedIdentifier]);
+        }
+    });
+
+    _lastStitchAutoGroupState = null;
+    toastr.success(`已撤回自动分组，还原 ${items.length} 个条目的分组设置`);
+    window.dispatchEvent(new CustomEvent('zero-content-updated', { detail: { presetName: targetPresetName } }));
+    renderStitchList(true);
+}
+
 export async function performStitch(itemsA, targetName, position) {
     const items = Array.isArray(itemsA) ? itemsA : [itemsA];
     if (items.length === 0) return;
@@ -387,28 +420,71 @@ export async function performStitch(itemsA, targetName, position) {
             orderArray = newOrderArray;
         }
 
+        // Determine insertion index in targetPreset orderArray
+        let insertionIdx = orderArray.length;
+        if (position === 'top') {
+            insertionIdx = 0;
+        } else if (position === 'bottom') {
+            insertionIdx = orderArray.length;
+        } else {
+            const idx = orderArray.findIndex(o => o && String(o.identifier) === String(position));
+            if (idx !== -1) {
+                insertionIdx = idx + 1;
+            }
+        }
+
+        // Infer adjacent upper/lower item group in targetPreset
+        const prevItem = insertionIdx > 0 ? orderArray[insertionIdx - 1] : null;
+        const nextItem = insertionIdx < orderArray.length ? orderArray[insertionIdx] : null;
+        const tgtGroups = GroupManager.get(targetName);
+
+        const prevGroup = prevItem ? tgtGroups.find(g => g.ids.includes(prevItem.identifier)) : null;
+        const nextGroup = nextItem ? tgtGroups.find(g => g.ids.includes(nextItem.identifier)) : null;
+
+        let autoInferredGroup = null;
+        if (prevGroup && nextGroup && prevGroup.id === nextGroup.id) {
+            autoInferredGroup = prevGroup;
+        } else if (prevGroup) {
+            autoInferredGroup = prevGroup;
+        } else if (nextGroup) {
+            autoInferredGroup = nextGroup;
+        }
+
         const clones = [];
         const sourcePresetName = $('#stitch-preset-source').val();
+        const autoGroupItems = [];
+
         for (const itemA of items) {
             const cloneA = JSON.parse(JSON.stringify(itemA));
             cloneA.identifier = 'system_prompt_' + Date.now() + Math.floor(Math.random() * 1000) + '_' + Math.floor(Math.random() * 1000); 
             targetPreset.prompts.push(cloneA);
             clones.push({ identifier: cloneA.identifier, enabled: false });
 
-            // Inherit original item's group
-            if (sourcePresetName && sourcePresetName !== targetName) {
+            let srcGroupName = null;
+            if (sourcePresetName) {
                 const srcGroups = GroupManager.get(sourcePresetName);
-                const tgtGroups = GroupManager.get(targetName);
                 const srcGroup = srcGroups.find(g => g.ids.includes(itemA.identifier));
-                if (srcGroup) {
-                    let tgtGroup = tgtGroups.find(g => g.name === srcGroup.name);
-                    if (!tgtGroup) {
-                        tgtGroup = GroupManager.create(targetName, srcGroup.name);
-                    }
-                    GroupManager.assign(targetName, tgtGroup.id, [cloneA.identifier]);
-                }
+                if (srcGroup) srcGroupName = srcGroup.name;
+            }
 
-                // Auto-migrate bound regexes if enabled
+            if (autoInferredGroup) {
+                GroupManager.assign(targetName, autoInferredGroup.id, [cloneA.identifier]);
+            } else if (srcGroupName && sourcePresetName !== targetName) {
+                let tgtGroup = tgtGroups.find(g => g.name === srcGroupName);
+                if (!tgtGroup) {
+                    tgtGroup = GroupManager.create(targetName, srcGroupName);
+                }
+                GroupManager.assign(targetName, tgtGroup.id, [cloneA.identifier]);
+            }
+
+            autoGroupItems.push({
+                clonedIdentifier: cloneA.identifier,
+                inferredGroupName: autoInferredGroup ? autoInferredGroup.name : null,
+                originalSourceGroupName: srcGroupName
+            });
+
+            // Auto-migrate bound regexes if enabled
+            if (sourcePresetName && sourcePresetName !== targetName) {
                 const { UiStateManager } = await import('../qr-snapshot/state.js');
                 const autoMigrate = UiStateManager.get().autoMigrateBoundRegex !== false;
                 if (autoMigrate && Array.isArray(itemA.bound_regex_ids) && itemA.bound_regex_ids.length > 0) {
@@ -421,14 +497,18 @@ export async function performStitch(itemsA, targetName, position) {
             }
         }
 
+        _lastStitchAutoGroupState = {
+            targetPresetName: targetName,
+            items: autoGroupItems
+        };
+
         if (position === 'top') {
             orderArray.unshift(...clones);
         } else if (position === 'bottom') {
             orderArray.push(...clones);
         } else {
-            const idx = orderArray.findIndex(o => o && String(o.identifier) === String(position));
-            if (idx !== -1) {
-                orderArray.splice(idx + 1, 0, ...clones);
+            if (insertionIdx > 0 && insertionIdx <= orderArray.length) {
+                orderArray.splice(insertionIdx, 0, ...clones);
             } else {
                 orderArray.push(...clones);
             }
@@ -444,7 +524,14 @@ export async function performStitch(itemsA, targetName, position) {
             console.error('[Zero] Background save/load failed in performStitch:', err);
         });
         OpLogManager.add(targetName, 'stitch', '缝合', items.length === 1 ? (items[0].name || items[0].identifier) : `缝合 ${items.length} 个条目`, `从「${sourcePresetName || '其它预设'}」缝合至此预设`);
-        if (UiStateManager.get().toastOnPresetStitch === true) {
+
+        $('body').off('click', '#undo-stitch-group-link').on('click', '#undo-stitch-group-link', function() {
+            undoLastStitchGroup();
+        });
+
+        if (autoInferredGroup) {
+            toastr.success(`已缝合 ${items.length} 个条目，并根据上下文自动加入分组「${autoInferredGroup.name}」 <a id="undo-stitch-group-link" style="color: #ffaa55; text-decoration: underline; margin-left: 6px; cursor: pointer; font-weight: bold;">[撤回分组]</a>`, '', { timeOut: 10000 });
+        } else if (UiStateManager.get().toastOnPresetStitch === true) {
             toastr.success(`成功缝合至预设「${targetName}」`);
         }
     } catch (err) {

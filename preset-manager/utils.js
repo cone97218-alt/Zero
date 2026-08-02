@@ -1515,4 +1515,458 @@ export async function showInjectVariableModal(promptOrName, presetName = '', onS
     });
 }
 
+export function showVariableRenameModal(oldName, presetName, callback) {
+    $('#zero-var-rename-modal').remove();
+
+    const modalHtml = `
+        <div id="zero-var-rename-modal" class="zero-modal-overlay" style="position: fixed; inset: 0; background: rgba(0, 0, 0, 0.65); backdrop-filter: blur(4px); z-index: 20000; display: flex; align-items: center; justify-content: center; padding: 20px;">
+            <div class="zero-modal-content" style="background: var(--SmartThemeChatTintColor, #222); border: 1px solid var(--SmartThemeBorderColor, #444); border-radius: 12px; width: 100%; max-width: 440px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); overflow: hidden; display: flex; flex-direction: column; color: var(--SmartThemeBodyColor, #ccc); font-family: inherit;">
+                <!-- Header -->
+                <div style="padding: 14px 16px; border-bottom: 1px solid var(--SmartThemeBorderColor, #444); display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.03);">
+                    <div style="font-weight: bold; font-size: 14px; display: flex; align-items: center; gap: 8px;">
+                        <i class="fa-solid fa-pen-to-square" style="color: var(--SmartThemeQuoteColor);"></i> 变量重命名与类型变更
+                    </div>
+                    <div id="close-rename-var-modal" class="interactable" style="cursor: pointer; padding: 4px 8px; opacity: 0.7;"><i class="fa-solid fa-xmark"></i></div>
+                </div>
+
+                <!-- Body -->
+                <div style="padding: 16px; display: flex; flex-direction: column; gap: 14px; font-size: 12px;">
+                    <div>
+                        <label style="font-weight: bold; display: block; margin-bottom: 6px; color: var(--SmartThemeBodyColor);">原变量名称:</label>
+                        <div style="padding: 6px 10px; background: rgba(0,0,0,0.2); border: 1px solid var(--SmartThemeBorderColor); border-radius: 6px; font-weight: bold; opacity: 0.9;">${escapeHtml(oldName)}</div>
+                    </div>
+
+                    <div>
+                        <label style="font-weight: bold; display: block; margin-bottom: 6px; color: var(--SmartThemeBodyColor);">新变量名称:</label>
+                        <input type="text" id="zero-rename-var-name-input" class="interactable" value="${escapeHtml(oldName)}" placeholder="输入新的变量名..." style="width: 100%; padding: 8px 10px; background: rgba(0,0,0,0.15); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 6px; font-size: 13px; box-sizing: border-box;">
+                    </div>
+
+                    <div>
+                        <label style="font-weight: bold; display: block; margin-bottom: 6px; color: var(--SmartThemeBodyColor);">批量更改宏语法类型 (可选):</label>
+                        <select id="zero-rename-var-type-select" class="interactable" style="width: 100%; padding: 8px 10px; background: rgba(0,0,0,0.15); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 6px; font-size: 12px; box-sizing: border-box;">
+                            <option value="keep" selected>保持原类型 (不变动 set / add / get 语法)</option>
+                            <option value="set">强制转换为 set (赋值/设置，例: {{setvar::新名::内容}})</option>
+                            <option value="add">强制转换为 add (累加/追加，例: {{addvar::新名::内容}})</option>
+                            <option value="get">强制转换为 get (读取，例: {{getvar::新名}})</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Footer -->
+                <div style="padding: 12px 16px; border-top: 1px solid var(--SmartThemeBorderColor, #444); display: flex; justify-content: flex-end; gap: 10px; background: rgba(0,0,0,0.1);">
+                    <button id="cancel-rename-var-btn" class="interactable" style="padding: 6px 14px; background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor, #444); border-radius: 6px; color: inherit; cursor: pointer; font-size: 12px;">取消</button>
+                    <button id="confirm-rename-var-btn" class="interactable" style="padding: 6px 16px; background: var(--SmartThemeQuoteColor, #7b8cde); border: none; border-radius: 6px; color: white; cursor: pointer; font-size: 12px; font-weight: bold;">确认修改</button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    $('body').append(modalHtml);
+    const $modal = $('#zero-var-rename-modal');
+    $modal.find('#zero-rename-var-name-input').focus().select();
+
+    const closeModal = () => $modal.remove();
+    $modal.find('#close-rename-var-modal, #cancel-rename-var-btn').on('click', closeModal);
+
+    $modal.find('#confirm-rename-var-btn').on('click', async () => {
+        const newName = $modal.find('#zero-rename-var-name-input').val().trim();
+        const targetType = $modal.find('#zero-rename-var-type-select').val();
+
+        if (!newName) {
+            toastr.warning('变量名称不能为空');
+            return;
+        }
+
+        try {
+            const pm = SillyTavern.getContext().getPresetManager('openai');
+            if (!pm) throw new Error('无法获取预设管理器');
+            const presetObj = pm.getCompletionPresetByName(presetName);
+            if (!presetObj || !Array.isArray(presetObj.prompts)) throw new Error('未找到对应预设条目');
+
+            const escapeRegExp = str => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const regex = new RegExp(`(\\{\\{)(set|setglobal|add|addglobal|get|getglobal)(var::)${escapeRegExp(oldName)}(::[\\s\\S]*?|\\}\\})`, 'gi');
+            
+            let count = 0;
+            presetObj.prompts.forEach(p => {
+                if (!p.content) return;
+                let modified = false;
+                p.content = p.content.replace(regex, (match, p1, p2, p3, p4) => {
+                    modified = true;
+                    let newType = p2;
+                    if (targetType === 'set') {
+                        newType = p2.includes('global') ? 'setglobal' : 'set';
+                    } else if (targetType === 'add') {
+                        newType = p2.includes('global') ? 'addglobal' : 'add';
+                    } else if (targetType === 'get') {
+                        newType = p2.includes('global') ? 'getglobal' : 'get';
+                    }
+
+                    if (targetType === 'get' || newType.startsWith('get')) {
+                        return `{{${newType}var::${newName}}}`;
+                    }
+
+                    let tail = p4;
+                    if (p4 === '}}') tail = '::}}';
+                    return `{{${newType}var::${newName}${tail}}`;
+                });
+                if (modified) count++;
+            });
+
+            if (count > 0) {
+                HistoryManager.record();
+                const isActive = pm.getSelectedPresetName() === presetName;
+                await savePresetWithoutRegexToast(pm, presetName, presetObj, { skipUpdate: !isActive });
+
+                const typeMsg = targetType !== 'keep' ? ` 并转换语法为 ${targetType}` : '';
+                toastr.success(`已在 ${count} 个条目中将变量 "${oldName}" 改名为 "${newName}"${typeMsg}`);
+
+                closeModal();
+                window.dispatchEvent(new CustomEvent('zero-content-updated', { detail: { presetName } }));
+                if (typeof callback === 'function') callback({ oldName, newName, targetType, count });
+            } else {
+                toastr.info('未发现包含该变量的条目');
+                closeModal();
+            }
+        } catch (err) {
+            console.error('[Zero] Rename and type convert failed:', err);
+            toastr.error('操作失败: ' + err.message);
+        }
+    });
+}
+
+export function showBatchVariableEditModal(selectedNames, presetName, callback) {
+    if (!Array.isArray(selectedNames) || selectedNames.length === 0) {
+        toastr.info('请先勾选需要修改的变量');
+        return;
+    }
+
+    $('#zero-batch-var-modal').remove();
+
+    const tagsHtml = selectedNames.map(name => `
+        <span style="font-size: 11px; padding: 2px 6px; background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; font-weight: bold;">
+            ${escapeHtml(name)}
+        </span>
+    `).join('');
+
+    const modalHtml = `
+        <div id="zero-batch-var-modal" class="zero-modal-overlay" style="position: fixed; inset: 0; background: rgba(0, 0, 0, 0.65); backdrop-filter: blur(4px); z-index: 20000; display: flex; align-items: center; justify-content: center; padding: 20px;">
+            <div class="zero-modal-content" style="background: var(--SmartThemeChatTintColor, #222); border: 1px solid var(--SmartThemeBorderColor, #444); border-radius: 12px; width: 100%; max-width: 480px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); overflow: hidden; display: flex; flex-direction: column; color: var(--SmartThemeBodyColor, #ccc); font-family: inherit;">
+                <!-- Header -->
+                <div style="padding: 14px 16px; border-bottom: 1px solid var(--SmartThemeBorderColor, #444); display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.03);">
+                    <div style="font-weight: bold; font-size: 14px; display: flex; align-items: center; gap: 8px;">
+                        <i class="fa-solid fa-list-check" style="color: var(--SmartThemeQuoteColor);"></i> 批量修改选中变量 (${selectedNames.length} 个)
+                    </div>
+                    <div id="close-batch-var-modal" class="interactable" style="cursor: pointer; padding: 4px 8px; opacity: 0.7;"><i class="fa-solid fa-xmark"></i></div>
+                </div>
+
+                <!-- Body -->
+                <div style="padding: 16px; display: flex; flex-direction: column; gap: 14px; font-size: 12px; overflow-y: auto; max-height: 70vh;">
+                    <div>
+                        <label style="font-weight: bold; display: block; margin-bottom: 6px; color: var(--SmartThemeBodyColor);">已选变量 (${selectedNames.length} 个):</label>
+                        <div style="display: flex; flex-wrap: wrap; gap: 4px; max-height: 90px; overflow-y: auto; padding: 6px; background: rgba(0,0,0,0.2); border: 1px solid var(--SmartThemeBorderColor); border-radius: 6px;">
+                            ${tagsHtml}
+                        </div>
+                    </div>
+
+                    <!-- Macro Type Change -->
+                    <div>
+                        <label style="font-weight: bold; display: block; margin-bottom: 6px; color: var(--SmartThemeBodyColor);">1. 批量修改宏语法类型:</label>
+                        <select id="zero-batch-var-type-select" class="interactable" style="width: 100%; padding: 8px 10px; background: rgba(0,0,0,0.15); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 6px; font-size: 12px; box-sizing: border-box;">
+                            <option value="keep" selected>保持原语法类型 (不变动 set / add / get)</option>
+                            <option value="set">统一转换为 set (赋值/设置，例: {{setvar::变量名::...}})</option>
+                            <option value="add">统一转换为 add (累加/追加，例: {{addvar::变量名::...}})</option>
+                            <option value="get">统一转换为 get (读取，例: {{getvar::变量名}})</option>
+                        </select>
+                    </div>
+
+                    <!-- Name Batch Rule -->
+                    <div>
+                        <label style="font-weight: bold; display: block; margin-bottom: 6px; color: var(--SmartThemeBodyColor);">2. 批量重命名规则:</label>
+                        <select id="zero-batch-var-name-rule-select" class="interactable" style="width: 100%; padding: 8px 10px; background: rgba(0,0,0,0.15); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 6px; font-size: 12px; box-sizing: border-box; margin-bottom: 8px;">
+                            <option value="keep" selected>保持原名称 (不更名)</option>
+                            <option value="prefix">添加统一前缀 (Prefix)</option>
+                            <option value="suffix">添加统一后缀 (Suffix)</option>
+                            <option value="replace">文本查找替换 (Find & Replace)</option>
+                        </select>
+
+                        <!-- Sub Inputs -->
+                        <div id="zero-batch-rule-prefix-box" style="display: none;">
+                            <input type="text" id="zero-batch-var-prefix-input" class="interactable" placeholder="输入添加的前缀，如 my_" style="width: 100%; padding: 7px 10px; background: rgba(0,0,0,0.15); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 6px; font-size: 12px; box-sizing: border-box;">
+                        </div>
+
+                        <div id="zero-batch-rule-suffix-box" style="display: none;">
+                            <input type="text" id="zero-batch-var-suffix-input" class="interactable" placeholder="输入添加的后缀，如 _val" style="width: 100%; padding: 7px 10px; background: rgba(0,0,0,0.15); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 6px; font-size: 12px; box-sizing: border-box;">
+                        </div>
+
+                        <div id="zero-batch-rule-replace-box" style="display: none; display: flex; gap: 8px;">
+                            <input type="text" id="zero-batch-var-search-input" class="interactable" placeholder="要查找的字符..." style="flex: 1; padding: 7px 10px; background: rgba(0,0,0,0.15); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 6px; font-size: 12px; box-sizing: border-box;">
+                            <input type="text" id="zero-batch-var-replace-input" class="interactable" placeholder="替换为..." style="flex: 1; padding: 7px 10px; background: rgba(0,0,0,0.15); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 6px; font-size: 12px; box-sizing: border-box;">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Footer -->
+                <div style="padding: 12px 16px; border-top: 1px solid var(--SmartThemeBorderColor, #444); display: flex; justify-content: flex-end; gap: 10px; background: rgba(0,0,0,0.1);">
+                    <button id="cancel-batch-var-btn" class="interactable" style="padding: 6px 14px; background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor, #444); border-radius: 6px; color: inherit; cursor: pointer; font-size: 12px;">取消</button>
+                    <button id="confirm-batch-var-btn" class="interactable" style="padding: 6px 16px; background: var(--SmartThemeQuoteColor, #7b8cde); border: none; border-radius: 6px; color: white; cursor: pointer; font-size: 12px; font-weight: bold;">应用批量修改</button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    $('body').append(modalHtml);
+    const $modal = $('#zero-batch-var-modal');
+    const closeModal = () => $modal.remove();
+
+    $modal.find('#close-batch-var-modal, #cancel-batch-var-btn').on('click', closeModal);
+
+    $modal.find('#zero-batch-var-name-rule-select').on('change', function() {
+        const val = $(this).val();
+        $modal.find('#zero-batch-rule-prefix-box').toggle(val === 'prefix');
+        $modal.find('#zero-batch-rule-suffix-box').toggle(val === 'suffix');
+        $modal.find('#zero-batch-rule-replace-box').toggle(val === 'replace');
+    });
+
+    $modal.find('#confirm-batch-var-btn').on('click', async () => {
+        const targetType = $modal.find('#zero-batch-var-type-select').val();
+        const nameRule = $modal.find('#zero-batch-var-name-rule-select').val();
+
+        if (targetType === 'keep' && nameRule === 'keep') {
+            toastr.info('未选择任何修改规则');
+            return;
+        }
+
+        const prefixVal = $modal.find('#zero-batch-var-prefix-input').val() || '';
+        const suffixVal = $modal.find('#zero-batch-var-suffix-input').val() || '';
+        const searchVal = $modal.find('#zero-batch-var-search-input').val() || '';
+        const replaceVal = $modal.find('#zero-batch-var-replace-input').val() || '';
+
+        try {
+            const pm = SillyTavern.getContext().getPresetManager('openai');
+            if (!pm) throw new Error('无法获取预设管理器');
+            const presetObj = pm.getCompletionPresetByName(presetName);
+            if (!presetObj || !Array.isArray(presetObj.prompts)) throw new Error('未找到对应预设条目');
+
+            const escapeRegExp = str => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            let totalModifiedEntries = 0;
+            let modifiedVarsCount = 0;
+
+            HistoryManager.record();
+
+            selectedNames.forEach(oldName => {
+                let newName = oldName;
+                if (nameRule === 'prefix' && prefixVal) {
+                    newName = prefixVal + oldName;
+                } else if (nameRule === 'suffix' && suffixVal) {
+                    newName = oldName + suffixVal;
+                } else if (nameRule === 'replace' && searchVal) {
+                    newName = oldName.replaceAll(searchVal, replaceVal);
+                }
+
+                newName = newName.trim();
+                if (!newName) return;
+
+                const regex = new RegExp(`(\\{\\{)(set|setglobal|add|addglobal|get|getglobal)(var::)${escapeRegExp(oldName)}(::[\\s\\S]*?|\\}\\})`, 'gi');
+                let varModified = false;
+
+                presetObj.prompts.forEach(p => {
+                    if (!p.content) return;
+                    let entryModified = false;
+                    p.content = p.content.replace(regex, (match, p1, p2, p3, p4) => {
+                        entryModified = true;
+                        varModified = true;
+                        let newType = p2;
+                        if (targetType === 'set') {
+                            newType = p2.includes('global') ? 'setglobal' : 'set';
+                        } else if (targetType === 'add') {
+                            newType = p2.includes('global') ? 'addglobal' : 'add';
+                        } else if (targetType === 'get') {
+                            newType = p2.includes('global') ? 'getglobal' : 'get';
+                        }
+
+                        if (targetType === 'get' || newType.startsWith('get')) {
+                            return `{{${newType}var::${newName}}}`;
+                        }
+
+                        let tail = p4;
+                        if (p4 === '}}') tail = '::}}';
+                        return `{{${newType}var::${newName}${tail}}`;
+                    });
+                    if (entryModified) totalModifiedEntries++;
+                });
+
+                if (varModified) modifiedVarsCount++;
+            });
+
+            if (modifiedVarsCount > 0) {
+                const isActive = pm.getSelectedPresetName() === presetName;
+                await savePresetWithoutRegexToast(pm, presetName, presetObj, { skipUpdate: !isActive });
+
+                toastr.success(`已成功批量修改 ${modifiedVarsCount} 个变量 (影响 ${totalModifiedEntries} 个条目)`);
+                closeModal();
+                window.dispatchEvent(new CustomEvent('zero-content-updated', { detail: { presetName } }));
+                if (typeof callback === 'function') callback({ modifiedVarsCount, totalModifiedEntries });
+            } else {
+                toastr.info('选中的变量未在预设条目中匹配到引用');
+                closeModal();
+            }
+        } catch (err) {
+            console.error('[Zero] Batch edit variables failed:', err);
+            toastr.error('批量修改失败: ' + err.message);
+        }
+    });
+}
+
+export function showVariableEntryEditModal(selectedItems, presetName, callback) {
+    if (!Array.isArray(selectedItems) || selectedItems.length === 0) {
+        toastr.info('请先勾选需要修改的条目');
+        return;
+    }
+
+    $('#zero-entry-var-modal').remove();
+
+    const varNames = [...new Set(selectedItems.map(item => item.varName))];
+    const defaultVarName = varNames.length === 1 ? varNames[0] : '';
+
+    const entriesHtml = selectedItems.map(item => `
+        <div style="font-size: 11px; padding: 4px 8px; background: rgba(255,255,255,0.04); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; display: flex; align-items: center; justify-content: space-between; gap: 6px;">
+            <span style="font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">${escapeHtml(item.entryName)}</span>
+            <span style="opacity: 0.7; font-size: 10px;">[${escapeHtml((item.occType || 'var').toUpperCase())}] 变量: <strong style="color: var(--SmartThemeQuoteColor);">${escapeHtml(item.varName)}</strong></span>
+        </div>
+    `).join('');
+
+    const modalHtml = `
+        <div id="zero-entry-var-modal" class="zero-modal-overlay" style="position: fixed; inset: 0; background: rgba(0, 0, 0, 0.65); backdrop-filter: blur(4px); z-index: 20000; display: flex; align-items: center; justify-content: center; padding: 20px;">
+            <div class="zero-modal-content" style="background: var(--SmartThemeChatTintColor, #222); border: 1px solid var(--SmartThemeBorderColor, #444); border-radius: 12px; width: 100%; max-width: 480px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); overflow: hidden; display: flex; flex-direction: column; color: var(--SmartThemeBodyColor, #ccc); font-family: inherit;">
+                <!-- Header -->
+                <div style="padding: 14px 16px; border-bottom: 1px solid var(--SmartThemeBorderColor, #444); display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.03);">
+                    <div style="font-weight: bold; font-size: 14px; display: flex; align-items: center; gap: 8px;">
+                        <i class="fa-solid fa-pen-to-square" style="color: var(--SmartThemeQuoteColor);"></i> 批量修改选中条目中的变量 (${selectedItems.length} 个条目)
+                    </div>
+                    <div id="close-entry-var-modal" class="interactable" style="cursor: pointer; padding: 4px 8px; opacity: 0.7;"><i class="fa-solid fa-xmark"></i></div>
+                </div>
+
+                <!-- Body -->
+                <div style="padding: 16px; display: flex; flex-direction: column; gap: 14px; font-size: 12px; overflow-y: auto; max-height: 70vh;">
+                    <div>
+                        <label style="font-weight: bold; display: block; margin-bottom: 6px; color: var(--SmartThemeBodyColor);">已选条目 (${selectedItems.length} 个):</label>
+                        <div style="display: flex; flex-direction: column; gap: 4px; max-height: 120px; overflow-y: auto; padding: 6px; background: rgba(0,0,0,0.2); border: 1px solid var(--SmartThemeBorderColor); border-radius: 6px;">
+                            ${entriesHtml}
+                        </div>
+                    </div>
+
+                    <!-- Macro Type Change -->
+                    <div>
+                        <label style="font-weight: bold; display: block; margin-bottom: 6px; color: var(--SmartThemeBodyColor);">1. 更改选中条目中的语法类型:</label>
+                        <select id="zero-entry-var-type-select" class="interactable" style="width: 100%; padding: 8px 10px; background: rgba(0,0,0,0.15); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 6px; font-size: 12px; box-sizing: border-box;">
+                            <option value="keep" selected>保持原语法类型 (不变动 set / add / get)</option>
+                            <option value="set">统一转换为 set (赋值/设置，例: {{setvar::变量名::...}})</option>
+                            <option value="add">统一转换为 add (累加/追加，例: {{addvar::变量名::...}})</option>
+                            <option value="get">统一转换为 get (读取，例: {{getvar::变量名}})</option>
+                        </select>
+                    </div>
+
+                    <!-- Rename Option -->
+                    <div>
+                        <label style="font-weight: bold; display: block; margin-bottom: 6px; color: var(--SmartThemeBodyColor);">2. 重命名变量 (选填，留空则保持原名):</label>
+                        <input type="text" id="zero-entry-var-newname-input" class="interactable" value="${escapeHtml(defaultVarName)}" placeholder="${varNames.length === 1 ? '输入新变量名称...' : '多变量选定时留空保持各自原名'}" style="width: 100%; padding: 8px 10px; background: rgba(0,0,0,0.15); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 6px; font-size: 13px; box-sizing: border-box;">
+                    </div>
+                </div>
+
+                <!-- Footer -->
+                <div style="padding: 12px 16px; border-top: 1px solid var(--SmartThemeBorderColor, #444); display: flex; justify-content: flex-end; gap: 10px; background: rgba(0,0,0,0.1);">
+                    <button id="cancel-entry-var-btn" class="interactable" style="padding: 6px 14px; background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor, #444); border-radius: 6px; color: inherit; cursor: pointer; font-size: 12px;">取消</button>
+                    <button id="confirm-entry-var-btn" class="interactable" style="padding: 6px 16px; background: var(--SmartThemeQuoteColor, #7b8cde); border: none; border-radius: 6px; color: white; cursor: pointer; font-size: 12px; font-weight: bold;">应用修改</button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    $('body').append(modalHtml);
+    const $modal = $('#zero-entry-var-modal');
+    const closeModal = () => $modal.remove();
+
+    $modal.find('#close-entry-var-modal, #cancel-entry-var-btn').on('click', closeModal);
+
+    $modal.find('#confirm-entry-var-btn').on('click', async () => {
+        const targetType = $modal.find('#zero-entry-var-type-select').val();
+        const newNameInput = $modal.find('#zero-entry-var-newname-input').val().trim();
+
+        if (targetType === 'keep' && !newNameInput) {
+            toastr.info('未做任何变动设置');
+            return;
+        }
+
+        try {
+            const pm = SillyTavern.getContext().getPresetManager('openai');
+            if (!pm) throw new Error('无法获取预设管理器');
+            const presetObj = pm.getCompletionPresetByName(presetName);
+            if (!presetObj || !Array.isArray(presetObj.prompts)) throw new Error('未找到对应预设条目');
+
+            const escapeRegExp = str => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            let modifiedEntriesCount = 0;
+
+            HistoryManager.record();
+
+            const entryMap = new Map();
+            selectedItems.forEach(item => {
+                if (!entryMap.has(item.entryName)) entryMap.set(item.entryName, []);
+                entryMap.get(item.entryName).push(item);
+            });
+
+            presetObj.prompts.forEach(p => {
+                const entryName = p.name || p.identifier;
+                if (!entryMap.has(entryName) || !p.content) return;
+
+                const items = entryMap.get(entryName);
+                let entryChanged = false;
+
+                items.forEach(item => {
+                    const oldName = item.varName;
+                    const targetName = newNameInput || oldName;
+                    const regex = new RegExp(`(\\{\\{)(set|setglobal|add|addglobal|get|getglobal)(var::)${escapeRegExp(oldName)}(::[\\s\\S]*?|\\}\\})`, 'gi');
+
+                    p.content = p.content.replace(regex, (match, p1, p2, p3, p4) => {
+                        entryChanged = true;
+                        let newType = p2;
+                        if (targetType === 'set') {
+                            newType = p2.includes('global') ? 'setglobal' : 'set';
+                        } else if (targetType === 'add') {
+                            newType = p2.includes('global') ? 'addglobal' : 'add';
+                        } else if (targetType === 'get') {
+                            newType = p2.includes('global') ? 'getglobal' : 'get';
+                        }
+
+                        if (targetType === 'get' || newType.startsWith('get')) {
+                            return `{{${newType}var::${targetName}}}`;
+                        }
+
+                        let tail = p4;
+                        if (p4 === '}}') tail = '::}}';
+                        return `{{${newType}var::${targetName}${tail}}`;
+                    });
+                });
+
+                if (entryChanged) modifiedEntriesCount++;
+            });
+
+            if (modifiedEntriesCount > 0) {
+                const isActive = pm.getSelectedPresetName() === presetName;
+                await savePresetWithoutRegexToast(pm, presetName, presetObj, { skipUpdate: !isActive });
+
+                toastr.success(`已成功在 ${modifiedEntriesCount} 个条目中完成变量修改`);
+                closeModal();
+                window.dispatchEvent(new CustomEvent('zero-content-updated', { detail: { presetName } }));
+                if (typeof callback === 'function') callback({ modifiedEntriesCount });
+            } else {
+                toastr.info('未找到对应的变量匹配项');
+                closeModal();
+            }
+        } catch (err) {
+            console.error('[Zero] Entry variable edit failed:', err);
+            toastr.error('操作失败: ' + err.message);
+        }
+    });
+}
+
 

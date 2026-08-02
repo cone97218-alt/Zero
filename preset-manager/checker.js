@@ -4,7 +4,7 @@
  */
 
 import { PresetManager, HistoryManager, getStringSimilarity } from '../qr-snapshot/state.js';
-import { getPresetPrompts, escapeHtml, savePresetWithoutRegexToast } from './utils.js';
+import { getPresetPrompts, escapeHtml, savePresetWithoutRegexToast, showVariableRenameModal, showBatchVariableEditModal, showVariableEntryEditModal } from './utils.js';
 
 export const Checker = {
     /**
@@ -357,11 +357,25 @@ export const Checker = {
                     <div class="var-filter-btn" data-filter="problem" style="padding: 4px 12px; font-size: 11px; border-radius: 14px; cursor: pointer; background: rgba(255,255,255,0.05); color: inherit; border: 1px solid var(--SmartThemeBorderColor);">问题变量</div>
                     <div class="var-filter-btn" data-filter="correct" style="padding: 4px 12px; font-size: 11px; border-radius: 14px; cursor: pointer; background: rgba(255,255,255,0.05); color: inherit; border: 1px solid var(--SmartThemeBorderColor);">正确变量</div>
                     <div class="var-filter-btn" data-filter="all" style="padding: 4px 12px; font-size: 11px; border-radius: 14px; cursor: pointer; background: rgba(255,255,255,0.05); color: inherit; border: 1px solid var(--SmartThemeBorderColor);">全部变量</div>
+                    <button id="check-toggle-batch-var-mode" class="interactable" title="开启/关闭批量选框模式" style="padding: 4px 10px; font-size: 11px; border-radius: 14px; cursor: pointer; background: rgba(255,255,255,0.06); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); display: inline-flex; align-items: center; justify-content: center; height: 26px;">
+                        <i class="fa-solid fa-list-check" style="margin-right: 4px;"></i> 批量管理
+                    </button>
                     <button id="check-batch-auto-inject-vars" class="interactable" title="一键自动注入所有缺失变量" style="padding: 4px 10px; font-size: 11px; border-radius: 14px; cursor: pointer; background: rgba(255,255,255,0.06); color: var(--SmartThemeQuoteColor); border: 1px solid var(--SmartThemeBorderColor); display: inline-flex; align-items: center; justify-content: center; height: 26px;">
                         <i class="fa-solid fa-wand-magic-sparkles"></i>
                     </button>
                     <button id="check-toggle-log-btn" class="interactable" title="查看/折叠自动化操作日志" style="padding: 4px 10px; font-size: 11px; border-radius: 14px; cursor: pointer; background: rgba(255,255,255,0.06); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); display: inline-flex; align-items: center; justify-content: center; height: 26px;">
                         <i class="fa-solid fa-clock-rotate-left"></i>
+                    </button>
+                </div>
+
+                <!-- 批量选框操作栏 (默认隐藏) -->
+                <div id="check-var-batch-bar" style="display: none; align-items: center; gap: 10px; margin-bottom: 10px; padding: 6px 10px; background: rgba(255,255,255,0.04); border: 1px solid var(--SmartThemeBorderColor); border-radius: 8px; font-size: 11px;">
+                    <label style="display: inline-flex; align-items: center; gap: 4px; cursor: pointer; user-select: none; color: var(--SmartThemeBodyColor);">
+                        <input type="checkbox" id="check-var-select-all" class="interactable" style="cursor: pointer; accent-color: var(--SmartThemeQuoteColor);">
+                        <span>全选</span>
+                    </label>
+                    <button id="check-batch-edit-selected-vars" class="interactable" title="批量重命名或修改选中变量的语法类型" style="display: none; padding: 4px 12px; font-size: 11px; border-radius: 14px; cursor: pointer; background: var(--SmartThemeQuoteColor); color: white; border: none; font-weight: bold; align-items: center; gap: 4px; height: 24px;">
+                        <i class="fa-solid fa-pen-to-square"></i> 批量修改选中变量 (<span id="selected-var-count">0</span>)
                     </button>
                 </div>
 
@@ -413,6 +427,87 @@ export const Checker = {
             const val = $(e.target).is(':checked') ? 'true' : 'false';
             localStorage.setItem('zero_check_treat_uninit_as_problem', val);
             this.refreshResultsInPlace(presetName);
+        });
+
+        let _isBatchVarMode = false;
+
+        const updateBatchBtnState = () => {
+            const checkedVars = $('.var-card-checkbox:checked').map((_, el) => $(el).data('name')).get();
+            const checkedEntries = $('.var-entry-checkbox:checked').map((_, el) => ({
+                varName: $(el).data('var'),
+                entryName: $(el).data('entry'),
+                occType: $(el).data('occ-type')
+            })).get();
+
+            const totalCount = checkedVars.length + checkedEntries.length;
+            $('#selected-var-count').text(totalCount);
+
+            if (checkedEntries.length > 0) {
+                $('#check-batch-edit-selected-vars').css('display', 'inline-flex').html(`<i class="fa-solid fa-pen-to-square"></i> 批量修改选中条目 (${checkedEntries.length})`);
+            } else if (checkedVars.length > 0) {
+                $('#check-batch-edit-selected-vars').css('display', 'inline-flex').html(`<i class="fa-solid fa-pen-to-square"></i> 批量修改选中变量 (${checkedVars.length})`);
+            } else {
+                $('#check-batch-edit-selected-vars').hide();
+            }
+        };
+
+        $('body').off('click', '#check-toggle-batch-var-mode').on('click', '#check-toggle-batch-var-mode', function() {
+            _isBatchVarMode = !_isBatchVarMode;
+            const $btn = $(this);
+            const $batchBar = $('#check-var-batch-bar');
+            const $checkboxes = $('.var-card-checkbox, .var-entry-checkbox');
+
+            if (_isBatchVarMode) {
+                $btn.css({
+                    background: 'var(--SmartThemeQuoteColor)',
+                    color: '#fff',
+                    borderColor: 'var(--SmartThemeQuoteColor)'
+                });
+                $batchBar.css('display', 'flex');
+                $checkboxes.show();
+            } else {
+                $btn.css({
+                    background: 'rgba(255,255,255,0.06)',
+                    color: 'var(--SmartThemeBodyColor)',
+                    borderColor: 'var(--SmartThemeBorderColor)'
+                });
+                $batchBar.hide();
+                $checkboxes.hide().prop('checked', false);
+                $('#check-var-select-all').prop('checked', false);
+                updateBatchBtnState();
+            }
+        });
+
+        $('body').off('change', '.var-card-checkbox, .var-entry-checkbox').on('change', '.var-card-checkbox, .var-entry-checkbox', function() {
+            updateBatchBtnState();
+        });
+
+        $('body').off('change', '#check-var-select-all').on('change', '#check-var-select-all', function() {
+            const checked = $(this).is(':checked');
+            $('.var-card-checkbox, .var-entry-checkbox').prop('checked', checked);
+            updateBatchBtnState();
+        });
+
+        $('body').off('click', '#check-batch-edit-selected-vars').on('click', '#check-batch-edit-selected-vars', function() {
+            const checkedEntries = $('.var-entry-checkbox:checked').map((_, el) => ({
+                varName: $(el).data('var'),
+                entryName: $(el).data('entry'),
+                occType: $(el).data('occ-type')
+            })).get();
+
+            const targetPreset = $('#check-preset-select').val();
+
+            if (checkedEntries.length > 0) {
+                showVariableEntryEditModal(checkedEntries, targetPreset, () => {
+                    Checker.refreshResultsInPlace(targetPreset);
+                });
+            } else {
+                const checkedVars = $('.var-card-checkbox:checked').map((_, el) => $(el).data('name')).get();
+                if (checkedVars.length === 0) return;
+                showBatchVariableEditModal(checkedVars, targetPreset, () => {
+                    Checker.refreshResultsInPlace(targetPreset);
+                });
+            }
         });
 
         // --- Render XML Issues ---
@@ -694,6 +789,7 @@ export const Checker = {
     },
 
     buildVariableRow(v, presetName, allVars) {
+        const isBatchActive = $('#check-var-batch-bar').is(':visible');
         const treatUninitAsProblem = localStorage.getItem('zero_check_treat_uninit_as_problem') === 'true';
 
         const isInitProblem = (treatUninitAsProblem && !v.hasInit) || (v.initCount > 1);
@@ -768,8 +864,11 @@ export const Checker = {
         }
 
         const occHtml = occurrences.map(o => `
-            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; opacity: 0.7; margin-top: 4px; padding: 2px 4px; background: rgba(0,0,0,0.1); border-radius: 4px;">
-                <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">[${o.type.toUpperCase()}] ${escapeHtml(o.name)}</span>
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; opacity: 0.85; margin-top: 4px; padding: 3px 6px; background: rgba(0,0,0,0.1); border-radius: 4px;">
+                <div style="display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0;">
+                    <input type="checkbox" class="var-entry-checkbox interactable" data-var="${escapeHtml(v.name)}" data-entry="${escapeHtml(o.name)}" data-occ-type="${o.type}" style="display: ${isBatchActive ? 'inline-block' : 'none'}; cursor: pointer; accent-color: var(--SmartThemeQuoteColor);">
+                    <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">[${o.type.toUpperCase()}] ${escapeHtml(o.name)}</span>
+                </div>
                 <button class="occ-edit-btn interactable" data-entry="${escapeHtml(o.name)}" title="修改对应条目" style="background: none; border: none; color: inherit; cursor: pointer; padding: 2px 5px;"><i class="fa-solid fa-pencil"></i></button>
             </div>
         `).join('');
@@ -791,12 +890,11 @@ export const Checker = {
             const name = p.name || p.identifier || `Entry ${idx + 1}`;
             const isRec = idx === recommendedPromptIndex;
             return `<option value="${idx}" ${isRec ? 'selected' : ''}>${escapeHtml(name)}${isRec ? ' [推荐]' : ''}</option>`;
-        }).join('');
-
         const row = $(`
             <div class="check-var-row" style="padding: 10px; background: rgba(255,255,255,0.03); border-radius: 8px; margin-bottom: 8px; border-left: 3px solid ${v.isProblem ? 'var(--SmartThemeQuoteColor)' : 'var(--SmartThemeBorderColor)'};">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <div style="display: flex; align-items: center; gap: 6px;">
+                        <input type="checkbox" class="var-card-checkbox interactable" data-name="${escapeHtml(v.name)}" style="display: ${isBatchActive ? 'inline-block' : 'none'}; cursor: pointer; accent-color: var(--SmartThemeQuoteColor);">
                         <div style="font-size: 13px; font-weight: bold; color: ${v.isProblem ? 'var(--SmartThemeQuoteColor)' : 'inherit'}">${escapeHtml(v.name)}</div>
                         <button class="var-rename-btn interactable" data-name="${escapeHtml(v.name)}" title="重命名此变量" style="background: none; border: none; color: var(--SmartThemeBodyColor); opacity: 0.6; cursor: pointer; padding: 2px 4px; font-size: 11px;"><i class="fa-solid fa-pen-to-square"></i></button>
                     </div>
@@ -844,52 +942,10 @@ export const Checker = {
             const oldName = $(e.currentTarget).data('name');
             if (!oldName) return;
 
-            const newName = prompt(`请输入变量 "${oldName}" 的新名称:`, oldName);
-            if (newName === null) return;
-            const trimmedNew = newName.trim();
-            if (!trimmedNew) {
-                toastr.warning('变量名称不能为空');
-                return;
-            }
-            if (trimmedNew === oldName) return;
-
-            try {
-                const pm = SillyTavern.getContext().getPresetManager('openai');
-                if (!pm) {
-                    toastr.error('无法获取预设管理器');
-                    return;
-                }
-                const preset = pm.getCompletionPresetByName(presetName);
-                if (!preset || !Array.isArray(preset.prompts)) return;
-
-                HistoryManager.record();
-
-                let modifiedCount = 0;
-                const regex = new RegExp(`(\\{\\{(?:get|set|add)(?:global)?var::)${this.escapeRegExp(oldName)}(::|\\}\\})`, 'g');
-                preset.prompts.forEach(p => {
-                    if (!p.content) return;
-                    if (p.content.match(regex)) {
-                        p.content = p.content.replace(regex, `$1${trimmedNew}$2`);
-                        modifiedCount++;
-                    }
-                });
-
-                if (modifiedCount > 0) {
-                    const isActive = pm.getSelectedPresetName() === presetName;
-                    await savePresetWithoutRegexToast(pm, presetName, preset, { skipUpdate: !isActive });
-
-                    this.addLog('变量重命名', `将变量 "${oldName}" 重命名为 "${trimmedNew}" (在 ${modifiedCount} 个条目中)`);
-                    toastr.success(`已在 ${modifiedCount} 个条目中将变量 "${oldName}" 重命名为 "${trimmedNew}"`);
-
-                    await this.refreshResultsInPlace(presetName);
-                    window.dispatchEvent(new CustomEvent('zero-content-updated', { detail: { presetName } }));
-                } else {
-                    toastr.info('未发现包含该变量的条目');
-                }
-            } catch (err) {
-                console.error('[Zero] Rename variable failed:', err);
-                toastr.error('重命名失败: ' + err.message);
-            }
+            showVariableRenameModal(oldName, presetName, async ({ newName, targetType, count }) => {
+                this.addLog('变量更名与变型', `将变量 "${oldName}" 重命名为 "${newName}"${targetType !== 'keep' ? `(语法变更为 ${targetType})` : ''} (在 ${count} 个条目中)`);
+                await this.refreshResultsInPlace(presetName);
+            });
         });
 
         // Typo replace event handler

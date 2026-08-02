@@ -1,4 +1,4 @@
-import { escapeHtml, savePresetWithoutRegexToast } from './utils.js';
+import { escapeHtml, savePresetWithoutRegexToast, showVariableRenameModal } from './utils.js';
 import { Checker } from './checker.js';
 import { GroupManager, HistoryManager } from '../qr-snapshot/state.js';
 
@@ -476,46 +476,9 @@ export async function openQuickEditor(presetName, itemName) {
                     const oldName = $(this).data('name');
                     if (!oldName) return;
 
-                    const newName = prompt(`请输入变量 "${oldName}" 的新名称:`, oldName);
-                    if (newName === null) return;
-                    const trimmedNew = newName.trim();
-                    if (!trimmedNew) {
-                        toastr.warning('变量名称不能为空');
-                        return;
-                    }
-                    if (trimmedNew === oldName) return;
-
-                    try {
-                        const pm = SillyTavern.getContext().getPresetManager('openai');
-                        if (!pm) return;
-                        const presetObj = pm.getCompletionPresetByName(preset.name || preset.identifier);
-                        if (!presetObj || !Array.isArray(presetObj.prompts)) return;
-
-                        const escapeRegExp = str => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                        const regex = new RegExp(`(\\{\\{(?:get|set|add)(?:global)?var::)${escapeRegExp(oldName)}(::|\\}\\})`, 'g');
-                        let count = 0;
-
-                        presetObj.prompts.forEach(p => {
-                            if (p.content && p.content.match(regex)) {
-                                p.content = p.content.replace(regex, `$1${trimmedNew}$2`);
-                                count++;
-                            }
-                        });
-
-                        if (count > 0) {
-                            HistoryManager.record();
-                            const isActive = pm.getSelectedPresetName() === (preset.name || preset.identifier);
-                            await savePresetWithoutRegexToast(pm, preset.name || preset.identifier, presetObj, { skipUpdate: !isActive });
-                            toastr.success(`已在 ${count} 个条目中将变量 "${oldName}" 重命名为 "${trimmedNew}"`);
-                            renderEditorVariables();
-                            window.dispatchEvent(new CustomEvent('zero-content-updated', { detail: { presetName: preset.name || preset.identifier } }));
-                        } else {
-                            toastr.info('未发现包含该变量的条目');
-                        }
-                    } catch (err) {
-                        console.error('[Zero] Rename var in editor failed:', err);
-                        toastr.error('重命名失败: ' + err.message);
-                    }
+                    showVariableRenameModal(oldName, preset.name || preset.identifier, () => {
+                        renderEditorVariables();
+                    });
                 });
                 
                 $list.append(item);

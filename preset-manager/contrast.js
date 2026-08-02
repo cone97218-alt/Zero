@@ -149,13 +149,30 @@ export async function showManualLinksManager() {
         delete links[key];
         localStorage.setItem('zero_manual_links', JSON.stringify(links));
         $('#links-manager-modal').remove();
-        performAutoMatch();
+        performAutoMatch(true);
     });
 
     $('#close-links-manager').on('click', () => $('#links-manager-modal').remove());
 }
 
-export async function performAutoMatch() {
+let _contrastCache = {
+    key: null,
+    matched: null,
+    onlyA: null,
+    onlyB: null,
+    allItems: null,
+    manualMatched: null
+};
+
+export function clearContrastCache() {
+    _contrastCache = { key: null, matched: null, onlyA: null, onlyB: null, allItems: null, manualMatched: null };
+}
+
+window.addEventListener('zero-content-updated', () => {
+    clearContrastCache();
+});
+
+export async function performAutoMatch(forceRefresh = false) {
     const nameA = $('#contrast-preset-a').val();
     const nameB = $('#contrast-preset-b').val();
     const $list = $('#contrast-list');
@@ -165,8 +182,22 @@ export async function performAutoMatch() {
         return;
     }
     
-    if (!nameA && !nameB) {
-        $list.html('<p style="text-align: center; opacity: 0.5; margin-top: 20px;">请至少选择一个预设</p>');
+    if (!nameA || !nameB) {
+        $list.html('<p style="text-align: center; opacity: 0.5; margin-top: 40px;">请分别在上方选择对比预设 A 与预设 B</p>');
+        return;
+    }
+
+    const cacheKey = `${nameA}::${nameB}`;
+    if (!forceRefresh && _contrastCache.key === cacheKey && _contrastCache.allItems) {
+        window.zero_contrast_allItems = _contrastCache.allItems;
+        renderMatchResults(
+            _contrastCache.matched,
+            _contrastCache.onlyA,
+            _contrastCache.onlyB,
+            _contrastCache.allItems,
+            _contrastCache.manualMatched
+        );
+        restoreScroll();
         return;
     }
 
