@@ -141,7 +141,7 @@ function ensurePanel() {
     if ($(`#${PANEL_ID}`).length) return;
 
     const panelHtml = `
-        <div id="${PANEL_ID}" class="completion_prompt_manager_popup TH-script-editor-container regex_editor_template" style="
+        <div id="${PANEL_ID}" style="
             display: none;
             position: fixed;
             top: 0;
@@ -517,7 +517,6 @@ function ensurePanel() {
                                     <span class="zero-slider"></span>
                                 </label>
                             </div>
-
                         </div>
                     </div>
 
@@ -1484,18 +1483,6 @@ function ensurePanel() {
     });
 
     // 通知开关监听
-    // Global delegate click handler for all .zero-switch elements in Preset Manager
-    $('body').off('click', '.zero-switch').on('click', '.zero-switch', function(e) {
-        if (e.target.tagName === 'INPUT') return;
-        e.preventDefault();
-        e.stopPropagation();
-        const $cb = $(this).find('input[type="checkbox"]');
-        if ($cb.length) {
-            const current = $cb.prop('checked');
-            $cb.prop('checked', !current).trigger('change');
-        }
-    });
-
     $('body').off('change', '#zero-setting-toast-switch').on('change', '#zero-setting-toast-switch', function() {
         const checked = $(this).is(':checked');
         UiStateManager.save({ toastOnSnapshotSwitch: checked });
@@ -1522,7 +1509,6 @@ function ensurePanel() {
 
     $('body').off('change', '#zero-setting-enable-op-log').on('change', '#zero-setting-enable-op-log', function() {
         const checked = $(this).is(':checked');
-        console.log('[Zero:main] OP-LOG SWITCH CHANGED, checked:', checked);
         UiStateManager.save({ enablePresetOpLog: checked });
         toastr.success(checked ? '已开启预设操作日志记录' : '已关闭预设操作日志记录');
     });
@@ -2395,7 +2381,7 @@ export function renderSettingsTab() {
     $('#zero-setting-toast-overwrite').prop('checked', state.toastOnSnapshotOverwrite === true);
     $('#zero-setting-toast-stitch').prop('checked', state.toastOnPresetStitch === true);
     $('#zero-setting-confirm-snapshot').prop('checked', state.confirmOnSnapshot === true);
-    $('#zero-setting-enable-op-log').prop('checked', state.enablePresetOpLog === true);
+    $('#zero-setting-enable-op-log').prop('checked', state.enablePresetOpLog !== false);
 
     // Stitch switches
     $('#zero-setting-stitch-collapse-b').prop('checked', state.collapseTargetBOnStitch === true);

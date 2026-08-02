@@ -2,10 +2,8 @@
  * Zero Preset Manager - UI
  * Performance-optimized v2: innerHTML templates, event delegation, lazy rendering.
  */
-import { PresetManager, SnapshotManager, GroupManager, HiddenManager, UiStateManager, LinkageManager, zeroTranslate, HistoryManager, ModelProfileManager, SamplingParamsHelper, SnapshotGroupManager, getPresetPromptsWithEnabled, getStringSimilarity, detectPresetRenames, getOpenai, OpLogManager } from './state.js';
+import { PresetManager, SnapshotManager, GroupManager, HiddenManager, UiStateManager, LinkageManager, zeroTranslate, HistoryManager, ModelProfileManager, SamplingParamsHelper, SnapshotGroupManager, getPresetPromptsWithEnabled, getStringSimilarity, detectPresetRenames, getOpenai } from './state.js';
 import { matchPrompt } from './search-util.js';
-
-console.log('[Zero] ui.js loaded, build: 81e0abe-v3');
 
 let overlay = null;
 let pendingToggles = new Map();
@@ -62,7 +60,6 @@ function formatDate(ts) {
 }
 
 function scheduleToggle(identifier, enabled) {
-    console.log('[Zero:scheduleToggle] id:', identifier, 'enabled:', enabled);
     pendingToggles.set(identifier, enabled);
     clearTimeout(toggleTimer);
     toggleTimer = setTimeout(flushToggles, 300);
@@ -72,7 +69,6 @@ async function flushToggles() {
     if (pendingToggles.size === 0) return;
     const batch = new Map(pendingToggles);
     pendingToggles.clear();
-    console.log('[Zero:flushToggles] flushing', batch.size, 'toggle(s)');
     try { await PresetManager.batchToggleMap(batch); }
     catch (e) { console.error('[Zero] batch toggle failed:', e); toastr.error('切换失败'); }
 }
@@ -214,7 +210,6 @@ export async function openUI() {
 
     overlay = document.createElement('div');
     overlay.id = 'zero-overlay';
-    overlay.className = 'completion_prompt_manager_popup TH-script-editor-container regex_editor_template';
     Object.assign(overlay.style, {
         position: 'fixed', top: '0', left: '0', width: '100vw', height: '100vh',
         zIndex: '10001', background: 'rgba(0,0,0,0.55)',
@@ -241,7 +236,7 @@ export async function openUI() {
 
     overlay.addEventListener('click', (e) => { if (e.target === overlay) closeUI(); });
 
-    const modal = h('div', { class: 'zero-modal completion_prompt_manager_popup TH-script-editor-container regex_editor_template', id: 'zero-modal' });
+    const modal = h('div', { class: 'zero-modal' });
     Object.assign(modal.style, {
         animation: 'none',
         opacity: '1'
@@ -415,7 +410,6 @@ function buildModal(modal, preset, listInfo) {
         select.appendChild(opt);
     });
     select.addEventListener('change', async () => {
-        console.log('[Zero:ui] PRESET SELECT CHANGE EVENT FIRED, target:', select.value);
         const name = select.value;
         select.disabled = true;
         const contentEl = modal.querySelector('.zero-content');
@@ -424,22 +418,11 @@ function buildModal(modal, preset, listInfo) {
             contentEl.style.pointerEvents = 'none';
         }
         try {
-            PresetManager.invalidate();
-            const switched = await PresetManager.switchPreset(name);
-            if (!switched) {
-                console.warn('[Zero] switchPreset returned false for:', name);
-            }
+            await PresetManager.switchPreset(name);
             const newPreset = await PresetManager.load();
-            const freshListInfo = await PresetManager.listNames();
             if (newPreset) {
                 modal.innerHTML = '';
-                buildModal(modal, newPreset, freshListInfo);
-            } else {
-                if (contentEl) {
-                    contentEl.style.opacity = '1';
-                    contentEl.style.pointerEvents = '';
-                }
-                select.disabled = false;
+                buildModal(modal, newPreset, listInfo);
             }
         } catch (err) {
             console.error('[Zero] preset switch failed:', err);
@@ -573,7 +556,8 @@ function buildModal(modal, preset, listInfo) {
         }
     });
 
-    const isOpLogEnabled = UiStateManager.get().enablePresetOpLog === true;
+    const header = h('div', { class: 'zero-header' });
+    const isOpLogEnabled = UiStateManager.get().enablePresetOpLog !== false;
     const headerChildren = [
         h('label', { class: 'zero-header-label', text: '当前预设' }),
         select
@@ -638,8 +622,8 @@ function buildModal(modal, preset, listInfo) {
         searchWrap,
         h('button', { class: 'zero-close-btn', html: '<i class="fa-solid fa-xmark"></i>', onclick: closeUI })
     );
-
-    modal.appendChild(h('div', { class: 'zero-header' }, ...headerChildren));
+    headerChildren.forEach(c => header.appendChild(c));
+    modal.appendChild(header);
 
     const tabs = [
         { id: 'entries', icon: 'fa-list', label: '条目' },
@@ -884,13 +868,11 @@ function setupEntriesDelegation(panel) {
     // Toggle switches (entry + group header)
     panel.addEventListener('change', (e) => {
         const cb = e.target;
-        console.log('[Zero:ui] PANEL CHANGE EVENT FIRED, target:', cb, 'type:', cb?.type, 'checked:', cb?.checked);
         if (cb.type !== 'checkbox') return;
 
         const header = cb.closest('.zero-group-header');
         if (header) {
             e.stopPropagation();
-            console.log('[Zero:ui] group header toggle:', cb.checked);
             localBatchToggle(header.closest('.zero-group'), cb.checked);
             return;
         }
@@ -900,7 +882,6 @@ function setupEntriesDelegation(panel) {
             if (msActive) { cb.checked = !cb.checked; return; }
             const id = entry.dataset.id;
             const p = _promptMap.get(id);
-            console.log('[Zero:ui] entry toggle, id:', id, '| prompt found:', !!p, '| checked:', cb.checked);
             if (p) {
                 p.enabled = cb.checked;
                 scheduleToggle(id, cb.checked);
@@ -924,19 +905,6 @@ function setupEntriesDelegation(panel) {
 
     // Click delegation
     panel.addEventListener('click', (e) => {
-        // Toggle switch click interception (guarantees click -> change event flow)
-        const switchLabel = e.target.closest('.zero-switch');
-        if (switchLabel && e.target.tagName !== 'INPUT') {
-            e.preventDefault();
-            e.stopPropagation();
-            const cb = switchLabel.querySelector('input[type="checkbox"]');
-            if (cb) {
-                cb.checked = !cb.checked;
-                cb.dispatchEvent(new Event('change', { bubbles: true }));
-            }
-            return;
-        }
-
         // Group header collapse/expand
         const header = e.target.closest('.zero-group-header');
         if (header && !e.target.closest('.zero-group-actions')) {
@@ -4458,10 +4426,9 @@ async function showSnapshotMigrationModal(preset, preselectedSourceOrSnap = null
     importOnlyBtn.addEventListener('click', () => executeImport(false));
 }
 
-function escapeHtml(str) {
-    return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
+// ═══════════════════════════════════════
+//  Preset Operation Log Modal
+// ═══════════════════════════════════════
 export function openOpLogModal(presetName) {
     const existing = document.getElementById('zero-op-log-modal');
     if (existing) existing.remove();
@@ -4564,3 +4531,4 @@ export function openOpLogModal(presetName) {
         if (e.target === logModal) closeLogModal();
     });
 }
+
