@@ -22,7 +22,20 @@ function getSettings() {
     return s;
 }
 function saveSettings() {
-    SillyTavern.getContext().saveSettingsDebounced();
+    try {
+        const ctx = window.SillyTavern?.getContext?.();
+        if (typeof ctx?.saveSettingsDebounced === 'function') {
+            ctx.saveSettingsDebounced();
+        } else if (typeof ctx?.saveSettings === 'function') {
+            ctx.saveSettings();
+        } else if (typeof window.saveSettingsDebounced === 'function') {
+            window.saveSettingsDebounced();
+        } else if (typeof window.saveSettings === 'function') {
+            window.saveSettings();
+        }
+    } catch (e) {
+        console.warn('[Zero] saveSettings warning:', e);
+    }
 }
 
 // ─── Cached openai module ───
@@ -1367,7 +1380,7 @@ export const SamplingParamsHelper = {
                 }
             }
         }
-        SillyTavern.getContext().saveSettingsDebounced();
+        saveSettings();
     }
 };
 

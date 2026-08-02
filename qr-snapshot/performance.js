@@ -105,14 +105,6 @@ function _install(prevSource) {
     _prevSource = prevSource;
     _pendingInputEls.clear();
 
-    if (!_origTrigger) {
-        _origTrigger = $.fn.trigger;
-        $.fn.trigger = _patchedTrigger;
-    }
-
-    // Safety valve: if AFTER event never fires (e.g. an error in openai.js),
-    // restore the original trigger after SAFETY_MS so we don't permanently
-    // break jQuery triggers.
     clearTimeout(_safetyTimer);
     _safetyTimer = setTimeout(_restore, SAFETY_MS);
 }
@@ -122,12 +114,8 @@ function _restore() {
     _safetyTimer = null;
     _switching = false;
     _prevSource = '';
-
-    if (_origTrigger) {
-        $.fn.trigger = _origTrigger;
-        _origTrigger = null;
-    }
 }
+
 
 /**
  * Flush all deferred input events in the next animation frame.
