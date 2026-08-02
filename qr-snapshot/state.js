@@ -256,46 +256,80 @@ export const PresetManager = {
     },
 
     async switchPreset(name, options = {}) {
-        const selectEl = document.getElementById('settings_preset_openai');
-        if (!selectEl) return false;
-        const opt = Array.from(selectEl.options).find(o => o.textContent.trim() === name || o.value === name);
-        if (!opt) return false;
-        
-        _preset = null;
-        _presetNames = null;
+        if (!name) return false;
 
-        if (selectEl.value !== opt.value) {
-            const ctx = SillyTavern.getContext();
-            const eventSource = ctx?.eventSource;
-            const event_types = ctx?.event_types;
+        this.invalidate();
 
-            const switchPromise = new Promise((resolve) => {
-                let timer = null;
-                const handler = () => {
-                    if (timer) clearTimeout(timer);
-                    resolve();
-                };
+        let switched = false;
+        const ctx = window.SillyTavern?.getContext?.();
+        const pm = ctx?.getPresetManager?.('openai');
 
-                if (eventSource && event_types?.OAI_PRESET_CHANGED_AFTER) {
-                    eventSource.once(event_types.OAI_PRESET_CHANGED_AFTER, handler);
+        // 1. Try native SillyTavern PresetManager API
+        if (pm) {
+            try {
+                const currentName = pm.getSelectedPresetName?.();
+                if (currentName === name) {
+                    switched = true;
+                } else {
+                    let targetVal = pm.findPreset?.(name);
+                    if (targetVal === undefined || targetVal === null) {
+                        targetVal = name;
+                    }
+                    if (typeof pm.selectPreset === 'function') {
+                        await pm.selectPreset(targetVal);
+                        switched = true;
+                    }
                 }
-                timer = setTimeout(handler, 100);
-            });
-
-            selectEl.value = opt.value;
-            selectEl.dispatchEvent(new Event('change', { bubbles: true }));
-            if (typeof $ !== 'undefined') {
-                $(selectEl).trigger('change');
+            } catch (e) {
+                console.warn('[Zero] pm.selectPreset failed, attempting fallback:', e);
             }
-
-            await switchPromise;
         }
 
-        if (!options.skipLinkage && typeof window.triggerZeroApiLinkage === 'function') {
-            window.triggerZeroApiLinkage(name);
+        // 2. Fallback to DOM element if pm API was unavailable or DOM element exists
+        const selectEl = pm?.select || document.getElementById('settings_preset_openai');
+        if (selectEl) {
+            const opt = Array.from(selectEl.options).find(o => o.textContent.trim() === name || o.value === name);
+            if (opt) {
+                if (selectEl.value !== opt.value) {
+                    const eventSource = ctx?.eventSource;
+                    const event_types = ctx?.event_types;
+
+                    const switchPromise = new Promise((resolve) => {
+                        let timer = null;
+                        const handler = () => {
+                            if (timer) clearTimeout(timer);
+                            resolve();
+                        };
+                        if (eventSource && event_types?.OAI_PRESET_CHANGED_AFTER) {
+                            eventSource.once(event_types.OAI_PRESET_CHANGED_AFTER, handler);
+                        }
+                        timer = setTimeout(handler, 150);
+                    });
+
+                    selectEl.value = opt.value;
+                    selectEl.dispatchEvent(new Event('change', { bubbles: true }));
+                    if (typeof $ !== 'undefined') {
+                        $(selectEl).trigger('change');
+                    }
+                    await switchPromise;
+                    switched = true;
+                } else {
+                    switched = true;
+                }
+            }
         }
 
-        return true;
+        this.invalidate();
+
+        if (switched) {
+            await this.load();
+
+            if (!options.skipLinkage && typeof window.triggerZeroApiLinkage === 'function') {
+                window.triggerZeroApiLinkage(name);
+            }
+        }
+
+        return switched;
     },
 
     async togglePrompt(identifier, enabled) {

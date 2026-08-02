@@ -419,11 +419,22 @@ function buildModal(modal, preset, listInfo) {
             contentEl.style.pointerEvents = 'none';
         }
         try {
-            await PresetManager.switchPreset(name);
+            PresetManager.invalidate();
+            const switched = await PresetManager.switchPreset(name);
+            if (!switched) {
+                console.warn('[Zero] switchPreset returned false for:', name);
+            }
             const newPreset = await PresetManager.load();
+            const freshListInfo = await PresetManager.listNames();
             if (newPreset) {
                 modal.innerHTML = '';
-                buildModal(modal, newPreset, listInfo);
+                buildModal(modal, newPreset, freshListInfo);
+            } else {
+                if (contentEl) {
+                    contentEl.style.opacity = '1';
+                    contentEl.style.pointerEvents = '';
+                }
+                select.disabled = false;
             }
         } catch (err) {
             console.error('[Zero] preset switch failed:', err);
