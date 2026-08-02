@@ -396,3 +396,25 @@ eventSource.on(event_types.CHAT_CHANGED, injectButton);
 
 console.log('[Zero] Preset Manager extension loaded with API Config Manager linkage & Slash Commands support');
 
+// ── Veridis & Third-Party Text Purifier Compatibility ──────────────────────
+function setupVeridisCompatibility() {
+    if (window._zeroVeridisCompatInstalled) return;
+    window._zeroVeridisCompatInstalled = true;
+
+    const zeroSelector = '#zero-quick-editor, #zero-preset-manager-panel, #zero-modal, #zero-preset-manager-modal, #zero-entry-context-menu-modal, #zero-inject-var-modal, #zero-op-log-modal, #links-manager-modal, .zero-quick-textarea';
+
+    ['input', 'keydown', 'keyup', 'keypress'].forEach(eventType => {
+        document.body.addEventListener(eventType, (e) => {
+            const target = e.target;
+            if (!target) return;
+            const isTextInput = target.tagName === 'TEXTAREA' ||
+                (target.tagName === 'INPUT' && target.type !== 'checkbox' && target.type !== 'radio');
+            if (isTextInput && target.closest(zeroSelector)) {
+                // Stop bubbling at document.body so global listeners on document/window (like Veridis) don't receive text editing events from Zero
+                e.stopPropagation();
+            }
+        }, false); // false = BUBBLING PHASE!
+    });
+}
+setupVeridisCompatibility();
+
