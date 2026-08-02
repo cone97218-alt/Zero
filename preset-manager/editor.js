@@ -149,7 +149,7 @@ export async function openQuickEditor(presetName, itemName) {
                         <i class="fa-solid fa-list-check"></i> 预设变量助手 <i class="fa-solid fa-chevron-right"></i>
                     </div>
                     <div id="editor-vars-container" style="display: none; padding-top: 8px;">
-                        <div id="editor-vars-list" style="display: flex; flex-wrap: wrap; gap: 6px; max-height: 80px; overflow-y: auto; padding-right: 4px;"></div>
+                        <div id="editor-vars-list" style="display: flex; flex-wrap: wrap; gap: 6px; max-height: 220px; min-height: 40px; overflow-y: auto; padding-right: 4px;"></div>
                     </div>
                 </div>
             </div>
@@ -265,23 +265,31 @@ export async function openQuickEditor(presetName, itemName) {
     });
 
     // --- Quick Phrases Logic ---
-    const seedPhrases = [
-        { title: '{{setvar::变量名:: }}', content: '{{setvar:::: }}', offset: 10 },
-        { title: '{{setvar::变量名::内容}}', content: '{{setvar::::}}', offset: 10 },
-        { title: '{{getvar::变量名}}', content: '{{getvar::}}', offset: 10 },
-        { title: '{{setglobalvar::变量名:: }}', content: '{{setglobalvar:::: }}', offset: 16 },
-        { title: '{{setglobalvar::变量名::内容}}', content: '{{setglobalvar::::}}', offset: 16 },
-        { title: '{{getglobalvar::变量名}}', content: '{{getglobalvar::}}', offset: 16 }
-    ];
+    const getSeedPhrases = () => {
+        const enableGlobal = localStorage.getItem('zero_enable_global_vars') === 'true';
+        const localPhrases = [
+            { title: '{{setvar::变量名:: }}', content: '{{setvar:::: }}', offset: 10 },
+            { title: '{{setvar::变量名::内容}}', content: '{{setvar::::}}', offset: 10 },
+            { title: '{{addvar::变量名::数值/文本}}', content: '{{addvar::::}}', offset: 10 },
+            { title: '{{getvar::变量名}}', content: '{{getvar::}}', offset: 10 }
+        ];
+        const globalPhrases = [
+            { title: '{{setglobalvar::变量名:: }}', content: '{{setglobalvar:::: }}', offset: 16 },
+            { title: '{{setglobalvar::变量名::内容}}', content: '{{setglobalvar::::}}', offset: 16 },
+            { title: '{{addglobalvar::变量名::数值/文本}}', content: '{{addglobalvar::::}}', offset: 16 },
+            { title: '{{getglobalvar::变量名}}', content: '{{getglobalvar::}}', offset: 16 }
+        ];
+        return enableGlobal ? [...localPhrases, ...globalPhrases] : localPhrases;
+    };
     
     let isDeleteMode = false;
     let editingIndex = null;
     
     const renderPhrases = () => {
-        let phrases = JSON.parse(localStorage.getItem('zero_quick_phrases_v2'));
+        let phrases = JSON.parse(localStorage.getItem('zero_quick_phrases_v3'));
         if (!phrases) {
-            phrases = seedPhrases;
-            localStorage.setItem('zero_quick_phrases_v2', JSON.stringify(phrases));
+            phrases = getSeedPhrases();
+            localStorage.setItem('zero_quick_phrases_v3', JSON.stringify(phrases));
         }
 
         const $list = $('#phrases-list');
@@ -431,24 +439,83 @@ export async function openQuickEditor(presetName, itemName) {
                 return;
             }
             
+            const enableGlobal = localStorage.getItem('zero_enable_global_vars') === 'true';
             vars.sort((a, b) => a.name.localeCompare(b.name)).forEach(v => {
+                const showGlobal = enableGlobal && v.isGlobal;
+                const getMacroName = showGlobal ? 'getglobalvar' : 'getvar';
+                const setMacroName = showGlobal ? 'setglobalvar' : 'setvar';
+                const addMacroName = showGlobal ? 'addglobalvar' : 'addvar';
+
                 const item = $(`
                     <div style="display: inline-flex; align-items: center; background: rgba(255,255,255,0.04); border: 1px solid var(--SmartThemeBorderColor); border-radius: 6px; padding: 3px 6px; font-size: 11px; gap: 6px;">
                         <span style="font-weight: bold; color: var(--SmartThemeBodyColor); opacity: 0.9;" title="${v.isGlobal ? '全局变量' : '普通变量'}">${escapeHtml(v.name)}</span>
-                        <span class="var-insert-btn interactable" data-macro="get" title="插入读取宏 {{getvar::${v.name}}}" style="padding: 1px 5px; background: color-mix(in srgb, var(--zero-info-color, #2288ff) 12%, var(--SmartThemeChatTintColor)); color: color-mix(in srgb, var(--zero-info-color, #2288ff) 85%, var(--SmartThemeBodyColor)); border-radius: 4px; cursor: pointer; font-size: 10px; font-weight: bold; user-select: none;">+ 读</span>
-                        <span class="var-insert-btn interactable" data-macro="set" title="插入设置宏 {{setvar::${v.name}::}}" style="padding: 1px 5px; background: color-mix(in srgb, var(--zero-warning-color, #ff8822) 12%, var(--SmartThemeChatTintColor)); color: color-mix(in srgb, var(--zero-warning-color, #ff8822) 85%, var(--SmartThemeBodyColor)); border-radius: 4px; cursor: pointer; font-size: 10px; font-weight: bold; user-select: none;">+ 写</span>
+                        <span class="var-insert-btn interactable" data-macro="get" title="插入读取宏 {{${getMacroName}::${v.name}}}" style="padding: 1px 5px; background: color-mix(in srgb, var(--zero-info-color, #2288ff) 12%, var(--SmartThemeChatTintColor)); color: color-mix(in srgb, var(--zero-info-color, #2288ff) 85%, var(--SmartThemeBodyColor)); border-radius: 4px; cursor: pointer; font-size: 10px; font-weight: bold; user-select: none;">+ 读</span>
+                        <span class="var-insert-btn interactable" data-macro="set" title="插入设置宏 {{${setMacroName}::${v.name}::}}" style="padding: 1px 5px; background: color-mix(in srgb, var(--zero-warning-color, #ff8822) 12%, var(--SmartThemeChatTintColor)); color: color-mix(in srgb, var(--zero-warning-color, #ff8822) 85%, var(--SmartThemeBodyColor)); border-radius: 4px; cursor: pointer; font-size: 10px; font-weight: bold; user-select: none;">+ 写</span>
+                        <span class="var-insert-btn interactable" data-macro="add" title="插入累加宏 {{${addMacroName}::${v.name}::}}" style="padding: 1px 5px; background: color-mix(in srgb, var(--SmartThemeQuoteColor, #7b8cde) 12%, var(--SmartThemeChatTintColor)); color: color-mix(in srgb, var(--SmartThemeQuoteColor, #7b8cde) 85%, var(--SmartThemeBodyColor)); border-radius: 4px; cursor: pointer; font-size: 10px; font-weight: bold; user-select: none;">+ 加</span>
+                        <span class="var-rename-editor-btn interactable" data-name="${escapeHtml(v.name)}" title="重命名此变量" style="padding: 1px 5px; background: rgba(255,255,255,0.06); color: var(--SmartThemeBodyColor); border-radius: 4px; cursor: pointer; font-size: 10px; opacity: 0.8; user-select: none;"><i class="fa-solid fa-pen-to-square"></i> 改</span>
                     </div>
                 `);
                 
                 item.find('.var-insert-btn').on('click', function(e) {
                     const macroType = $(this).data('macro');
-                    const isGlobal = v.isGlobal;
-                    const macro = macroType === 'get'
-                        ? `{{${isGlobal ? 'getglobalvar' : 'getvar'}::${v.name}}}`
-                        : `{{${isGlobal ? 'setglobalvar' : 'setvar'}::${v.name}::}}`;
+                    let macro = '';
+                    if (macroType === 'get') {
+                        macro = `{{${getMacroName}::${v.name}}}`;
+                    } else if (macroType === 'add') {
+                        macro = `{{${addMacroName}::${v.name}::}}`;
+                    } else {
+                        macro = `{{${setMacroName}::${v.name}::}}`;
+                    }
                     
                     const offset = macroType === 'get' ? macro.length : macro.length - 2;
                     insertAtCursor(macro, offset);
+                });
+
+                item.find('.var-rename-editor-btn').on('click', async function(e) {
+                    e.stopPropagation();
+                    const oldName = $(this).data('name');
+                    if (!oldName) return;
+
+                    const newName = prompt(`请输入变量 "${oldName}" 的新名称:`, oldName);
+                    if (newName === null) return;
+                    const trimmedNew = newName.trim();
+                    if (!trimmedNew) {
+                        toastr.warning('变量名称不能为空');
+                        return;
+                    }
+                    if (trimmedNew === oldName) return;
+
+                    try {
+                        const pm = SillyTavern.getContext().getPresetManager('openai');
+                        if (!pm) return;
+                        const presetObj = pm.getCompletionPresetByName(preset.name || preset.identifier);
+                        if (!presetObj || !Array.isArray(presetObj.prompts)) return;
+
+                        const escapeRegExp = str => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                        const regex = new RegExp(`(\\{\\{(?:get|set|add)(?:global)?var::)${escapeRegExp(oldName)}(::|\\}\\})`, 'g');
+                        let count = 0;
+
+                        presetObj.prompts.forEach(p => {
+                            if (p.content && p.content.match(regex)) {
+                                p.content = p.content.replace(regex, `$1${trimmedNew}$2`);
+                                count++;
+                            }
+                        });
+
+                        if (count > 0) {
+                            HistoryManager.record();
+                            const isActive = pm.getSelectedPresetName() === (preset.name || preset.identifier);
+                            await savePresetWithoutRegexToast(pm, preset.name || preset.identifier, presetObj, { skipUpdate: !isActive });
+                            toastr.success(`已在 ${count} 个条目中将变量 "${oldName}" 重命名为 "${trimmedNew}"`);
+                            renderEditorVariables();
+                            window.dispatchEvent(new CustomEvent('zero-content-updated', { detail: { presetName: preset.name || preset.identifier } }));
+                        } else {
+                            toastr.info('未发现包含该变量的条目');
+                        }
+                    } catch (err) {
+                        console.error('[Zero] Rename var in editor failed:', err);
+                        toastr.error('重命名失败: ' + err.message);
+                    }
                 });
                 
                 $list.append(item);

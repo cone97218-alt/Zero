@@ -1275,9 +1275,13 @@ export async function showInjectVariableModal(promptOrName, presetName = '', onS
                             <label style="font-size: 12px; font-weight: bold; color: var(--SmartThemeBodyColor);">变量语法 / 宏类型:</label>
                             <select id="zero-inject-var-type-select" class="interactable" style="width: 100%; padding: 8px 10px; background: rgba(0,0,0,0.15); border: 1px solid var(--SmartThemeBorderColor, #444); color: inherit; border-radius: 6px; font-size: 12px; box-sizing: border-box;">
                                 <option value="setvar" selected>setvar :: 局部变量赋值 ( {{setvar::变量名::内容}} )</option>
-                                <option value="setglobalvar">setglobalvar :: 全局变量赋值 ( {{setglobalvar::变量名::内容}} )</option>
+                                <option value="addvar">addvar :: 局部变量累加/追加 ( {{addvar::变量名::内容}} )</option>
                                 <option value="getvar">getvar :: 局部变量读取 ( {{getvar::变量名}} )</option>
+                                ${localStorage.getItem('zero_enable_global_vars') === 'true' ? `
+                                <option value="setglobalvar">setglobalvar :: 全局变量赋值 ( {{setglobalvar::变量名::内容}} )</option>
+                                <option value="addglobalvar">addglobalvar :: 全局变量累加/追加 ( {{addglobalvar::变量名::内容}} )</option>
                                 <option value="getglobalvar">getglobalvar :: 全局变量读取 ( {{getglobalvar::变量名}} )</option>
+                                ` : ''}
                             </select>
                         </div>
 
@@ -1349,12 +1353,12 @@ export async function showInjectVariableModal(promptOrName, presetName = '', onS
     const updateTypeVisibility = () => {
         const varType = $('#zero-inject-var-type-select').val();
         const varName = $('#zero-inject-var-name-input').val().trim() || defaultVar;
-        const isSet = varType === 'setvar' || varType === 'setglobalvar';
+        const isWrite = varType === 'setvar' || varType === 'setglobalvar' || varType === 'addvar' || varType === 'addglobalvar';
 
         $('#summary-var-name').text(varName);
         $('#summary-var-type').text(varType);
 
-        if (isSet) {
+        if (isWrite) {
             $('#zero-inject-set-options').show();
             $('#zero-inject-get-options').hide();
             $('#zero-inject-var-insert-cursor-btn').hide();
@@ -1370,8 +1374,9 @@ export async function showInjectVariableModal(promptOrName, presetName = '', onS
         const varName = $('#zero-inject-var-name-input').val().trim() || defaultVar;
         const varType = $('#zero-inject-var-type-select').val();
         const currentText = $('#zero-inject-var-editor-textarea').val();
+        const isWrite = varType === 'setvar' || varType === 'setglobalvar' || varType === 'addvar' || varType === 'addglobalvar';
 
-        if (varType === 'setvar' || varType === 'setglobalvar') {
+        if (isWrite) {
             const shouldWrap = $('#zero-inject-var-wrap-check').is(':checked');
             return shouldWrap ? `{{${varType}::${varName}::${currentText}}}` : `{{${varType}::${varName}::}}\n${currentText}`;
         } else {

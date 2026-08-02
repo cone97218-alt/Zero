@@ -37,7 +37,7 @@ export const Checker = {
             while ((match = getRegex.exec(content)) !== null) {
                 const name = match[1].trim();
                 if (name) {
-                    if (!varMap.has(name)) varMap.set(name, { init: [], set: [], get: [] });
+                    if (!varMap.has(name)) varMap.set(name, { init: [], set: [], add: [], get: [] });
                     varMap.get(name).get.push({ entry: p, name: entryName });
                 }
             }
@@ -68,7 +68,7 @@ export const Checker = {
                     }
                 }
 
-                if (!varMap.has(name)) varMap.set(name, { init: [], set: [], get: [] });
+                if (!varMap.has(name)) varMap.set(name, { init: [], set: [], add: [], get: [] });
 
                 if (depth === 0 && value.trim() === '') {
                     varMap.get(name).init.push({ entry: p, name: entryName });
@@ -76,34 +76,68 @@ export const Checker = {
                     varMap.get(name).set.push({ entry: p, name: entryName, value: value.trim() || '...' });
                 }
             }
+
+            // 3. 扫描所有 addvar / addglobalvar 宏（累加/追加操作）
+            const addRegex = /\{\{add(?:global)?var::([^{}:\s]+)::/gi;
+            while ((match = addRegex.exec(content)) !== null) {
+                const name = match[1].trim();
+                if (!name) continue;
+
+                const startIndex = match.index + match[0].length;
+                let depth = 1;
+                let endIndex = startIndex;
+                let value = '';
+
+                for (let i = startIndex; i < content.length - 1; i++) {
+                    if (content[i] === '{' && content[i + 1] === '{') {
+                        depth++;
+                        i++;
+                    } else if (content[i] === '}' && content[i + 1] === '}') {
+                        depth--;
+                        if (depth === 0) {
+                            endIndex = i;
+                            value = content.substring(startIndex, endIndex);
+                            break;
+                        }
+                        i++;
+                    }
+                }
+
+                if (!varMap.has(name)) varMap.set(name, { init: [], set: [], add: [], get: [] });
+                varMap.get(name).add.push({ entry: p, name: entryName, value: value.trim() || '...' });
+            }
         });
 
         // Analyze variables
         for (const [name, data] of varMap.entries()) {
             const hasInit = data.init.length > 0;
             const hasSet = data.set.length > 0;
+            const hasAdd = data.add.length > 0;
             const hasGet = data.get.length > 0;
 
             // Check if variable is global
             let isGlobal = false;
             prompts.forEach(p => {
                 const c = p.content || '';
-                if (c.includes(`setglobalvar::${name}`) || c.includes(`getglobalvar::${name}`)) {
+                if (c.includes(`setglobalvar::${name}`) || c.includes(`getglobalvar::${name}`) || c.includes(`addglobalvar::${name}`)) {
                     isGlobal = true;
                 }
             });
 
             const treatUninitAsProblem = localStorage.getItem('zero_check_treat_uninit_as_problem') === 'true';
-            const isProblem = (treatUninitAsProblem && !hasInit) || !hasSet || !hasGet || data.init.length > 1;
+            // Variable lifecycle is setvar -> addvar -> getvar. Must have setvar or init baseline, and getvar.
+            const isProblem = (treatUninitAsProblem && !hasInit) || (!hasSet && !hasInit) || !hasGet || data.init.length > 1;
 
             const varResult = {
                 name,
                 hasInit,
                 hasSet,
+                hasAdd,
                 hasGet,
                 isGlobal,
                 initCount: data.init.length,
                 setCount: data.set.length,
+                addCount: data.add.length,
                 getCount: data.get.length,
                 occurrences: data,
                 isProblem
@@ -299,6 +333,19 @@ export const Checker = {
             </div>
 
             <div id="check-sub-vars" class="check-sub-content" style="display: none;">
+                <div style="margin-bottom: 8px;">
+                    <div id="toggle-var-settings" style="font-size: 11px; opacity: 0.6; cursor: pointer; padding: 4px 0;"><i class="fa-solid fa-gear"></i> 变量检测与宏设置 <i class="fa-solid fa-chevron-down"></i></div>
+                    <div id="var-settings-panel" style="display: none; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 8px; margin-top: 4px; font-size: 11px; flex-direction: column; gap: 6px;">
+                        <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
+                            <input type="checkbox" id="check-enable-global-vars" class="interactable" style="cursor: pointer;" ${localStorage.getItem('zero_enable_global_vars') === 'true' ? 'checked' : ''}>
+                            <span>开启全局变量宏支持 (globalvar: setglobalvar / addglobalvar / getglobalvar)</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
+                            <input type="checkbox" id="check-treat-uninit-as-problem" class="interactable" style="cursor: pointer;" ${localStorage.getItem('zero_check_treat_uninit_as_problem') === 'true' ? 'checked' : ''}>
+                            <span>未初始化的变量标记为问题</span>
+                        </label>
+                    </div>
+                </div>
                 ${localStorage.getItem('zero_hide_var_init_tip') === 'true' ? '' : `
                 <div id="check-var-init-tip" style="position: relative; font-size: 11px; line-height: 1.5; padding: 8px 30px 8px 12px; background: rgba(255,255,255,0.04); border: 1px solid var(--SmartThemeBorderColor); border-radius: 6px; margin-bottom: 10px; color: var(--SmartThemeBodyColor);">
                     <i class="fa-solid fa-circle-info" style="color: var(--SmartThemeQuoteColor); margin-right: 6px;"></i>
@@ -346,6 +393,26 @@ export const Checker = {
             $('#check-var-init-tip').slideUp(200, function() {
                 $(this).remove();
             });
+        });
+
+        // Bind Var Settings Panel Events
+        $('#toggle-var-settings').on('click', function () {
+            const $panel = $('#var-settings-panel');
+            $panel.slideToggle(200);
+            $(this).find('i.fa-chevron-down, i.fa-chevron-up').toggleClass('fa-chevron-down fa-chevron-up');
+        });
+
+        $('#check-enable-global-vars').off('change').on('change', (e) => {
+            const val = $(e.target).is(':checked') ? 'true' : 'false';
+            localStorage.setItem('zero_enable_global_vars', val);
+            window.dispatchEvent(new CustomEvent('zero-global-vars-setting-changed'));
+            this.refreshResultsInPlace(presetName);
+        });
+
+        $('#check-treat-uninit-as-problem').off('change').on('change', (e) => {
+            const val = $(e.target).is(':checked') ? 'true' : 'false';
+            localStorage.setItem('zero_check_treat_uninit_as_problem', val);
+            this.refreshResultsInPlace(presetName);
         });
 
         // --- Render XML Issues ---
@@ -637,7 +704,11 @@ export const Checker = {
         const isSetProblem = !v.hasSet;
         const setBorder = isSetProblem ? '1px solid var(--SmartThemeQuoteColor)' : '1px solid var(--SmartThemeBorderColor)';
         const setColor = isSetProblem ? 'var(--SmartThemeQuoteColor)' : 'var(--SmartThemeBodyColor)';
-        const setText = v.hasSet ? `设置 (${v.setCount})` : '未设置';
+        const setText = v.hasSet ? `设置 (${v.setCount})` : (v.hasAdd ? '未基准设置' : '未设置');
+
+        const addBorder = '1px solid var(--SmartThemeBorderColor)';
+        const addColor = v.hasAdd ? 'var(--SmartThemeBodyColor)' : 'var(--SmartThemeEmColor)';
+        const addText = v.hasAdd ? `累加 (${v.addCount})` : '未累加';
 
         const isGetProblem = !v.hasGet;
         const getBorder = isGetProblem ? '1px solid var(--SmartThemeQuoteColor)' : '1px solid var(--SmartThemeBorderColor)';
@@ -648,6 +719,7 @@ export const Checker = {
             <div style="display: flex; gap: 4px; margin-top: 6px;">
                 <span style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.06); color: ${initColor}; border: ${initBorder}; font-weight: ${isInitProblem ? 'bold' : 'normal'};">${initText}</span>
                 <span style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.06); color: ${setColor}; border: ${setBorder}; font-weight: ${isSetProblem ? 'bold' : 'normal'};">${setText}</span>
+                ${v.hasAdd ? `<span style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.06); color: ${addColor}; border: ${addBorder};">${addText}</span>` : ''}
                 <span style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.06); color: ${getColor}; border: ${getBorder}; font-weight: ${isGetProblem ? 'bold' : 'normal'};">${getText}</span>
             </div>
         `;
@@ -724,7 +796,10 @@ export const Checker = {
         const row = $(`
             <div class="check-var-row" style="padding: 10px; background: rgba(255,255,255,0.03); border-radius: 8px; margin-bottom: 8px; border-left: 3px solid ${v.isProblem ? 'var(--SmartThemeQuoteColor)' : 'var(--SmartThemeBorderColor)'};">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <div style="font-size: 13px; font-weight: bold; color: ${v.isProblem ? 'var(--SmartThemeQuoteColor)' : 'inherit'}">${escapeHtml(v.name)}</div>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <div style="font-size: 13px; font-weight: bold; color: ${v.isProblem ? 'var(--SmartThemeQuoteColor)' : 'inherit'}">${escapeHtml(v.name)}</div>
+                        <button class="var-rename-btn interactable" data-name="${escapeHtml(v.name)}" title="重命名此变量" style="background: none; border: none; color: var(--SmartThemeBodyColor); opacity: 0.6; cursor: pointer; padding: 2px 4px; font-size: 11px;"><i class="fa-solid fa-pen-to-square"></i></button>
+                    </div>
                     <div style="display: flex; gap: 6px; align-items: center;">
                         ${v.initCount > 1 ? `
                             <button class="var-clean-init-btn interactable" title="清理冗余初始化，仅保留最早条目中的那一个" style="background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; color: var(--SmartThemeEmColor); cursor: pointer; padding: 4px 8px; font-size: 11px;"><i class="fa-solid fa-trash-can"></i></button>
@@ -763,6 +838,60 @@ export const Checker = {
             this.openEditor(presetName, entryName);
         });
 
+        // Variable Rename Event Handler
+        row.find('.var-rename-btn').on('click', async (e) => {
+            e.stopPropagation();
+            const oldName = $(e.currentTarget).data('name');
+            if (!oldName) return;
+
+            const newName = prompt(`请输入变量 "${oldName}" 的新名称:`, oldName);
+            if (newName === null) return;
+            const trimmedNew = newName.trim();
+            if (!trimmedNew) {
+                toastr.warning('变量名称不能为空');
+                return;
+            }
+            if (trimmedNew === oldName) return;
+
+            try {
+                const pm = SillyTavern.getContext().getPresetManager('openai');
+                if (!pm) {
+                    toastr.error('无法获取预设管理器');
+                    return;
+                }
+                const preset = pm.getCompletionPresetByName(presetName);
+                if (!preset || !Array.isArray(preset.prompts)) return;
+
+                HistoryManager.record();
+
+                let modifiedCount = 0;
+                const regex = new RegExp(`(\\{\\{(?:get|set|add)(?:global)?var::)${this.escapeRegExp(oldName)}(::|\\}\\})`, 'g');
+                preset.prompts.forEach(p => {
+                    if (!p.content) return;
+                    if (p.content.match(regex)) {
+                        p.content = p.content.replace(regex, `$1${trimmedNew}$2`);
+                        modifiedCount++;
+                    }
+                });
+
+                if (modifiedCount > 0) {
+                    const isActive = pm.getSelectedPresetName() === presetName;
+                    await savePresetWithoutRegexToast(pm, presetName, preset, { skipUpdate: !isActive });
+
+                    this.addLog('变量重命名', `将变量 "${oldName}" 重命名为 "${trimmedNew}" (在 ${modifiedCount} 个条目中)`);
+                    toastr.success(`已在 ${modifiedCount} 个条目中将变量 "${oldName}" 重命名为 "${trimmedNew}"`);
+
+                    await this.refreshResultsInPlace(presetName);
+                    window.dispatchEvent(new CustomEvent('zero-content-updated', { detail: { presetName } }));
+                } else {
+                    toastr.info('未发现包含该变量的条目');
+                }
+            } catch (err) {
+                console.error('[Zero] Rename variable failed:', err);
+                toastr.error('重命名失败: ' + err.message);
+            }
+        });
+
         // Typo replace event handler
         row.find('.var-replace-btn').on('click', async (e) => {
             const fromName = $(e.currentTarget).data('from');
@@ -781,7 +910,7 @@ export const Checker = {
                 HistoryManager.record();
 
                 let modifiedCount = 0;
-                const regex = new RegExp(`(\\{\\{(?:get|set)(?:global)?var::)${this.escapeRegExp(fromName)}(::|\\}\\})`, 'g');
+                const regex = new RegExp(`(\\{\\{(?:get|set|add)(?:global)?var::)${this.escapeRegExp(fromName)}(::|\\}\\})`, 'g');
                 preset.prompts.forEach(p => {
                     if (!p.content) return;
                     if (p.content.match(regex)) {
@@ -974,12 +1103,13 @@ export const Checker = {
                         <div style="display: flex; gap: 4px; flex-shrink: 0;">
                             <button class="inject-read-btn interactable" title="智能注入读取宏 (getvar)" style="padding: 4px 8px; background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; color: var(--SmartThemeQuoteColor); cursor: pointer; font-size: 11px; font-weight: bold; min-width: 24px; text-align: center;">G</button>
                             <button class="inject-set-btn interactable" title="智能注入设置宏 (setvar)" style="padding: 4px 8px; background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; color: var(--SmartThemeEmColor); cursor: pointer; font-size: 11px; font-weight: bold; min-width: 24px; text-align: center;">S</button>
+                            <button class="inject-add-btn interactable" title="智能注入累加宏 (addvar)" style="padding: 4px 8px; background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; color: var(--SmartThemeQuoteColor); cursor: pointer; font-size: 11px; font-weight: bold; min-width: 24px; text-align: center;">A</button>
                             <button class="inject-edit-btn interactable" title="打开编辑器手动修改" style="padding: 4px 8px; background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; color: var(--SmartThemeBodyColor); cursor: pointer; font-size: 11px;"><i class="fa-solid fa-pencil"></i></button>
                         </div>
                     </div>
                 `);
 
-                const doInject = async (isSet) => {
+                const doInject = async (actionType) => {
                     try {
                         const pm = SillyTavern.getContext().getPresetManager('openai');
                         if (!pm) {
@@ -997,14 +1127,15 @@ export const Checker = {
 
                         HistoryManager.record();
 
-                        const newContent = this.getSmartInsertContent(targetPrompt.content || '', v.name, v.isGlobal, isSet);
+                        const newContent = this.getSmartInsertContent(targetPrompt.content || '', v.name, v.isGlobal, actionType);
                         targetPrompt.content = newContent;
 
                         const isActive = pm.getSelectedPresetName() === presetName;
                         await savePresetWithoutRegexToast(pm, presetName, preset, { skipUpdate: !isActive });
 
-                        this.addLog('手动宏注入', `在条目「${name}」中成功注入变量 "${v.name}" 的${isSet ? '设置' : '读取'}宏`);
-                        toastr.success(`已在条目 "${name}" 中智能注入${isSet ? '设置' : '读取'}宏`);
+                        const actionLabel = actionType === 'set' ? '设置' : (actionType === 'add' ? '累加' : '读取');
+                        this.addLog('手动宏注入', `在条目「${name}」中成功注入变量 "${v.name}" 的${actionLabel}宏`);
+                        toastr.success(`已在条目 "${name}" 中智能注入${actionLabel}宏`);
 
                         await this.refreshResultsInPlace(presetName);
                         window.dispatchEvent(new CustomEvent('zero-content-updated', { detail: { presetName, itemName: name } }));
@@ -1014,8 +1145,9 @@ export const Checker = {
                     }
                 };
 
-                item.find('.inject-read-btn').on('click', (e) => { e.stopPropagation(); doInject(false); });
-                item.find('.inject-set-btn').on('click', (e) => { e.stopPropagation(); doInject(true); });
+                item.find('.inject-read-btn').on('click', (e) => { e.stopPropagation(); doInject('get'); });
+                item.find('.inject-set-btn').on('click', (e) => { e.stopPropagation(); doInject('set'); });
+                item.find('.inject-add-btn').on('click', (e) => { e.stopPropagation(); doInject('add'); });
                 item.find('.inject-edit-btn').on('click', (e) => { e.stopPropagation(); this.openEditor(presetName, name); });
                 $results.append(item);
             });
@@ -1051,18 +1183,29 @@ export const Checker = {
         return recommended;
     },
 
-    getSmartInsertContent(content, varName, isGlobal, isSet) {
-        const macroType = isGlobal 
-            ? (isSet ? 'setglobalvar' : 'getglobalvar') 
-            : (isSet ? 'setvar' : 'getvar');
+    getSmartInsertContent(content, varName, isGlobal, actionType) {
+        const isSet = actionType === 'set' || actionType === true;
+        const isAdd = actionType === 'add';
+        const isGet = actionType === 'get' || actionType === false;
+        const isWrite = isSet || isAdd;
+
+        const enableGlobal = localStorage.getItem('zero_enable_global_vars') === 'true';
+        const showGlobal = enableGlobal && isGlobal;
+
+        let macroType = 'getvar';
+        if (showGlobal) {
+            macroType = isSet ? 'setglobalvar' : (isAdd ? 'addglobalvar' : 'getglobalvar');
+        } else {
+            macroType = isSet ? 'setvar' : (isAdd ? 'addvar' : 'getvar');
+        }
             
-        const macro = isSet 
+        const macro = isWrite 
             ? `{{${macroType}::${varName}::}}` 
             : `{{${macroType}::${varName}}}`;
             
-        if (isSet) {
-            // 1. 尝试插入到最后一个 setvar/setglobalvar 的下一行
-            const setRegex = /\{\{(?:setvar|setglobalvar)::[^}]+\}\}/g;
+        if (isWrite) {
+            // 1. 尝试插入到最后一个 setvar/setglobalvar/addvar/addglobalvar 的下一行
+            const setRegex = /\{\{(?:setvar|setglobalvar|addvar|addglobalvar)::[^}]+\}\}/g;
             let match;
             let lastMatchEnd = -1;
             while ((match = setRegex.exec(content)) !== null) {
