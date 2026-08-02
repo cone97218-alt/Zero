@@ -415,6 +415,7 @@ function buildModal(modal, preset, listInfo) {
         select.appendChild(opt);
     });
     select.addEventListener('change', async () => {
+        console.log('[Zero:ui] PRESET SELECT CHANGE EVENT FIRED, target:', select.value);
         const name = select.value;
         select.disabled = true;
         const contentEl = modal.querySelector('.zero-content');
@@ -883,11 +884,13 @@ function setupEntriesDelegation(panel) {
     // Toggle switches (entry + group header)
     panel.addEventListener('change', (e) => {
         const cb = e.target;
+        console.log('[Zero:ui] PANEL CHANGE EVENT FIRED, target:', cb, 'type:', cb?.type, 'checked:', cb?.checked);
         if (cb.type !== 'checkbox') return;
 
         const header = cb.closest('.zero-group-header');
         if (header) {
             e.stopPropagation();
+            console.log('[Zero:ui] group header toggle:', cb.checked);
             localBatchToggle(header.closest('.zero-group'), cb.checked);
             return;
         }
@@ -897,6 +900,7 @@ function setupEntriesDelegation(panel) {
             if (msActive) { cb.checked = !cb.checked; return; }
             const id = entry.dataset.id;
             const p = _promptMap.get(id);
+            console.log('[Zero:ui] entry toggle, id:', id, '| prompt found:', !!p, '| checked:', cb.checked);
             if (p) {
                 p.enabled = cb.checked;
                 scheduleToggle(id, cb.checked);

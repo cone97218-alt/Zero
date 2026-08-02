@@ -1510,6 +1510,7 @@ function ensurePanel() {
 
     $('body').off('change', '#zero-setting-enable-op-log').on('change', '#zero-setting-enable-op-log', function() {
         const checked = $(this).is(':checked');
+        console.log('[Zero:main] OP-LOG SWITCH CHANGED, checked:', checked);
         UiStateManager.save({ enablePresetOpLog: checked });
         toastr.success(checked ? '已开启预设操作日志记录' : '已关闭预设操作日志记录');
     });

@@ -281,12 +281,36 @@ export const PresetManager = {
         // pm.selectPreset(value) uses $(this.select).val(value).trigger('change').
         // pm.findPreset(name) looks up the option value by text inside pm.select.
         // Both require pm.select to be a real DOM element with real options.
-        let selectEl = pm.select;
+        let selectEl = pm.select || document.getElementById('settings_preset_openai');
         if (!selectEl) {
-            // pm.select is null → ST settings panel hasn't been opened yet.
-            // Try to locate the real element in the live DOM.
-            selectEl = document.getElementById('settings_preset_openai');
-            if (selectEl) pm.select = selectEl;
+            selectEl = document.createElement('select');
+            selectEl.id = 'settings_preset_openai';
+            selectEl.style.display = 'none';
+            document.body.appendChild(selectEl);
+        }
+        pm.select = selectEl;
+
+        if (selectEl.options.length === 0) {
+            try {
+                const { presets, preset_names } = pm.getPresetList();
+                if (Array.isArray(preset_names)) {
+                    preset_names.forEach((pName, idx) => {
+                        const opt = document.createElement('option');
+                        opt.value = String(idx);
+                        opt.textContent = pName;
+                        selectEl.appendChild(opt);
+                    });
+                } else if (preset_names && typeof preset_names === 'object') {
+                    Object.entries(preset_names).forEach(([pName, pVal]) => {
+                        const opt = document.createElement('option');
+                        opt.value = String(pVal);
+                        opt.textContent = pName;
+                        selectEl.appendChild(opt);
+                    });
+                }
+            } catch (e) {
+                console.warn('[Zero:switchPreset] Could not populate select options:', e);
+            }
         }
         console.log('[Zero:switchPreset] selectEl:', selectEl, '| options.length:', selectEl?.options?.length);
 
