@@ -264,7 +264,33 @@ export const PresetManager = {
         const ctx = window.SillyTavern?.getContext?.();
         const pm = ctx?.getPresetManager?.('openai');
 
-        // 1. Try native SillyTavern PresetManager API
+        // 1. Ensure select element exists in DOM (create fallback hidden element if missing)
+        let selectEl = pm?.select || document.getElementById('settings_preset_openai');
+        if (!selectEl) {
+            selectEl = document.createElement('select');
+            selectEl.id = 'settings_preset_openai';
+            selectEl.style.display = 'none';
+            if (pm) {
+                try {
+                    const list = pm.getPresetList();
+                    const names = Array.isArray(list.preset_names)
+                        ? list.preset_names
+                        : (list.preset_names ? Object.keys(list.preset_names) : []);
+                    names.forEach(n => {
+                        const opt = document.createElement('option');
+                        opt.value = n;
+                        opt.textContent = n;
+                        selectEl.appendChild(opt);
+                    });
+                } catch (e) {}
+                pm.select = selectEl;
+            }
+            document.body.appendChild(selectEl);
+        } else if (pm && !pm.select) {
+            pm.select = selectEl;
+        }
+
+        // 2. Try native SillyTavern PresetManager API
         if (pm) {
             try {
                 const currentName = pm.getSelectedPresetName?.();
@@ -285,8 +311,7 @@ export const PresetManager = {
             }
         }
 
-        // 2. Fallback to DOM element if pm API was unavailable or DOM element exists
-        const selectEl = pm?.select || document.getElementById('settings_preset_openai');
+        // 3. Fallback to DOM element if pm API was unavailable or needed DOM sync
         if (selectEl) {
             const opt = Array.from(selectEl.options).find(o => o.textContent.trim() === name || o.value === name);
             if (opt) {
@@ -335,39 +360,70 @@ export const PresetManager = {
     async togglePrompt(identifier, enabled) {
         HistoryManager.record();
         let itemName = identifier;
-        if (_preset) {
-            const p = _preset.prompts.find(x => x.identifier === identifier);
+        
+        // 1. Update Zero's internal preset cache
+        if (_preset && Array.isArray(_preset.prompts)) {
+            const p = _preset.prompts.find(x => x.identifier === identifier || x.name === identifier);
             if (p) {
                 p.enabled = enabled;
                 itemName = p.name || p.identifier;
             }
         }
-        const openai = await getOpenai();
-        const promptManager = openai.promptManager;
-        if (promptManager) {
-            const promptOrder = promptManager.getPromptOrderForCharacter(promptManager.activeCharacter);
-            const orderItem = promptOrder.find(o => o.identifier === identifier);
-            if (orderItem) {
-                orderItem.enabled = enabled;
-                if (!itemName || itemName === identifier) {
-                    const realP = promptManager.getPromptById(identifier);
-                    if (realP && realP.name) itemName = realP.name;
-                }
-                if (promptManager.tokenHandler && typeof promptManager.tokenHandler.getCounts === 'function') {
-                    const counts = promptManager.tokenHandler.getCounts();
-                    counts[identifier] = null;
-                }
-                promptManager.saveServiceSettings();
-                if (typeof promptManager.renderDebounced === 'function') {
-                    promptManager.renderDebounced();
-                } else if (typeof promptManager.render === 'function') {
-                    promptManager.render();
+
+        const ctx = window.SillyTavern?.getContext?.();
+        const pm = ctx?.getPresetManager?.('openai');
+
+        // 2. Sync to ST's active Preset object (presetObj.prompts)
+        if (pm) {
+            const activePresetName = pm.getSelectedPresetName?.();
+            if (activePresetName) {
+                const presetObj = pm.getCompletionPresetByName?.(activePresetName);
+                if (presetObj && Array.isArray(presetObj.prompts)) {
+                    const presetP = presetObj.prompts.find(x => x.identifier === identifier || x.name === identifier || x.name === itemName);
+                    if (presetP) {
+                        presetP.enabled = enabled;
+                    }
                 }
             }
         }
 
+        // 3. Sync to ST's promptManager (activeCharacter promptOrder & prompts list)
+        const openai = await getOpenai();
+        const promptManager = openai?.promptManager;
+        if (promptManager) {
+            const promptOrder = promptManager.getPromptOrderForCharacter?.(promptManager.activeCharacter) || [];
+            const orderItem = promptOrder.find(o => o.identifier === identifier || o.name === identifier);
+            if (orderItem) {
+                orderItem.enabled = enabled;
+            }
+
+            if (Array.isArray(promptManager.prompts)) {
+                const stP = promptManager.prompts.find(x => x.identifier === identifier || x.name === identifier);
+                if (stP) {
+                    stP.enabled = enabled;
+                }
+            }
+
+            if (!itemName || itemName === identifier) {
+                const realP = typeof promptManager.getPromptById === 'function' ? promptManager.getPromptById(identifier) : null;
+                if (realP && realP.name) itemName = realP.name;
+            }
+
+            if (promptManager.tokenHandler && typeof promptManager.tokenHandler.getCounts === 'function') {
+                const counts = promptManager.tokenHandler.getCounts();
+                if (counts) counts[identifier] = null;
+            }
+
+            promptManager.saveServiceSettings?.();
+            if (typeof promptManager.renderDebounced === 'function') {
+                promptManager.renderDebounced();
+            } else if (typeof promptManager.render === 'function') {
+                promptManager.render?.();
+            }
+        }
+
         // Record operation log
-        OpLogManager.add(_preset?.name, 'toggle', '开关', itemName, enabled ? '切换为 [开启]' : '切换为 [关闭]');
+        OpLogManager.add(_preset?.name || pm?.getSelectedPresetName?.(), 'toggle', '开关', itemName, enabled ? '切换为 [开启]' : '切换为 [关闭]');
 
         import('../preset-manager/utils.js').then(m => m.syncBoundRegexOnPromptToggle([{ identifier, enabled }])).catch(e => {
             console.warn('[Zero] Failed to sync bound regex on togglePrompt:', e);
@@ -380,41 +436,76 @@ export const PresetManager = {
         if (!_preset) await this.load();
         
         // Mutate existing cache instances
-        _preset.prompts.forEach(p => {
-            if (toggleMap.has(p.identifier)) {
-                p.enabled = toggleMap.get(p.identifier);
+        if (_preset && Array.isArray(_preset.prompts)) {
+            _preset.prompts.forEach(p => {
+                if (toggleMap.has(p.identifier)) {
+                    p.enabled = toggleMap.get(p.identifier);
+                } else if (p.name && toggleMap.has(p.name)) {
+                    p.enabled = toggleMap.get(p.name);
+                }
+            });
+        }
+
+        const ctx = window.SillyTavern?.getContext?.();
+        const pm = ctx?.getPresetManager?.('openai');
+
+        // Sync to ST's active Preset object (presetObj.prompts)
+        if (pm) {
+            const activePresetName = pm.getSelectedPresetName?.();
+            if (activePresetName) {
+                const presetObj = pm.getCompletionPresetByName?.(activePresetName);
+                if (presetObj && Array.isArray(presetObj.prompts)) {
+                    presetObj.prompts.forEach(p => {
+                        if (toggleMap.has(p.identifier)) {
+                            p.enabled = toggleMap.get(p.identifier);
+                        } else if (p.name && toggleMap.has(p.name)) {
+                            p.enabled = toggleMap.get(p.name);
+                        }
+                    });
+                }
             }
-        });
+        }
 
         const openai = await getOpenai();
-        const promptManager = openai.promptManager;
+        const promptManager = openai?.promptManager;
         if (promptManager) {
-            const promptOrder = promptManager.getPromptOrderForCharacter(promptManager.activeCharacter);
+            const promptOrder = promptManager.getPromptOrderForCharacter?.(promptManager.activeCharacter) || [];
             let changed = false;
             const tokenCounts = (promptManager.tokenHandler && typeof promptManager.tokenHandler.getCounts === 'function')
                 ? promptManager.tokenHandler.getCounts() : null;
             promptOrder.forEach(o => {
-                if (toggleMap.has(o.identifier)) {
-                    o.enabled = toggleMap.get(o.identifier);
+                if (toggleMap.has(o.identifier) || (o.name && toggleMap.has(o.name))) {
+                    const en = toggleMap.has(o.identifier) ? toggleMap.get(o.identifier) : toggleMap.get(o.name);
+                    o.enabled = en;
                     changed = true;
                     if (tokenCounts) tokenCounts[o.identifier] = null;
                 }
             });
+
+            if (Array.isArray(promptManager.prompts)) {
+                promptManager.prompts.forEach(p => {
+                    if (toggleMap.has(p.identifier) || (p.name && toggleMap.has(p.name))) {
+                        const en = toggleMap.has(p.identifier) ? toggleMap.get(p.identifier) : toggleMap.get(p.name);
+                        p.enabled = en;
+                    }
+                });
+            }
+
             if (changed) {
-                promptManager.saveServiceSettings();
+                promptManager.saveServiceSettings?.();
                 if (typeof promptManager.renderDebounced === 'function') {
                     promptManager.renderDebounced();
                 } else if (typeof promptManager.render === 'function') {
-                    promptManager.render();
+                    promptManager.render?.();
                 }
             }
         }
 
         if (!skipOpLog && toggleMap && toggleMap.size > 0) {
-            const currentPresetName = _preset?.name;
+            const currentPresetName = _preset?.name || pm?.getSelectedPresetName?.();
             if (toggleMap.size === 1) {
                 const [id, en] = Array.from(toggleMap.entries())[0];
-                const p = _preset?.prompts?.find(x => x.identifier === id);
+                const p = _preset?.prompts?.find(x => x.identifier === id || x.name === id);
                 const name = p ? (p.name || p.identifier) : id;
                 OpLogManager.add(currentPresetName, 'toggle', '开关', name, en ? '切换为 [开启]' : '切换为 [关闭]');
             } else {

@@ -568,7 +568,7 @@ function buildModal(modal, preset, listInfo) {
         }
     });
 
-    const isOpLogEnabled = UiStateManager.get().enablePresetOpLog === true;
+    const isOpLogEnabled = UiStateManager.get().enablePresetOpLog !== false;
     const headerChildren = [
         h('label', { class: 'zero-header-label', text: '当前预设' }),
         select

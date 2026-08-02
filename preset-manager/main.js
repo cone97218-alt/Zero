@@ -2381,7 +2381,7 @@ export function renderSettingsTab() {
     $('#zero-setting-toast-overwrite').prop('checked', state.toastOnSnapshotOverwrite === true);
     $('#zero-setting-toast-stitch').prop('checked', state.toastOnPresetStitch === true);
     $('#zero-setting-confirm-snapshot').prop('checked', state.confirmOnSnapshot === true);
-    $('#zero-setting-enable-op-log').prop('checked', state.enablePresetOpLog === true);
+    $('#zero-setting-enable-op-log').prop('checked', state.enablePresetOpLog !== false);
 
     // Stitch switches
     $('#zero-setting-stitch-collapse-b').prop('checked', state.collapseTargetBOnStitch === true);
