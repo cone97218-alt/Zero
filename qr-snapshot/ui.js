@@ -4430,6 +4430,7 @@ async function showSnapshotMigrationModal(preset, preselectedSourceOrSnap = null
 //  Preset Operation Log Modal
 // ═══════════════════════════════════════
 export function openOpLogModal(presetName) {
+    const escapeHtml = esc;
     const existing = document.getElementById('zero-op-log-modal');
     if (existing) existing.remove();
 
