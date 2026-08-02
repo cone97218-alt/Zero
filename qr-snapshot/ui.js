@@ -5,6 +5,8 @@
 import { PresetManager, SnapshotManager, GroupManager, HiddenManager, UiStateManager, LinkageManager, zeroTranslate, HistoryManager, ModelProfileManager, SamplingParamsHelper, SnapshotGroupManager, getPresetPromptsWithEnabled, getStringSimilarity, detectPresetRenames, getOpenai, OpLogManager } from './state.js';
 import { matchPrompt } from './search-util.js';
 
+console.log('[Zero] ui.js loaded, build: 81e0abe-v3');
+
 let overlay = null;
 let pendingToggles = new Map();
 let toggleTimer = null;
@@ -60,6 +62,7 @@ function formatDate(ts) {
 }
 
 function scheduleToggle(identifier, enabled) {
+    console.log('[Zero:scheduleToggle] id:', identifier, 'enabled:', enabled);
     pendingToggles.set(identifier, enabled);
     clearTimeout(toggleTimer);
     toggleTimer = setTimeout(flushToggles, 300);
@@ -69,6 +72,7 @@ async function flushToggles() {
     if (pendingToggles.size === 0) return;
     const batch = new Map(pendingToggles);
     pendingToggles.clear();
+    console.log('[Zero:flushToggles] flushing', batch.size, 'toggle(s)');
     try { await PresetManager.batchToggleMap(batch); }
     catch (e) { console.error('[Zero] batch toggle failed:', e); toastr.error('切换失败'); }
 }
@@ -568,7 +572,7 @@ function buildModal(modal, preset, listInfo) {
         }
     });
 
-    const isOpLogEnabled = UiStateManager.get().enablePresetOpLog !== false;
+    const isOpLogEnabled = UiStateManager.get().enablePresetOpLog === true;
     const headerChildren = [
         h('label', { class: 'zero-header-label', text: '当前预设' }),
         select

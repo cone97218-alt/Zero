@@ -15,6 +15,14 @@ if (!ctx.extensionSettings[MODULE_NAME]) {
 } else if (!ctx.extensionSettings[MODULE_NAME].linkages) {
     ctx.extensionSettings[MODULE_NAME].linkages = {};
 }
+// Ensure uiState and enablePresetOpLog default to true for first-time users
+{
+    const s = ctx.extensionSettings[MODULE_NAME];
+    if (!s.uiState) s.uiState = {};
+    if (s.uiState.enablePresetOpLog === undefined) {
+        s.uiState.enablePresetOpLog = true;
+    }
+}
 
 // ── Toastr Filter & Suppressor ──────────────────────────────────────────────
 function setupToastrFilter() {

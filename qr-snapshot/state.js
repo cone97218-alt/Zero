@@ -4,6 +4,8 @@
  * Performance: openai module is cached after first import.
  */
 
+console.log('[Zero] state.js loaded, build: 81e0abe-v3');
+
 const MODULE_NAME = 'zero';
 
 // ─── Settings helpers ───

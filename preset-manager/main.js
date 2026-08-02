@@ -517,17 +517,7 @@ function ensurePanel() {
                                     <span class="zero-slider"></span>
                                 </label>
                             </div>
-                            <!-- 记录预设操作日志 -->
-                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 12px; margin-top: 4px;">
-                                <div style="flex: 1;">
-                                    <strong style="display: block; font-size: 13px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">记录预设操作日志</strong>
-                                    <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">在快照相机面板顶栏显示「日志」按钮，记录当前预设的开关、新增、删除及快照还原等最新 20 条操作。</span>
-                                </div>
-                                <label class="zero-switch">
-                                    <input type="checkbox" id="zero-setting-enable-op-log" class="interactable">
-                                    <span class="zero-slider"></span>
-                                </label>
-                            </div>
+
                         </div>
                     </div>
 
@@ -610,6 +600,17 @@ function ensurePanel() {
                                         <input type="checkbox" class="zero-snapshot-action-cb interactable" value="edit"> <i class="fa-solid fa-pencil" style="color: var(--SmartThemeQuoteColor);"></i> 编辑器打开
                                     </label>
                                 </div>
+                            </div>
+                            <!-- 记录预设操作日志 -->
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 12px; margin-top: 4px;">
+                                <div style="flex: 1;">
+                                    <strong style="display: block; font-size: 13px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">记录预设操作日志</strong>
+                                    <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">在快照相机面板顶栏显示「日志」按钮，记录当前预设的开关、新增、删除及快照还原等最新 20 条操作。</span>
+                                </div>
+                                <label class="zero-switch">
+                                    <input type="checkbox" id="zero-setting-enable-op-log" class="interactable">
+                                    <span class="zero-slider"></span>
+                                </label>
                             </div>
                         </div>
                     </div>
@@ -2381,7 +2382,7 @@ export function renderSettingsTab() {
     $('#zero-setting-toast-overwrite').prop('checked', state.toastOnSnapshotOverwrite === true);
     $('#zero-setting-toast-stitch').prop('checked', state.toastOnPresetStitch === true);
     $('#zero-setting-confirm-snapshot').prop('checked', state.confirmOnSnapshot === true);
-    $('#zero-setting-enable-op-log').prop('checked', state.enablePresetOpLog !== false);
+    $('#zero-setting-enable-op-log').prop('checked', state.enablePresetOpLog === true);
 
     // Stitch switches
     $('#zero-setting-stitch-collapse-b').prop('checked', state.collapseTargetBOnStitch === true);
