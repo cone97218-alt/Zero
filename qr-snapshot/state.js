@@ -260,98 +260,77 @@ export const PresetManager = {
 
         this.invalidate();
 
-        let switched = false;
         const ctx = window.SillyTavern?.getContext?.();
         const pm = ctx?.getPresetManager?.('openai');
+        if (!pm) return false;
 
-        // 1. Ensure select element exists in DOM (create fallback hidden element if missing)
-        let selectEl = pm?.select || document.getElementById('settings_preset_openai');
+        // Check if already selected
+        const currentName = pm.getSelectedPresetName?.();
+        if (currentName === name) {
+            await this.load();
+            return true;
+        }
+
+        // pm.selectPreset(value) uses $(this.select).val(value).trigger('change').
+        // pm.findPreset(name) looks up the option value by text inside pm.select.
+        // Both require pm.select to be a real DOM element with real options.
+        let selectEl = pm.select;
         if (!selectEl) {
-            selectEl = document.createElement('select');
-            selectEl.id = 'settings_preset_openai';
-            selectEl.style.display = 'none';
-            if (pm) {
-                try {
-                    const list = pm.getPresetList();
-                    const names = Array.isArray(list.preset_names)
-                        ? list.preset_names
-                        : (list.preset_names ? Object.keys(list.preset_names) : []);
-                    names.forEach(n => {
-                        const opt = document.createElement('option');
-                        opt.value = n;
-                        opt.textContent = n;
-                        selectEl.appendChild(opt);
-                    });
-                } catch (e) {}
-                pm.select = selectEl;
-            }
-            document.body.appendChild(selectEl);
-        } else if (pm && !pm.select) {
-            pm.select = selectEl;
+            // pm.select is null → ST settings panel hasn't been opened yet.
+            // Try to locate the real element in the live DOM.
+            selectEl = document.getElementById('settings_preset_openai');
+            if (selectEl) pm.select = selectEl;
         }
 
-        // 2. Try native SillyTavern PresetManager API
-        if (pm) {
+        let switched = false;
+
+        if (selectEl && selectEl.options.length > 0) {
+            // Use pm API with real select (it knows the correct option values)
             try {
-                const currentName = pm.getSelectedPresetName?.();
-                if (currentName === name) {
-                    switched = true;
-                } else {
-                    let targetVal = pm.findPreset?.(name);
-                    if (targetVal === undefined || targetVal === null) {
-                        targetVal = name;
-                    }
-                    if (typeof pm.selectPreset === 'function') {
-                        await pm.selectPreset(targetVal);
-                        switched = true;
-                    }
-                }
-            } catch (e) {
-                console.warn('[Zero] pm.selectPreset failed, attempting fallback:', e);
-            }
-        }
-
-        // 3. Fallback to DOM element if pm API was unavailable or needed DOM sync
-        if (selectEl) {
-            const opt = Array.from(selectEl.options).find(o => o.textContent.trim() === name || o.value === name);
-            if (opt) {
-                if (selectEl.value !== opt.value) {
+                const targetVal = pm.findPreset?.(name);
+                if (targetVal !== undefined && targetVal !== null && targetVal !== '') {
                     const eventSource = ctx?.eventSource;
                     const event_types = ctx?.event_types;
 
                     const switchPromise = new Promise((resolve) => {
                         let timer = null;
-                        const handler = () => {
-                            if (timer) clearTimeout(timer);
-                            resolve();
-                        };
+                        const handler = () => { if (timer) clearTimeout(timer); resolve(); };
                         if (eventSource && event_types?.OAI_PRESET_CHANGED_AFTER) {
                             eventSource.once(event_types.OAI_PRESET_CHANGED_AFTER, handler);
                         }
-                        timer = setTimeout(handler, 150);
+                        timer = setTimeout(handler, 200);
                     });
 
-                    selectEl.value = opt.value;
-                    selectEl.dispatchEvent(new Event('change', { bubbles: true }));
-                    if (typeof $ !== 'undefined') {
-                        $(selectEl).trigger('change');
-                    }
+                    pm.selectPreset(targetVal);
                     await switchPromise;
                     switched = true;
-                } else {
-                    switched = true;
                 }
+            } catch (e) {
+                console.warn('[Zero] pm.selectPreset failed:', e);
             }
         }
 
-        this.invalidate();
+        // Fallback: manually set the select value and fire change
+        if (!switched && selectEl) {
+            const opt = Array.from(selectEl.options).find(
+                o => o.textContent.trim() === name || o.value === name
+            );
+            if (opt) {
+                selectEl.value = opt.value;
+                selectEl.dispatchEvent(new Event('change', { bubbles: true }));
+                if (typeof $ !== 'undefined') $(selectEl).trigger('change');
+                await new Promise(r => setTimeout(r, 200));
+                switched = true;
+            }
+        }
 
         if (switched) {
             await this.load();
-
             if (!options.skipLinkage && typeof window.triggerZeroApiLinkage === 'function') {
                 window.triggerZeroApiLinkage(name);
             }
+        } else {
+            console.warn('[Zero] switchPreset: could not find preset in select:', name);
         }
 
         return switched;
@@ -360,7 +339,7 @@ export const PresetManager = {
     async togglePrompt(identifier, enabled) {
         HistoryManager.record();
         let itemName = identifier;
-        
+
         // 1. Update Zero's internal preset cache
         if (_preset && Array.isArray(_preset.prompts)) {
             const p = _preset.prompts.find(x => x.identifier === identifier || x.name === identifier);
@@ -379,63 +358,64 @@ export const PresetManager = {
             if (activePresetName) {
                 const presetObj = pm.getCompletionPresetByName?.(activePresetName);
                 if (presetObj && Array.isArray(presetObj.prompts)) {
-                    const presetP = presetObj.prompts.find(x => x.identifier === identifier || x.name === identifier || x.name === itemName);
-                    if (presetP) {
-                        presetP.enabled = enabled;
-                    }
+                    const presetP = presetObj.prompts.find(x =>
+                        x.identifier === identifier || x.name === identifier || x.name === itemName
+                    );
+                    if (presetP) presetP.enabled = enabled;
                 }
             }
         }
 
-        // 3. Sync to ST's promptManager (activeCharacter promptOrder & prompts list)
+        // 3. Sync to ALL characters' prompt_order in serviceSettings
+        //    Do NOT rely on promptManager.activeCharacter — it may be null.
         const openai = await getOpenai();
         const promptManager = openai?.promptManager;
         if (promptManager) {
-            const promptOrder = promptManager.getPromptOrderForCharacter?.(promptManager.activeCharacter) || [];
-            const orderItem = promptOrder.find(o => o.identifier === identifier || o.name === identifier);
-            if (orderItem) {
-                orderItem.enabled = enabled;
-            }
-
-            if (Array.isArray(promptManager.prompts)) {
-                const stP = promptManager.prompts.find(x => x.identifier === identifier || x.name === identifier);
-                if (stP) {
-                    stP.enabled = enabled;
-                }
-            }
-
+            // Resolve display name before modifying order
             if (!itemName || itemName === identifier) {
-                const realP = typeof promptManager.getPromptById === 'function' ? promptManager.getPromptById(identifier) : null;
+                const realP = typeof promptManager.getPromptById === 'function'
+                    ? promptManager.getPromptById(identifier) : null;
                 if (realP && realP.name) itemName = realP.name;
             }
 
-            if (promptManager.tokenHandler && typeof promptManager.tokenHandler.getCounts === 'function') {
-                const counts = promptManager.tokenHandler.getCounts();
-                if (counts) counts[identifier] = null;
-            }
+            const tokenCounts = (promptManager.tokenHandler &&
+                typeof promptManager.tokenHandler.getCounts === 'function')
+                ? promptManager.tokenHandler.getCounts() : null;
+            if (tokenCounts) tokenCounts[identifier] = null;
 
-            promptManager.saveServiceSettings?.();
-            if (typeof promptManager.renderDebounced === 'function') {
-                promptManager.renderDebounced();
-            } else if (typeof promptManager.render === 'function') {
-                promptManager.render?.();
+            // Modify ALL characters' order entries so the change is always applied
+            const allOrders = promptManager.serviceSettings?.prompt_order || [];
+            let changed = false;
+            allOrders.forEach(charEntry => {
+                const order = charEntry.order || [];
+                const o = order.find(item => item.identifier === identifier);
+                if (o) { o.enabled = enabled; changed = true; }
+            });
+
+            if (changed) {
+                promptManager.saveServiceSettings?.();
+                // Do NOT call render() here — it can conflict with Zero's panel state.
             }
         }
 
         // Record operation log
-        OpLogManager.add(_preset?.name || pm?.getSelectedPresetName?.(), 'toggle', '开关', itemName, enabled ? '切换为 [开启]' : '切换为 [关闭]');
+        OpLogManager.add(
+            _preset?.name || pm?.getSelectedPresetName?.(),
+            'toggle', '开关', itemName,
+            enabled ? '切换为 [开启]' : '切换为 [关闭]'
+        );
 
-        import('../preset-manager/utils.js').then(m => m.syncBoundRegexOnPromptToggle([{ identifier, enabled }])).catch(e => {
-            console.warn('[Zero] Failed to sync bound regex on togglePrompt:', e);
-        });
+        import('../preset-manager/utils.js')
+            .then(m => m.syncBoundRegexOnPromptToggle([{ identifier, enabled }]))
+            .catch(e => console.warn('[Zero] Failed to sync bound regex on togglePrompt:', e));
     },
 
     /** Batch update from a Map<identifier, enabled> */
     async batchToggleMap(toggleMap, skipOpLog = false) {
         HistoryManager.record();
         if (!_preset) await this.load();
-        
-        // Mutate existing cache instances
+
+        // 1. Mutate Zero's internal cache
         if (_preset && Array.isArray(_preset.prompts)) {
             _preset.prompts.forEach(p => {
                 if (toggleMap.has(p.identifier)) {
@@ -449,7 +429,7 @@ export const PresetManager = {
         const ctx = window.SillyTavern?.getContext?.();
         const pm = ctx?.getPresetManager?.('openai');
 
-        // Sync to ST's active Preset object (presetObj.prompts)
+        // 2. Sync to ST's active Preset object (presetObj.prompts)
         if (pm) {
             const activePresetName = pm.getSelectedPresetName?.();
             if (activePresetName) {
@@ -466,41 +446,35 @@ export const PresetManager = {
             }
         }
 
+        // 3. Sync to ALL characters' prompt_order in serviceSettings.
+        //    Do NOT use promptManager.activeCharacter — it may be null.
         const openai = await getOpenai();
         const promptManager = openai?.promptManager;
         if (promptManager) {
-            const promptOrder = promptManager.getPromptOrderForCharacter?.(promptManager.activeCharacter) || [];
-            let changed = false;
-            const tokenCounts = (promptManager.tokenHandler && typeof promptManager.tokenHandler.getCounts === 'function')
+            const tokenCounts = (promptManager.tokenHandler &&
+                typeof promptManager.tokenHandler.getCounts === 'function')
                 ? promptManager.tokenHandler.getCounts() : null;
-            promptOrder.forEach(o => {
-                if (toggleMap.has(o.identifier) || (o.name && toggleMap.has(o.name))) {
-                    const en = toggleMap.has(o.identifier) ? toggleMap.get(o.identifier) : toggleMap.get(o.name);
-                    o.enabled = en;
-                    changed = true;
-                    if (tokenCounts) tokenCounts[o.identifier] = null;
-                }
-            });
 
-            if (Array.isArray(promptManager.prompts)) {
-                promptManager.prompts.forEach(p => {
-                    if (toggleMap.has(p.identifier) || (p.name && toggleMap.has(p.name))) {
-                        const en = toggleMap.has(p.identifier) ? toggleMap.get(p.identifier) : toggleMap.get(p.name);
-                        p.enabled = en;
+            const allOrders = promptManager.serviceSettings?.prompt_order || [];
+            let changed = false;
+            allOrders.forEach(charEntry => {
+                const order = charEntry.order || [];
+                order.forEach(o => {
+                    if (toggleMap.has(o.identifier)) {
+                        o.enabled = toggleMap.get(o.identifier);
+                        changed = true;
+                        if (tokenCounts) tokenCounts[o.identifier] = null;
                     }
                 });
-            }
+            });
 
             if (changed) {
                 promptManager.saveServiceSettings?.();
-                if (typeof promptManager.renderDebounced === 'function') {
-                    promptManager.renderDebounced();
-                } else if (typeof promptManager.render === 'function') {
-                    promptManager.render?.();
-                }
+                // Do NOT call render() — it can conflict with Zero's panel state.
             }
         }
 
+        // 4. Record operation log (always, regardless of promptManager availability)
         if (!skipOpLog && toggleMap && toggleMap.size > 0) {
             const currentPresetName = _preset?.name || pm?.getSelectedPresetName?.();
             if (toggleMap.size === 1) {
@@ -509,18 +483,21 @@ export const PresetManager = {
                 const name = p ? (p.name || p.identifier) : id;
                 OpLogManager.add(currentPresetName, 'toggle', '开关', name, en ? '切换为 [开启]' : '切换为 [关闭]');
             } else {
-                let onCount = 0;
-                let offCount = 0;
+                let onCount = 0, offCount = 0;
                 for (const en of toggleMap.values()) {
                     if (en) onCount++; else offCount++;
                 }
-                OpLogManager.add(currentPresetName, 'batch_toggle', '批量开关', `批量修改 ${toggleMap.size} 个条目`, `开启 ${onCount} 个，关闭 ${offCount} 个`);
+                OpLogManager.add(
+                    currentPresetName, 'batch_toggle', '批量开关',
+                    `批量修改 ${toggleMap.size} 个条目`,
+                    `开启 ${onCount} 个，关闭 ${offCount} 个`
+                );
             }
         }
 
-        import('../preset-manager/utils.js').then(m => m.syncBoundRegexOnPromptToggle(toggleMap)).catch(e => {
-            console.warn('[Zero] Failed to sync bound regex on batchToggleMap:', e);
-        });
+        import('../preset-manager/utils.js')
+            .then(m => m.syncBoundRegexOnPromptToggle(toggleMap))
+            .catch(e => console.warn('[Zero] Failed to sync bound regex on batchToggleMap:', e));
     },
 
     invalidate() { _preset = null; _presetNames = null; },

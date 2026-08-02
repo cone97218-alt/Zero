@@ -198,28 +198,25 @@
 }
 
 .zero-op-log-btn {
-    padding: 4px 8px;
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--SmartThemeQuoteColor, #7b8cde);
-    opacity: 0.85;
-    transition: all 0.15s ease;
+    padding: 6px 10px;
+    font-size: 18px;
+    color: var(--SmartThemeBodyColor, #ccc);
+    opacity: 0.7;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     display: flex;
     align-items: center;
-    gap: 4px;
+    justify-content: center;
     border-radius: 6px;
-    touch-action: manipulation;
-    background: rgba(123, 140, 222, 0.15);
-    border: 1px solid rgba(123, 140, 222, 0.3);
+    background: transparent;
+    border: none;
     cursor: pointer;
-    white-space: nowrap;
+    touch-action: manipulation;
     flex-shrink: 0;
 }
-.zero-op-log-btn:hover,
-.zero-op-log-btn:active {
+.zero-op-log-btn:hover {
     opacity: 1;
-    background: rgba(123, 140, 222, 0.28);
-    transform: scale(0.96);
+    background: rgba(255, 255, 255, 0.08);
+    transform: scale(1.1);
 }
 
 /* ===== Search Bar ===== */

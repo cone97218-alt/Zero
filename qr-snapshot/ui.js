@@ -577,7 +577,7 @@ function buildModal(modal, preset, listInfo) {
         headerChildren.push(h('button', {
             class: 'zero-op-log-btn',
             title: '查看预设操作日志 (最新20条)',
-            html: '<i class="fa-solid fa-clock-rotate-left"></i> 日志',
+            html: '<i class="fa-solid fa-clock-rotate-left"></i>',
             onclick: () => openOpLogModal(preset.name)
         }));
     }
