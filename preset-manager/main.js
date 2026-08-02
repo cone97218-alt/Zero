@@ -2341,8 +2341,8 @@ export function init() {
     injectExtensionButton();
     applyAvoidStatusbar();
     
-    // Stop event bubbling for typing events on all Zero inputs/textareas to prevent SillyTavern's heavy global key/input listeners and third-party purifiers from interfering
-    $('body').on('keydown keyup keypress input change', '#zero-preset-manager-panel input, #zero-preset-manager-panel textarea, #zero-quick-editor input, #zero-quick-editor textarea, #zero-modal input, #zero-modal textarea, #zero-entry-context-menu-modal input, #zero-inject-var-modal input, #links-manager-modal input, .zero-quick-textarea', function(e) {
+    // Stop event bubbling for typing events on all Zero inputs/textareas to prevent SillyTavern's heavy global key/input listeners from lagging mobile devices
+    $('body').on('keydown keyup keypress input', '#zero-preset-manager-panel input, #zero-preset-manager-panel textarea, #zero-quick-editor input, #zero-quick-editor textarea', function(e) {
         e.stopPropagation();
     });
 
