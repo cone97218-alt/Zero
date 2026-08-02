@@ -483,18 +483,19 @@ export const WindowManager = {
                 position: fixed;
                 bottom: 24px;
                 right: 24px;
-                z-index: 10001;
+                z-index: 999999;
                 display: flex;
                 align-items: center;
                 gap: 6px;
                 padding: 8px 14px;
-                background: var(--zero-bg-color, var(--SmartThemeBlurTintColor, rgba(20,20,30,0.95)));
-                border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #555));
-                color: var(--zero-text-color, var(--SmartThemeBodyColor, #fff));
+                background: var(--SmartThemeChatTintColor, rgba(30,30,45,0.95));
+                border: 1px solid var(--SmartThemeBorderColor, #666);
+                color: var(--SmartThemeBodyColor, #fff);
                 border-radius: 20px;
-                box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+                box-shadow: 0 6px 24px rgba(0,0,0,0.6);
                 cursor: pointer;
                 user-select: none;
+                touch-action: none;
                 animation: zeroFadeIn 0.2s ease;
             `;
             // Make capsule badge draggable; click-to-restore handled inside pointerdown
@@ -535,7 +536,19 @@ export const WindowManager = {
             });
             document.body.appendChild(badge);
         }
+        
         badge.style.display = 'flex';
+        badge.style.opacity = '1';
+        badge.style.visibility = 'visible';
+        
+        // Reset bounds if offscreen
+        const rect = badge.getBoundingClientRect();
+        if (rect.left > window.innerWidth - 30 || rect.top > window.innerHeight - 30 || rect.left < 0 || rect.top < 0) {
+            badge.style.left = 'auto';
+            badge.style.top = 'auto';
+            badge.style.bottom = '24px';
+            badge.style.right = '24px';
+        }
 
         const panel = document.getElementById('zero-preset-manager-panel');
         if (panel) panel.style.display = 'none';
