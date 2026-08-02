@@ -183,6 +183,8 @@ function groupSectionHTML(group, members, isUngrouped, cachedActions = null) {
 // ═══════════════════════════════════════
 //  Modal Minimize & Restore
 // ═══════════════════════════════════════
+let lastSnapshotRestoreTime = 0;
+
 export function minimizeSnapshotUI() {
     UiStateManager.save({ snapshotIsMinimized: true });
     if (overlay) overlay.style.display = 'none';
@@ -255,7 +257,9 @@ export function minimizeSnapshotUI() {
             if (isDragging) {
                 e.stopPropagation();
                 e.preventDefault();
+                return;
             }
+            restoreSnapshotUI();
         });
 
         document.body.appendChild(badge);
@@ -264,6 +268,7 @@ export function minimizeSnapshotUI() {
 }
 
 export function restoreSnapshotUI() {
+    lastSnapshotRestoreTime = Date.now();
     UiStateManager.save({ snapshotIsMinimized: false });
     const badge = document.getElementById('zero-snapshot-minimized-badge');
     if (badge) badge.style.display = 'none';
@@ -278,6 +283,7 @@ export async function openUI() {
     if (overlay && !document.body.contains(overlay)) overlay = null;
     if (overlay) return;
 
+    lastSnapshotRestoreTime = Date.now();
     ThemeManager.applyTheme();
 
     searchQuery = '';
@@ -341,7 +347,12 @@ export async function openUI() {
         overlay.style.justifyContent = 'flex-end';
     }
 
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) closeUI(); });
+    overlay.addEventListener('click', (e) => {
+        if (Date.now() - lastSnapshotRestoreTime < 450) {
+            return;
+        }
+        if (e.target === overlay) closeUI();
+    });
 
     const modal = h('div', { class: 'zero-modal zero-modal-card' });
     Object.assign(modal.style, {
