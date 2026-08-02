@@ -1484,6 +1484,18 @@ function ensurePanel() {
     });
 
     // 通知开关监听
+    // Global delegate click handler for all .zero-switch elements in Preset Manager
+    $('body').off('click', '.zero-switch').on('click', '.zero-switch', function(e) {
+        if (e.target.tagName === 'INPUT') return;
+        e.preventDefault();
+        e.stopPropagation();
+        const $cb = $(this).find('input[type="checkbox"]');
+        if ($cb.length) {
+            const current = $cb.prop('checked');
+            $cb.prop('checked', !current).trigger('change');
+        }
+    });
+
     $('body').off('change', '#zero-setting-toast-switch').on('change', '#zero-setting-toast-switch', function() {
         const checked = $(this).is(':checked');
         UiStateManager.save({ toastOnSnapshotSwitch: checked });

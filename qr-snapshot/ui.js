@@ -924,6 +924,19 @@ function setupEntriesDelegation(panel) {
 
     // Click delegation
     panel.addEventListener('click', (e) => {
+        // Toggle switch click interception (guarantees click -> change event flow)
+        const switchLabel = e.target.closest('.zero-switch');
+        if (switchLabel && e.target.tagName !== 'INPUT') {
+            e.preventDefault();
+            e.stopPropagation();
+            const cb = switchLabel.querySelector('input[type="checkbox"]');
+            if (cb) {
+                cb.checked = !cb.checked;
+                cb.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            return;
+        }
+
         // Group header collapse/expand
         const header = e.target.closest('.zero-group-header');
         if (header && !e.target.closest('.zero-group-actions')) {

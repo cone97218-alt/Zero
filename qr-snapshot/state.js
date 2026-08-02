@@ -263,28 +263,40 @@ export const PresetManager = {
         this.invalidate();
 
         let switched = false;
-        const ctx = window.SillyTavern?.getContext?.();
-        const pm = ctx?.getPresetManager?.('openai');
 
-        // 1. Try native PresetManager
-        if (pm) {
+        // Method 1: Try SillyTavern's native /preset slash command
+        if (window.SillyTavern?.SlashCommandParser?.commands?.['preset']) {
             try {
-                const currentName = pm.getSelectedPresetName?.();
-                if (currentName === name) {
-                    await this.load();
-                    return true;
-                }
-                const targetVal = pm.findPreset?.(name);
-                if (targetVal !== undefined && targetVal !== null && targetVal !== '') {
-                    pm.selectPreset(targetVal);
-                    switched = true;
-                }
+                await window.SillyTavern.SlashCommandParser.commands['preset'].callback({}, name);
+                switched = true;
             } catch (e) {
-                console.warn('[Zero] pm.selectPreset failed:', e);
+                console.warn('[Zero] Slash command /preset failed:', e);
             }
         }
 
-        // 2. Direct DOM fallback
+        // Method 2: Try PresetManager API
+        if (!switched) {
+            const ctx = window.SillyTavern?.getContext?.();
+            const pm = ctx?.getPresetManager?.('openai');
+            if (pm) {
+                try {
+                    const currentName = pm.getSelectedPresetName?.();
+                    if (currentName === name) {
+                        switched = true;
+                    } else {
+                        const targetVal = pm.findPreset?.(name);
+                        if (targetVal !== undefined && targetVal !== null && targetVal !== '') {
+                            pm.selectPreset(targetVal);
+                            switched = true;
+                        }
+                    }
+                } catch (e) {
+                    console.warn('[Zero] pm.selectPreset failed:', e);
+                }
+            }
+        }
+
+        // Method 3: Direct DOM element switch
         if (!switched) {
             const selectEl = document.getElementById('settings_preset_openai');
             if (selectEl) {
@@ -300,19 +312,6 @@ export const PresetManager = {
             }
         }
 
-        // 3. Slash command fallback
-        if (!switched && window.SillyTavern?.SlashCommandParser) {
-            try {
-                const cmd = window.SillyTavern.SlashCommandParser.commands['preset'];
-                if (cmd) {
-                    await cmd.callback({}, name);
-                    switched = true;
-                }
-            } catch (e) {
-                console.warn('[Zero] slash command /preset fallback failed:', e);
-            }
-        }
-
         if (switched) {
             await new Promise(r => setTimeout(r, 150));
             await this.load();
@@ -323,6 +322,7 @@ export const PresetManager = {
 
         return switched;
     },
+
 
 
     async togglePrompt(identifier, enabled) {
