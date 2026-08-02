@@ -272,16 +272,18 @@ export function restoreSnapshotUI() {
     UiStateManager.save({ snapshotIsMinimized: false });
     const badge = document.getElementById('zero-snapshot-minimized-badge');
     if (badge) badge.style.display = 'none';
-    if (overlay && document.body.contains(overlay)) {
-        overlay.style.display = 'flex';
-    } else {
-        openUI();
+    if (overlay) {
+        try { overlay.remove(); } catch (e) {}
+        overlay = null;
     }
+    openUI();
 }
 
 export async function openUI() {
-    if (overlay && !document.body.contains(overlay)) overlay = null;
-    if (overlay) return;
+    if (overlay) {
+        try { overlay.remove(); } catch (e) {}
+        overlay = null;
+    }
 
     lastSnapshotRestoreTime = Date.now();
     ThemeManager.applyTheme();
