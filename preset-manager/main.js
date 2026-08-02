@@ -7,6 +7,8 @@
 
 import { PresetManager, HistoryManager, UiStateManager } from '../qr-snapshot/state.js';
 import { syncTheme } from './utils.js';
+import { ThemeManager, BUILTIN_THEMES } from './theme.js';
+import { WindowManager } from './window.js';
 
 // ── 懒加载缓存 ──────────────────────────────────────────────────────────────
 let _contrast = null;
@@ -148,20 +150,20 @@ function ensurePanel() {
             left: 0;
             width: 100vw;
             height: 100vh;
-            background: var(--SmartThemeBlurTintColor, #171717);
-            color: var(--SmartThemeBodyColor, #dcdcd2);
+            background: var(--zero-bg-color, var(--SmartThemeBlurTintColor, #171717));
+            color: var(--zero-text-color, var(--SmartThemeBodyColor, #dcdcd2));
             z-index: 9999;
             padding-top: 0;
             flex-direction: column;
             overflow: hidden;
             overflow-x: hidden;
-            font-family: var(--mainFontFamily, sans-serif);
+            font-family: inherit;
             opacity: 1;
         ">
             <!-- Tabs Navigation -->
             <div class="zero-tabs-nav" style="
                 display: flex;
-                background: var(--SmartThemeBlurTintColor, #171717);
+                background: var(--zero-bg-color, var(--SmartThemeBlurTintColor, #171717));
                 border-bottom: 1px solid var(--SmartThemeBorderColor, #444);
                 padding: 0 8px;
                 flex-shrink: 0;
@@ -177,11 +179,20 @@ function ensurePanel() {
                     <div class="zero-tab-link" data-tab="settings" style="padding: 10px 12px; font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent;">设置</div>
                 </div>
                 <div style="display: flex; align-items: center; gap: 4px; margin-right: 8px;">
-                    <button id="zero-history-undo" class="interactable zero-icon-btn" title="撤回上一个操作" style="background: none; border: none; color: inherit; padding: 8px; cursor: pointer; opacity: 0.4; font-size: 14px; display: flex; align-items: center; justify-content: center;" disabled>
+                    <button id="zero-history-undo" class="interactable zero-icon-btn" title="撤回上一个操作" style="background: none; border: none; color: inherit; padding: 6px; cursor: pointer; opacity: 0.4; font-size: 13px; display: flex; align-items: center; justify-content: center;" disabled>
                         <i class="fa-solid fa-rotate-left"></i>
                     </button>
-                    <button id="zero-history-redo" class="interactable zero-icon-btn" title="还原上一个操作" style="background: none; border: none; color: inherit; padding: 8px; cursor: pointer; opacity: 0.4; font-size: 14px; display: flex; align-items: center; justify-content: center;" disabled>
+                    <button id="zero-history-redo" class="interactable zero-icon-btn" title="还原上一个操作" style="background: none; border: none; color: inherit; padding: 6px; cursor: pointer; opacity: 0.4; font-size: 13px; display: flex; align-items: center; justify-content: center;" disabled>
                         <i class="fa-solid fa-rotate-right"></i>
+                    </button>
+                    <button id="zero-window-mode-btn" class="interactable zero-icon-btn" title="切换全屏/悬浮窗/侧边停靠模式" style="background: none; border: none; color: inherit; padding: 6px; cursor: pointer; opacity: 0.7; font-size: 13px; display: flex; align-items: center; justify-content: center;">
+                        <i class="fa-solid fa-expand"></i>
+                    </button>
+                    <button id="zero-window-reset-btn" class="interactable zero-icon-btn" title="复位悬浮窗位置" style="background: none; border: none; color: inherit; padding: 6px; cursor: pointer; opacity: 0.7; font-size: 13px; display: flex; align-items: center; justify-content: center;">
+                        <i class="fa-solid fa-arrows-to-dot"></i>
+                    </button>
+                    <button id="zero-window-minimize-btn" class="interactable zero-icon-btn" title="最小化为桌面浮窗胶囊" style="background: none; border: none; color: inherit; padding: 6px; cursor: pointer; opacity: 0.7; font-size: 13px; display: flex; align-items: center; justify-content: center;">
+                        <i class="fa-solid fa-minus"></i>
                     </button>
                 </div>
                 <div id="zero-panel-close" class="interactable" style="cursor: pointer; padding: 10px; font-size: 16px; opacity: 0.8;">
@@ -190,7 +201,7 @@ function ensurePanel() {
             </div>
 
             <!-- Content Area -->
-            <div class="zero-panel-body" style="flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; background: var(--SmartThemeBlurTintColor, #171717);">
+            <div class="zero-panel-body" style="flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; background: var(--zero-bg-color, var(--SmartThemeBlurTintColor, #171717));">
                 
                 <!-- Contrast Tab -->
                 <div id="zero-tab-contrast" class="zero-tab-content" style="padding: 12px; display: flex; flex-direction: column; gap: 12px; flex: 1; overflow: hidden; height: 100%;">
@@ -878,11 +889,25 @@ function ensurePanel() {
                                     gap: 12px;
                                     padding: 0 12px 12px 12px;
                                 ">
-                                    <!-- 快照弹窗样式 -->
+                                    <!-- 快照窗口模式 -->
                                     <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-top: 8px;">
                                         <div style="flex: 1;">
-                                            <strong style="display: block; font-size: 12px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">快照弹窗样式</strong>
-                                            <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">设置快照面板显示为普通中心弹窗，还是从特定方向滑出。</span>
+                                            <strong style="display: block; font-size: 12px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">快照窗口模式</strong>
+                                            <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">选择固定原生模式（遵从下方配置与方向动效），还是桌面悬浮窗/侧边停靠模式。</span>
+                                        </div>
+                                        <select id="zero-setting-ui-snapshot-win-mode" class="interactable" style="padding: 4px 8px; background: var(--SmartThemeChatTintColor); color: inherit; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; font-size: 12px; cursor: pointer;">
+                                            <option value="fixed">固定原生模式 (按配置与动效)</option>
+                                            <option value="floating">桌面悬浮窗 (自由拖拽与缩放)</option>
+                                            <option value="docked_right">右侧停靠 (贴靠右侧)</option>
+                                            <option value="docked_left">左侧停靠 (贴靠左侧)</option>
+                                        </select>
+                                    </div>
+
+                                    <!-- 快照弹窗样式 -->
+                                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 12px; margin-top: 4px;">
+                                        <div style="flex: 1;">
+                                            <strong style="display: block; font-size: 12px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">固定模式弹窗样式</strong>
+                                            <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">固定模式下，快照面板显示为普通中心弹窗，还是从特定方向滑出。</span>
                                         </div>
                                         <select id="zero-setting-ui-modal-style" class="interactable" style="padding: 4px 8px; background: var(--SmartThemeChatTintColor); color: inherit; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; font-size: 12px; cursor: pointer;">
                                             <option value="center">普通弹窗</option>
@@ -907,6 +932,30 @@ function ensurePanel() {
                                         </select>
                                     </div>
                                     
+                                     <!-- 显示模式切换图标 -->
+                                     <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 12px; margin-top: 4px;">
+                                         <div style="flex: 1;">
+                                             <strong style="display: block; font-size: 12px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">显示模式切换图标</strong>
+                                             <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">在预设管理与快照面板顶栏显示窗口模式切换按钮。</span>
+                                         </div>
+                                         <label class="zero-switch">
+                                             <input type="checkbox" id="zero-setting-ui-show-win-mode-btn" class="interactable">
+                                             <span class="zero-slider"></span>
+                                         </label>
+                                     </div>
+
+                                     <!-- 显示最小化胶囊图标 -->
+                                     <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 12px; margin-top: 4px;">
+                                         <div style="flex: 1;">
+                                             <strong style="display: block; font-size: 12px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">显示最小化胶囊图标</strong>
+                                             <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">在预设管理与快照面板顶栏显示最小化为胶囊的按钮。</span>
+                                         </div>
+                                         <label class="zero-switch">
+                                             <input type="checkbox" id="zero-setting-ui-show-win-min-btn" class="interactable">
+                                             <span class="zero-slider"></span>
+                                         </label>
+                                     </div>
+
                                     <!-- 快照弹窗所占比例 -->
                                     <div style="display: flex; flex-direction: column; gap: 6px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 12px; margin-top: 4px;">
                                         <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px;">
@@ -917,6 +966,209 @@ function ensurePanel() {
                                             <span id="zero-setting-ui-modal-scale-val" style="font-size: 12px; font-weight: bold; color: var(--SmartThemeQuoteColor);">80%</span>
                                         </div>
                                         <input type="range" id="zero-setting-ui-modal-scale" class="interactable" min="20" max="100" step="5" style="width: 100%; accent-color: var(--SmartThemeQuoteColor); cursor: pointer; background: rgba(255,255,255,0.1); border-radius: 4px; height: 6px; outline: none; margin-top: 4px;">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 主题与配色外观设置 (子折叠) -->
+                            <div class="zero-settings-section sub-section" style="
+                                display: flex;
+                                flex-direction: column;
+                                background: rgba(0, 0, 0, 0.15);
+                                border: 1px solid rgba(255, 255, 255, 0.05);
+                                border-radius: 8px;
+                                overflow: hidden;
+                                margin-top: 8px;
+                            ">
+                                <div class="zero-settings-header sub-header interactable" id="zero-settings-theme-toggle" style="
+                                    display: flex;
+                                    align-items: center;
+                                    justify-content: space-between;
+                                    padding: 10px 12px;
+                                    cursor: pointer;
+                                    user-select: none;
+                                ">
+                                    <div style="font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 6px; color: var(--SmartThemeBodyColor);">
+                                        <i class="fa-solid fa-paintbrush" style="color: var(--SmartThemeQuoteColor); font-size: 13px;"></i> 主题配色与外观自定义
+                                    </div>
+                                    <i class="fa-solid fa-chevron-right zero-settings-chevron" style="transition: transform 0.15s; font-size: 10px; opacity: 0.7;"></i>
+                                </div>
+                                <div class="zero-settings-body sub-body" id="zero-settings-theme-body" style="
+                                    display: none;
+                                    flex-direction: column;
+                                    gap: 12px;
+                                    padding: 0 12px 12px 12px;
+                                ">
+                                    <!-- 1. 主题/配色选择 -->
+                                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-top: 8px;">
+                                        <div style="flex: 1;">
+                                            <strong style="display: block; font-size: 12px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">拓展主题配色</strong>
+                                            <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">选择默认跟随酒馆美化或内置莫兰迪配色，亦可调配自定义方案。</span>
+                                        </div>
+                                        <select id="zero-setting-theme-select" class="interactable" style="padding: 4px 8px; background: var(--SmartThemeChatTintColor); color: inherit; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; font-size: 12px; cursor: pointer;">
+                                        </select>
+                                    </div>
+
+                                    <!-- 2. 自定义调色板 -->
+                                    <div id="zero-custom-theme-palette-box" style="display: none; flex-direction: column; gap: 8px; background: rgba(0,0,0,0.1); padding: 10px; border-radius: 6px; border: 1px solid var(--SmartThemeBorderColor);">
+                                        <div style="font-size: 12px; font-weight: bold; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">调色板设置</div>
+                                        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px;">
+                                            <div style="display: flex; align-items: center; gap: 6px;">
+                                                <input type="color" id="zero-color-accent" class="interactable" style="width: 26px; height: 26px; padding: 0; border: none; cursor: pointer; background: none;">
+                                                <span style="font-size: 11px;">强调色</span>
+                                            </div>
+                                            <div style="display: flex; align-items: center; gap: 6px;">
+                                                <input type="color" id="zero-color-bg" class="interactable" style="width: 26px; height: 26px; padding: 0; border: none; cursor: pointer; background: none;">
+                                                <span style="font-size: 11px;">主背景色</span>
+                                            </div>
+                                            <div style="display: flex; align-items: center; gap: 6px;">
+                                                <input type="color" id="zero-color-cardBg" class="interactable" style="width: 26px; height: 26px; padding: 0; border: none; cursor: pointer; background: none;">
+                                                <span style="font-size: 11px;">卡片背景色</span>
+                                            </div>
+                                            <div style="display: flex; align-items: center; gap: 6px;">
+                                                <input type="color" id="zero-color-text" class="interactable" style="width: 26px; height: 26px; padding: 0; border: none; cursor: pointer; background: none;">
+                                                <span style="font-size: 11px;">主文字色</span>
+                                            </div>
+                                            <div style="display: flex; align-items: center; gap: 6px;">
+                                                <input type="color" id="zero-color-muted" class="interactable" style="width: 26px; height: 26px; padding: 0; border: none; cursor: pointer; background: none;">
+                                                <span style="font-size: 11px;">次要文字色</span>
+                                            </div>
+                                            <div style="display: flex; align-items: center; gap: 6px;">
+                                                <input type="color" id="zero-color-border" class="interactable" style="width: 26px; height: 26px; padding: 0; border: none; cursor: pointer; background: none;">
+                                                <span style="font-size: 11px;">边框颜色</span>
+                                            </div>
+                                        </div>
+                                        <div style="display: flex; gap: 8px; margin-top: 6px;">
+                                            <button id="zero-save-custom-theme-btn" class="interactable" style="padding: 4px 10px; font-size: 11px; background: var(--SmartThemeQuoteColor); border: none; border-radius: 4px; color: #fff; cursor: pointer;">保存为新配色</button>
+                                            <button id="zero-delete-custom-theme-btn" class="interactable" style="padding: 4px 10px; font-size: 11px; background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; color: var(--SmartThemeEmColor); cursor: pointer; display: none;">删除当前配色</button>
+                                        </div>
+                                    </div>
+
+                                    <!-- 3. 背景透明度 -->
+                                    <div style="display: flex; flex-direction: column; gap: 6px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 12px; margin-top: 4px;">
+                                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px;">
+                                            <div style="flex: 1;">
+                                                <strong style="display: block; font-size: 12px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">背景透明度</strong>
+                                                <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">调节拓展面板与弹窗背景的不透明度 (10% ~ 100%)。</span>
+                                            </div>
+                                            <span id="zero-setting-theme-opacity-val" style="font-size: 12px; font-weight: bold; color: var(--SmartThemeQuoteColor);">95%</span>
+                                        </div>
+                                        <input type="range" id="zero-setting-theme-opacity" class="interactable" min="10" max="100" step="5" style="width: 100%; accent-color: var(--SmartThemeQuoteColor); cursor: pointer; background: rgba(255,255,255,0.1); border-radius: 4px; height: 6px; outline: none; margin-top: 4px;">
+                                    </div>
+
+                                    <!-- 4. 自定义背景图 URL -->
+                                    <div style="display: flex; flex-direction: column; gap: 6px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 12px; margin-top: 4px;">
+                                        <strong style="display: block; font-size: 12px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">背景图片 URL</strong>
+                                        <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">设置拓展面板背景图片 URL（留空则不使用背景图）。</span>
+                                        <div style="display: flex; gap: 8px; margin-top: 4px;">
+                                            <input type="text" id="zero-setting-theme-bgurl" class="interactable" placeholder="https://example.com/bg.jpg" style="flex: 1; padding: 6px 8px; background: var(--SmartThemeChatTintColor); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 4px; font-size: 12px;">
+                                            <button id="zero-clear-theme-bgurl-btn" class="interactable" style="padding: 4px 10px; font-size: 11px; background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; color: inherit; cursor: pointer;">清空</button>
+                                        </div>
+                                    </div>
+
+                                    <!-- 5. 面板字体 -->
+                                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 12px; margin-top: 4px;">
+                                        <div style="flex: 1;">
+                                            <strong style="display: block; font-size: 12px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">面板字体</strong>
+                                            <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">选择或输入拓展面板内优先使用的字体。</span>
+                                        </div>
+                                        <select id="zero-setting-theme-font-select" class="interactable" style="padding: 4px 8px; background: var(--SmartThemeChatTintColor); color: inherit; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; font-size: 12px; cursor: pointer;">
+                                            <option value="inherit">继承酒馆默认</option>
+                                            <option value="Microsoft YaHei">微软雅黑 (Microsoft YaHei)</option>
+                                            <option value="PingFang SC">苹果苹方 (PingFang SC)</option>
+                                            <option value="Segoe UI">Segoe UI</option>
+                                            <option value="Roboto">Roboto</option>
+                                            <option value="monospace">等宽字体 (Monospace)</option>
+                                            <option value="custom">自定义网络字体 / CSS代码...</option>
+                                        </select>
+                                    </div>
+                                    <div id="zero-theme-custom-font-input-box" style="display: none; margin-top: 4px; flex-direction: column; gap: 4px;">
+                                        <textarea id="zero-setting-theme-custom-font" class="interactable" rows="4" placeholder="支持直接粘贴 @import 字体链接或 CSS 规则，例如：&#10;@import url(&quot;https://fontsapi.zeoseven.com/285/main/result.css&quot;);&#10;body {&#10;    font-family: &quot;Noto Serif CJK&quot;;&#10;    font-weight: normal;&#10;}" style="width: 100%; padding: 6px 8px; background: var(--SmartThemeChatTintColor); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 4px; font-size: 11px; font-family: monospace; resize: vertical; box-sizing: border-box;"></textarea>
+                                    </div>
+
+                                    <!-- 6. 字号调节 -->
+                                    <div style="display: flex; flex-direction: column; gap: 6px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 12px; margin-top: 4px;">
+                                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px;">
+                                            <div style="flex: 1;">
+                                                <strong style="display: block; font-size: 12px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">面板基础字号</strong>
+                                                <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">调整拓展面板内容的全局基础字号 (12px ~ 18px)。</span>
+                                            </div>
+                                            <span id="zero-setting-theme-fontsize-val" style="font-size: 12px; font-weight: bold; color: var(--SmartThemeQuoteColor);">14px</span>
+                                        </div>
+                                        <input type="range" id="zero-setting-theme-fontsize" class="interactable" min="12" max="18" step="1" style="width: 100%; accent-color: var(--SmartThemeQuoteColor); cursor: pointer; background: rgba(255,255,255,0.1); border-radius: 4px; height: 6px; outline: none; margin-top: 4px;">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 电脑端视窗与悬浮窗设置 (子折叠) -->
+                            <div class="zero-settings-section sub-section" style="
+                                display: flex;
+                                flex-direction: column;
+                                background: rgba(0, 0, 0, 0.15);
+                                border: 1px solid rgba(255, 255, 255, 0.05);
+                                border-radius: 8px;
+                                overflow: hidden;
+                                margin-top: 8px;
+                            ">
+                                <div class="zero-settings-header sub-header interactable" id="zero-settings-desktop-win-toggle" style="
+                                    display: flex;
+                                    align-items: center;
+                                    justify-content: space-between;
+                                    padding: 10px 12px;
+                                    cursor: pointer;
+                                    user-select: none;
+                                ">
+                                    <div style="font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 6px; color: var(--SmartThemeBodyColor);">
+                                        <i class="fa-solid fa-desktop" style="color: var(--SmartThemeQuoteColor); font-size: 13px;"></i> 电脑端视窗与悬浮窗设置
+                                    </div>
+                                    <i class="fa-solid fa-chevron-right zero-settings-chevron" style="transition: transform 0.15s; font-size: 10px; opacity: 0.7;"></i>
+                                </div>
+                                <div class="zero-settings-body sub-body" id="zero-settings-desktop-win-body" style="
+                                    display: none;
+                                    flex-direction: column;
+                                    gap: 12px;
+                                    padding: 0 12px 12px 12px;
+                                ">
+                                    <!-- 默认视窗模式 -->
+                                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-top: 8px;">
+                                        <div style="flex: 1;">
+                                            <strong style="display: block; font-size: 12px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">面板视窗模式</strong>
+                                            <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">选择预设管理面板显示为桌面悬浮窗、全屏或侧边停靠栏。</span>
+                                        </div>
+                                        <select id="zero-setting-window-mode-select" class="interactable" style="padding: 4px 8px; background: var(--SmartThemeChatTintColor); color: inherit; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; font-size: 12px; cursor: pointer;">
+                                            <option value="fullscreen">全屏模式 (Fullscreen)</option>
+                                            <option value="floating">桌面悬浮窗 (Floating Window)</option>
+                                            <option value="docked_right">右侧停靠 (Dock Right)</option>
+                                            <option value="docked_left">左侧停靠 (Dock Left)</option>
+                                        </select>
+                                    </div>
+
+                                    <!-- 顶部栏控制按钮开关 -->
+                                    <div style="display: flex; flex-direction: column; gap: 8px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 12px; margin-top: 4px;">
+                                        <strong style="display: block; font-size: 12px; font-weight: 600; color: var(--SmartThemeBodyColor);">顶部控制栏按钮显示</strong>
+                                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                                            <label class="interactable" style="display: flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer; color: var(--SmartThemeBodyColor);">
+                                                <input type="checkbox" id="zero-setting-win-show-mode-btn" style="cursor: pointer; accent-color: var(--SmartThemeQuoteColor);"> 显示模式切换按钮
+                                            </label>
+                                            <label class="interactable" style="display: flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer; color: var(--SmartThemeBodyColor);">
+                                                <input type="checkbox" id="zero-setting-win-show-reset-btn" style="cursor: pointer; accent-color: var(--SmartThemeQuoteColor);"> 显示位置复位按钮
+                                            </label>
+                                            <label class="interactable" style="display: flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer; color: var(--SmartThemeBodyColor);">
+                                                <input type="checkbox" id="zero-setting-win-show-min-btn" style="cursor: pointer; accent-color: var(--SmartThemeQuoteColor);"> 显示最小化按钮
+                                            </label>
+                                            <label class="interactable" style="display: flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer; color: var(--SmartThemeBodyColor);">
+                                                <input type="checkbox" id="zero-setting-win-show-history-btn" style="cursor: pointer; accent-color: var(--SmartThemeQuoteColor);"> 显示撤回/还原按钮
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    <!-- 悬浮窗位置重置 -->
+                                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 12px; margin-top: 4px;">
+                                        <div style="flex: 1;">
+                                            <strong style="display: block; font-size: 12px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">复位悬浮窗位置与尺寸</strong>
+                                            <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">重置悬浮窗坐标与尺寸至屏幕中央默认值。</span>
+                                        </div>
+                                        <button id="zero-setting-reset-win-btn" class="interactable" style="padding: 4px 10px; font-size: 11px; background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; color: inherit; cursor: pointer;">复位悬浮窗</button>
                                     </div>
                                 </div>
                             </div>
@@ -1279,23 +1531,43 @@ function ensurePanel() {
 
     $('body').append(panelHtml);
 
+    const panelEl = document.getElementById(PANEL_ID);
+    if (panelEl) {
+        const navHandle = panelEl.querySelector('.zero-tabs-nav');
+        WindowManager.initDraggable(panelEl, navHandle);
+        WindowManager.applyWindowMode();
+    }
+
     $(`#${PANEL_ID} .zero-tab-link`).on('click', function(e) {
         const tab = $(this).data('tab');
         localStorage.setItem('zero_last_main_tab', tab);
         
         const isActive = $(this).hasClass('active');
-        if (isActive && e.originalEvent) {
-            const state = UiStateManager.get();
-            if (state.tabBarPosition === 'bottom' && state.clickActiveTabToExit === true) {
-                closePanel();
-                return;
+        if (isActive) {
+            if (e.originalEvent) {
+                const state = UiStateManager.get();
+                if (state.tabBarPosition === 'bottom' && state.clickActiveTabToExit === true) {
+                    closePanel();
+                    return;
+                }
             }
+            return; // Avoid redundant tab re-render
         }
 
         $(`#${PANEL_ID} .zero-tab-link`).removeClass('active');
         $(this).addClass('active');
 
-        applyTabSettings();
+        // Toggle active border styles fast
+        const isBottom = UiStateManager.get().tabBarPosition === 'bottom';
+        $(`#${PANEL_ID} .zero-tab-link`).css({ 'font-weight': 'normal', 'opacity': '0.55', 'color': 'inherit', 'background': 'transparent', 'border-bottom': 'none', 'border-top': 'none' }).find('i').css('color', 'inherit');
+        $(this).css({
+            'font-weight': 'bold',
+            'opacity': '1',
+            'color': 'var(--SmartThemeQuoteColor)',
+            'background': 'rgba(255, 255, 255, 0.02)',
+            'border-bottom': isBottom ? 'none' : '3px solid var(--SmartThemeQuoteColor)',
+            'border-top': isBottom ? '3px solid var(--SmartThemeQuoteColor)' : 'none'
+        }).find('i').css('color', 'var(--SmartThemeQuoteColor)');
 
         $(`#${PANEL_ID} .zero-tab-content`).css('display', 'none');
         $(`#zero-tab-${tab}`).css('display', 'flex');
@@ -1547,6 +1819,32 @@ function ensurePanel() {
         toastr.success(checked ? '已开启激活 Tab 点击退出' : '已关闭激活 Tab 点击退出');
     });
 
+    $('body').off('change', '#zero-setting-ui-snapshot-win-mode').on('change', '#zero-setting-ui-snapshot-win-mode', function() {
+        const val = $(this).val();
+        UiStateManager.save({ snapshotWindowMode: val });
+        toastr.success('快照窗口模式已更新');
+    });
+
+    $('body').off('change', '#zero-setting-ui-show-win-mode-btn').on('change', '#zero-setting-ui-show-win-mode-btn', function() {
+        const checked = $(this).is(':checked');
+        const state = UiStateManager.get();
+        const ws = state.windowState || {};
+        ws.showWinModeBtn = checked;
+        UiStateManager.save({ showWinModeBtn: checked, windowState: ws });
+        import('./window.js').then(m => m.WindowManager.applyWindowMode());
+        toastr.success(checked ? '已开启显示模式切换按钮' : '已关闭显示模式切换按钮');
+    });
+
+    $('body').off('change', '#zero-setting-ui-show-win-min-btn').on('change', '#zero-setting-ui-show-win-min-btn', function() {
+        const checked = $(this).is(':checked');
+        const state = UiStateManager.get();
+        const ws = state.windowState || {};
+        ws.showWinMinimizeBtn = checked;
+        UiStateManager.save({ showWinMinimizeBtn: checked, windowState: ws });
+        import('./window.js').then(m => m.WindowManager.applyWindowMode());
+        toastr.success(checked ? '已开启显示最小化胶囊按钮' : '已关闭显示最小化胶囊按钮');
+    });
+
     $('body').off('change', '#zero-setting-ui-modal-style').on('change', '#zero-setting-ui-modal-style', function() {
         const val = $(this).val();
         UiStateManager.save({ snapshotModalStyle: val });
@@ -1649,6 +1947,196 @@ function ensurePanel() {
             UiStateManager.save({ decoupleJailbreak: val });
             toastr.success(val ? '已开启完全解耦模式' : '已关闭完全解耦模式（快照将管理全部参数）');
         }
+    });
+
+    // 子折叠：主题与配色外观设置
+    $('body').off('click', '#zero-settings-theme-toggle').on('click', '#zero-settings-theme-toggle', function() {
+        const $body = $('#zero-settings-theme-body');
+        const $chevron = $(this).find('.zero-settings-chevron');
+        $body.slideToggle(150, function() {
+            if ($body.is(':visible')) {
+                $body.css('display', 'flex');
+                $chevron.addClass('expanded');
+            } else {
+                $chevron.removeClass('expanded');
+            }
+        });
+    });
+
+    // 子折叠：电脑端视窗与悬浮窗设置
+    $('body').off('click', '#zero-settings-desktop-win-toggle').on('click', '#zero-settings-desktop-win-toggle', function() {
+        const $body = $('#zero-settings-desktop-win-body');
+        const $chevron = $(this).find('.zero-settings-chevron');
+        $body.slideToggle(150, function() {
+            if ($body.is(':visible')) {
+                $body.css('display', 'flex');
+                $chevron.addClass('expanded');
+            } else {
+                $chevron.removeClass('expanded');
+            }
+        });
+    });
+
+    // 主题下拉切换
+    $('body').off('change', '#zero-setting-theme-select').on('change', '#zero-setting-theme-select', function() {
+        const val = $(this).val();
+        ThemeManager.saveSettings({ activeTheme: val });
+        renderSettingsTab();
+        toastr.success('已切换主题配色方案');
+    });
+
+    // 调色板颜色修改 (Live preview)
+    const updateCustomPaletteFromInputs = () => {
+        const colors = {
+            accent: $('#zero-color-accent').val(),
+            bg: $('#zero-color-bg').val(),
+            cardBg: $('#zero-color-cardBg').val(),
+            text: $('#zero-color-text').val(),
+            muted: $('#zero-color-muted').val(),
+            border: $('#zero-color-border').val(),
+        };
+        const settings = ThemeManager.getSettings();
+        if (settings.activeTheme && !BUILTIN_THEMES[settings.activeTheme] && settings.customThemes?.[settings.activeTheme]) {
+            settings.customThemes[settings.activeTheme].colors = { ...settings.customThemes[settings.activeTheme].colors, ...colors };
+            ThemeManager.saveSettings({ customThemes: settings.customThemes });
+        } else {
+            ThemeManager.saveSettings({ customPalette: { ...settings.customPalette, ...colors } });
+        }
+    };
+
+    $('body').off('input change', '#zero-color-accent, #zero-color-bg, #zero-color-cardBg, #zero-color-text, #zero-color-muted, #zero-color-border')
+        .on('input change', '#zero-color-accent, #zero-color-bg, #zero-color-cardBg, #zero-color-text, #zero-color-muted, #zero-color-border', function() {
+            updateCustomPaletteFromInputs();
+        });
+
+    // 保存为新配色按钮
+    $('body').off('click', '#zero-save-custom-theme-btn').on('click', '#zero-save-custom-theme-btn', function() {
+        const colors = {
+            accent: $('#zero-color-accent').val(),
+            bg: $('#zero-color-bg').val(),
+            cardBg: $('#zero-color-cardBg').val(),
+            text: $('#zero-color-text').val(),
+            muted: $('#zero-color-muted').val(),
+            border: $('#zero-color-border').val(),
+        };
+        const name = prompt('请输入新配色方案的名称：', '自定义配色 ' + (Object.keys(ThemeManager.getSettings().customThemes || {}).length + 1));
+        if (name && name.trim()) {
+            const newTheme = ThemeManager.saveCustomTheme(name.trim(), colors);
+            renderSettingsTab();
+            toastr.success(`已保存全新配色方案：「${newTheme.name}」`);
+        }
+    });
+
+    // 删除当前配色按钮
+    $('body').off('click', '#zero-delete-custom-theme-btn').on('click', '#zero-delete-custom-theme-btn', function() {
+        const settings = ThemeManager.getSettings();
+        const activeId = settings.activeTheme;
+        if (activeId && !BUILTIN_THEMES[activeId]) {
+            const themeConfig = ThemeManager.getThemeConfig(activeId);
+            if (confirm(`确定要删除自定义配色方案「${themeConfig.name}」吗？`)) {
+                ThemeManager.deleteCustomTheme(activeId);
+                renderSettingsTab();
+                toastr.success('已删除自定义配色方案');
+            }
+        }
+    });
+
+    let opacitySaveTimer = null;
+    $('body').off('input', '#zero-setting-theme-opacity').on('input', '#zero-setting-theme-opacity', function() {
+        const val = parseInt($(this).val());
+        $('#zero-setting-theme-opacity-val').text(`${val}%`);
+        if (opacitySaveTimer) clearTimeout(opacitySaveTimer);
+        opacitySaveTimer = setTimeout(() => {
+            ThemeManager.saveSettings({ bgOpacity: val / 100 });
+        }, 100);
+    });
+
+    // 背景图片 URL 修改
+    $('body').off('change', '#zero-setting-theme-bgurl').on('change', '#zero-setting-theme-bgurl', function() {
+        const url = $(this).val().trim();
+        ThemeManager.saveSettings({ bgImageUrl: url });
+        toastr.success(url ? '已更新背景图片' : '已清除背景图片');
+    });
+
+    // 清空背景图按钮
+    $('body').off('click', '#zero-clear-theme-bgurl-btn').on('click', '#zero-clear-theme-bgurl-btn', function() {
+        $('#zero-setting-theme-bgurl').val('');
+        ThemeManager.saveSettings({ bgImageUrl: '' });
+        toastr.success('已清除背景图片');
+    });
+
+    // 字体选择
+    $('body').off('change', '#zero-setting-theme-font-select').on('change', '#zero-setting-theme-font-select', function() {
+        const val = $(this).val();
+        if (val === 'custom') {
+            $('#zero-theme-custom-font-input-box').slideDown(150);
+        } else {
+            $('#zero-theme-custom-font-input-box').slideUp(150);
+            ThemeManager.saveSettings({ fontFamily: val });
+            toastr.success('已更新面板字体');
+        }
+    });
+
+    // 自定义字体 / CSS 输入
+    $('body').off('change', '#zero-setting-theme-custom-font').on('change', '#zero-setting-theme-custom-font', function() {
+        const fontInput = $(this).val().trim();
+        if (fontInput) {
+            ThemeManager.saveSettings({ fontFamily: fontInput });
+            toastr.success('已应用自定义网络字体与 CSS 规则');
+        }
+    });
+
+    // 字号调节
+    $('body').off('input', '#zero-setting-theme-fontsize').on('input', '#zero-setting-theme-fontsize', function() {
+        const val = parseInt($(this).val());
+        $('#zero-setting-theme-fontsize-val').text(`${val}px`);
+        ThemeManager.saveSettings({ fontSize: `${val}px` });
+    });
+
+    // 桌面视窗与悬浮窗控制
+    const handleModeSwitch = (mode) => {
+        WindowManager.saveSettings({ mode });
+        const modeNames = { fullscreen: '全屏模式', floating: '桌面悬浮窗模式', docked_right: '右侧停靠模式', docked_left: '左侧停靠模式' };
+        toastr.success(`已切换至：${modeNames[mode] || mode}`);
+        $('#zero-setting-window-mode-select').val(mode);
+    };
+
+    $('body').off('click', '#zero-window-mode-btn').on('click', '#zero-window-mode-btn', function() {
+        const settings = WindowManager.getSettings();
+        const modes = ['fullscreen', 'floating', 'docked_right', 'docked_left'];
+        const currentIdx = modes.indexOf(settings.mode || 'fullscreen');
+        const nextMode = modes[(currentIdx + 1) % modes.length];
+        handleModeSwitch(nextMode);
+    });
+
+    $('body').off('change', '#zero-setting-window-mode-select').on('change', '#zero-setting-window-mode-select', function() {
+        handleModeSwitch($(this).val());
+    });
+
+    // 顶部控制栏按钮显隐开关
+    $('body').off('change', '#zero-setting-win-show-mode-btn').on('change', '#zero-setting-win-show-mode-btn', function() {
+        WindowManager.saveSettings({ showWinModeBtn: $(this).is(':checked') });
+    });
+    $('body').off('change', '#zero-setting-win-show-reset-btn').on('change', '#zero-setting-win-show-reset-btn', function() {
+        WindowManager.saveSettings({ showWinResetBtn: $(this).is(':checked') });
+    });
+    $('body').off('change', '#zero-setting-win-show-min-btn').on('change', '#zero-setting-win-show-min-btn', function() {
+        WindowManager.saveSettings({ showWinMinimizeBtn: $(this).is(':checked') });
+    });
+    $('body').off('change', '#zero-setting-win-show-history-btn').on('change', '#zero-setting-win-show-history-btn', function() {
+        WindowManager.saveSettings({ showHistoryBtns: $(this).is(':checked') });
+    });
+
+    // 重置悬浮窗位置与尺寸
+    $('body').off('click', '#zero-window-reset-btn, #zero-setting-reset-win-btn').on('click', '#zero-window-reset-btn, #zero-setting-reset-win-btn', function() {
+        WindowManager.resetPosition();
+        $('#zero-setting-window-mode-select').val('floating');
+        toastr.success('已重置悬浮窗位置与尺寸');
+    });
+
+    // 最小化窗口
+    $('body').off('click', '#zero-window-minimize-btn').on('click', '#zero-window-minimize-btn', function() {
+        WindowManager.minimize();
     });
 
     $('#contrast-auto-match').on('click', () => _contrast.performAutoMatch());
@@ -1759,7 +2247,7 @@ function ensurePanel() {
         clearTimeout(contrastSearchTimeout);
         contrastSearchTimeout = setTimeout(() => {
             _contrast.performAutoMatch();
-        }, 1000); // 1s delay to adapt to low-performance devices
+        }, 250); // 250ms delay for fast responsiveness
     });
 
     $('body').off('click', '#contrast-search-clear').on('click', '#contrast-search-clear', function() {
@@ -2275,29 +2763,37 @@ function renderTabContent(tab) {
 }
 
 export async function showPanel() {
-    renderedTabs.clear(); // Clear rendering cache on open to force fresh data load
-    _presetsLastFetch = 0; // Force cache invalidation so the initial tab load is fresh
-    await loadModules();
     ensurePanel();
-    applyTabSettings();
-    syncTheme();
-    
-    // Initialize history button states
-    HistoryManager.updateButtonsState();
+    const settings = WindowManager.getSettings();
+    if (settings.isMinimized) {
+        settings.isMinimized = false;
+        WindowManager.saveSettings({ isMinimized: false });
+    }
+    const badge = document.getElementById('zero-minimized-badge');
+    if (badge) badge.style.display = 'none';
 
-    const lastTab = localStorage.getItem('zero_last_main_tab') || 'contrast';
-    $(`#${PANEL_ID} .zero-tab-link`).removeClass('active');
-    $(`#${PANEL_ID} .zero-tab-link[data-tab="${lastTab}"]`).addClass('active');
-    $(`#${PANEL_ID} .zero-tab-content`).css('display', 'none');
-    $(`#zero-tab-${lastTab}`).css('display', 'flex');
-
-    await populatePresetSelects();
-    renderTabContent(lastTab);
-    
     const $panel = $(`#${PANEL_ID}`);
-    $panel.css('display', 'flex');
-    $panel[0].offsetHeight;
-    $panel.css('opacity', '1');
+    $panel.css({ 'display': 'flex', 'opacity': '1' });
+
+    syncTheme();
+    WindowManager.applyWindowMode();
+    applyTabSettings();
+
+    // Async data loading after immediate visual display
+    loadModules().then(async () => {
+        HistoryManager.updateButtonsState();
+
+        const lastTab = localStorage.getItem('zero_last_main_tab') || 'contrast';
+        $(`#${PANEL_ID} .zero-tab-link`).removeClass('active');
+        $(`#${PANEL_ID} .zero-tab-link[data-tab="${lastTab}"]`).addClass('active');
+        $(`#${PANEL_ID} .zero-tab-content`).css('display', 'none');
+        $(`#zero-tab-${lastTab}`).css('display', 'flex');
+
+        await populatePresetSelects();
+        renderTabContent(lastTab);
+    }).catch(e => {
+        console.error('[Zero] Error rendering panel tab:', e);
+    });
 }
 
 export function closePanel() {
@@ -2410,8 +2906,12 @@ export function renderSettingsTab() {
     $('#zero-setting-ui-active-exit').prop('checked', state.clickActiveTabToExit === true);
 
     // Snapshot Modal switches
+    $('#zero-setting-ui-snapshot-win-mode').val(state.snapshotWindowMode || 'fixed');
     $('#zero-setting-ui-modal-style').val(state.snapshotModalStyle || 'center');
     $('#zero-setting-ui-modal-anim').val(state.snapshotModalAnimation || 'slide');
+    const windowState = state.windowState || {};
+    $('#zero-setting-ui-show-win-mode-btn').prop('checked', windowState.showWinModeBtn !== false && state.showWinModeBtn !== false);
+    $('#zero-setting-ui-show-win-min-btn').prop('checked', windowState.showWinMinimizeBtn !== false && state.showWinMinimizeBtn !== false);
     const scale = state.snapshotModalScale || 80;
     $('#zero-setting-ui-modal-scale').val(scale);
     $('#zero-setting-ui-modal-scale-val').text(`${scale}%`);
@@ -2435,6 +2935,81 @@ export function renderSettingsTab() {
 
     $('#zero-setting-check-treat-uninit-as-problem').prop('checked', checkTreatUninitAsProblem);
     $('#zero-setting-check-var-similarity-threshold').val(checkVarSimilarityThreshold);
+
+    // Desktop Window Settings
+    const winSettings = WindowManager.getSettings();
+    $('#zero-setting-window-mode-select').val(winSettings.mode || 'fullscreen');
+    $('#zero-setting-win-show-mode-btn').prop('checked', winSettings.showWinModeBtn !== false);
+    $('#zero-setting-win-show-reset-btn').prop('checked', winSettings.showWinResetBtn !== false);
+    $('#zero-setting-win-show-min-btn').prop('checked', winSettings.showWinMinimizeBtn !== false);
+    $('#zero-setting-win-show-history-btn').prop('checked', winSettings.showHistoryBtns !== false);
+
+    // Theme & Styling Settings
+    const themeSettings = ThemeManager.getSettings();
+    const activeThemeId = themeSettings.activeTheme || 'follow';
+
+    // Populate theme select dropdown
+    const $themeSelect = $('#zero-setting-theme-select');
+    $themeSelect.empty();
+    Object.values(BUILTIN_THEMES).forEach(t => {
+        $themeSelect.append(`<option value="${t.id}">${t.name}</option>`);
+    });
+    if (themeSettings.customThemes) {
+        Object.values(themeSettings.customThemes).forEach(t => {
+            $themeSelect.append(`<option value="${t.id}">自定义: ${t.name}</option>`);
+        });
+    }
+    $themeSelect.val(activeThemeId);
+
+    // Show custom palette editor if custom theme or palette editing
+    const activeConfig = ThemeManager.getThemeConfig(activeThemeId);
+    const colors = activeConfig.colors || themeSettings.customPalette || {};
+
+    if (activeThemeId !== 'follow') {
+        $('#zero-custom-theme-palette-box').css('display', 'flex');
+        $('#zero-color-accent').val(colors.accent || '#967259');
+        $('#zero-color-bg').val(colors.bg || '#F4F0EA');
+        $('#zero-color-cardBg').val(colors.cardBg || '#E8E2D7');
+        $('#zero-color-text').val(colors.text || '#3A3632');
+        $('#zero-color-muted').val(colors.muted || '#78726A');
+        $('#zero-color-border').val(colors.border || '#D5CDBF');
+
+        if (!activeConfig.isBuiltin) {
+            $('#zero-delete-custom-theme-btn').show();
+        } else {
+            $('#zero-delete-custom-theme-btn').hide();
+        }
+    } else {
+        $('#zero-custom-theme-palette-box').hide();
+    }
+
+    // Opacity
+    const opacityPct = Math.round((themeSettings.bgOpacity !== undefined ? themeSettings.bgOpacity : 0.95) * 100);
+    $('#zero-setting-theme-opacity').val(opacityPct);
+    $('#zero-setting-theme-opacity-val').text(`${opacityPct}%`);
+
+    // Background Image URL
+    $('#zero-setting-theme-bgurl').val(themeSettings.bgImageUrl || '');
+
+    // Font Family
+    const fontFamily = themeSettings.fontFamily || 'inherit';
+    const fontOptions = ['inherit', 'Microsoft YaHei', 'PingFang SC', 'Segoe UI', 'Roboto', 'monospace'];
+    if (fontOptions.includes(fontFamily)) {
+        $('#zero-setting-theme-font-select').val(fontFamily);
+        $('#zero-theme-custom-font-input-box').hide();
+    } else {
+        $('#zero-setting-theme-font-select').val('custom');
+        $('#zero-theme-custom-font-input-box').show();
+        $('#zero-setting-theme-custom-font').val(fontFamily);
+    }
+
+    // Font Size
+    const fontSizePx = parseInt(themeSettings.fontSize || '14px');
+    $('#zero-setting-theme-fontsize').val(fontSizePx);
+    $('#zero-setting-theme-fontsize-val').text(`${fontSizePx}px`);
+
+    // Apply theme
+    ThemeManager.applyTheme();
 }
 
 export async function refreshActiveTab() {

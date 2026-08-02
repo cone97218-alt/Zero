@@ -349,7 +349,7 @@ export async function renderRegexList(forceRefresh = false) {
 
     } catch (e) {
         console.error('[Zero] renderRegexList failed:', e);
-        $list.html('<p style="text-align: center; color: #ff5555; font-size: 12px; margin-top: 20px;">加载正则列表失败</p>');
+        $list.html('<p style="text-align: center; color: var(--zero-danger-color, #ff4d4f); font-size: 12px; margin-top: 20px;">加载正则列表失败</p>');
     }
 }
 

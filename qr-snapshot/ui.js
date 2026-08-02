@@ -4,6 +4,7 @@
  */
 import { PresetManager, SnapshotManager, GroupManager, HiddenManager, UiStateManager, LinkageManager, zeroTranslate, HistoryManager, ModelProfileManager, SamplingParamsHelper, SnapshotGroupManager, getPresetPromptsWithEnabled, getStringSimilarity, detectPresetRenames, getOpenai, OpLogManager } from './state.js';
 import { matchPrompt } from './search-util.js';
+import { ThemeManager } from '../preset-manager/theme.js';
 
 let overlay = null;
 let pendingToggles = new Map();
@@ -180,11 +181,104 @@ function groupSectionHTML(group, members, isUngrouped, cachedActions = null) {
 }
 
 // ═══════════════════════════════════════
-//  Modal
+//  Modal Minimize & Restore
 // ═══════════════════════════════════════
+export function minimizeSnapshotUI() {
+    UiStateManager.save({ snapshotIsMinimized: true });
+    if (overlay) overlay.style.display = 'none';
+
+    let badge = document.getElementById('zero-snapshot-minimized-badge');
+    if (!badge) {
+        badge = document.createElement('div');
+        badge.id = 'zero-snapshot-minimized-badge';
+        badge.className = 'interactable';
+        badge.innerHTML = `
+            <i class="fa-solid fa-camera" style="color: var(--SmartThemeQuoteColor, #4a90e2); font-size: 13px;"></i>
+            <span style="font-size: 11px; font-weight: bold; white-space: nowrap;">快照面板</span>
+        `;
+        badge.style.cssText = `
+            position: fixed;
+            bottom: 24px;
+            right: 140px;
+            z-index: 10001;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 7px 13px;
+            background: var(--zero-bg-color, var(--SmartThemeBlurTintColor, rgba(20,20,30,0.95)));
+            border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #555));
+            color: var(--zero-text-color, var(--SmartThemeBodyColor, #fff));
+            border-radius: 20px;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.45);
+            cursor: pointer;
+            user-select: none;
+            touch-action: none;
+        `;
+
+        let isDragging = false;
+        let startX = 0, startY = 0;
+        let initLeft = 0, initTop = 0;
+
+        badge.addEventListener('pointerdown', (e) => {
+            isDragging = false;
+            startX = e.clientX;
+            startY = e.clientY;
+            const rect = badge.getBoundingClientRect();
+            initLeft = rect.left;
+            initTop = rect.top;
+
+            const onMove = (me) => {
+                const dx = me.clientX - startX;
+                const dy = me.clientY - startY;
+                if (!isDragging && Math.hypot(dx, dy) < 4) return;
+                isDragging = true;
+                badge.style.right = 'auto';
+                badge.style.bottom = 'auto';
+                badge.style.left = `${Math.max(0, Math.min(initLeft + dx, window.innerWidth - badge.offsetWidth))}px`;
+                badge.style.top = `${Math.max(0, Math.min(initTop + dy, window.innerHeight - badge.offsetHeight))}px`;
+            };
+
+            const onUp = () => {
+                document.removeEventListener('pointermove', onMove);
+                document.removeEventListener('pointerup', onUp);
+                if (!isDragging) {
+                    restoreSnapshotUI();
+                }
+                setTimeout(() => { isDragging = false; }, 50);
+            };
+
+            document.addEventListener('pointermove', onMove);
+            document.addEventListener('pointerup', onUp);
+        });
+
+        badge.addEventListener('click', (e) => {
+            if (isDragging) {
+                e.stopPropagation();
+                e.preventDefault();
+            }
+        });
+
+        document.body.appendChild(badge);
+    }
+    badge.style.display = 'flex';
+}
+
+export function restoreSnapshotUI() {
+    UiStateManager.save({ snapshotIsMinimized: false });
+    const badge = document.getElementById('zero-snapshot-minimized-badge');
+    if (badge) badge.style.display = 'none';
+    if (overlay && document.body.contains(overlay)) {
+        overlay.style.display = 'flex';
+    } else {
+        openUI();
+    }
+}
+
 export async function openUI() {
     if (overlay && !document.body.contains(overlay)) overlay = null;
     if (overlay) return;
+
+    ThemeManager.applyTheme();
 
     searchQuery = '';
     searchScopeName = true;
@@ -203,16 +297,29 @@ export async function openUI() {
     }).catch(() => {});
     import('../preset-manager/utils.js').catch(() => {});
 
+    UiStateManager.save({ snapshotIsMinimized: false });
+    const snapBadge = document.getElementById('zero-snapshot-minimized-badge');
+    if (snapBadge) snapBadge.style.display = 'none';
+
     const state = UiStateManager.get();
     const modalStyle = state.snapshotModalStyle || 'center';
     const scale = state.snapshotModalScale || 80;
     const animStyle = state.snapshotModalAnimation || 'slide';
+    const winMode = state.snapshotWindowMode || 'fixed'; // 'fixed' | 'floating' | 'docked_right' | 'docked_left'
+    const isDesktop = window.innerWidth >= 800;
+    const isDesktopWindow = isDesktop && winMode !== 'fixed';
+    
+    const floatingPos = (() => { try { return JSON.parse(localStorage.getItem('zero_snapshot_floating_pos') || 'null'); } catch { return null; } })();
+    const dockRightWidth = state.snapshotDockRightWidth || localStorage.getItem('zero_snapshot_dock_right_width') || '450px';
+    const dockLeftWidth = state.snapshotDockLeftWidth || localStorage.getItem('zero_snapshot_dock_left_width') || '450px';
 
     overlay = document.createElement('div');
     overlay.id = 'zero-overlay';
     Object.assign(overlay.style, {
         position: 'fixed', top: '0', left: '0', width: '100vw', height: '100vh',
-        zIndex: '10001', background: 'rgba(0,0,0,0.55)',
+        zIndex: '10001',
+        background: isDesktopWindow ? 'transparent' : 'rgba(0,0,0,0.55)',
+        pointerEvents: isDesktopWindow ? 'none' : 'auto',
         display: 'flex', overflow: 'hidden',
         opacity: '1'
     });
@@ -236,61 +343,100 @@ export async function openUI() {
 
     overlay.addEventListener('click', (e) => { if (e.target === overlay) closeUI(); });
 
-    const modal = h('div', { class: 'zero-modal' });
+    const modal = h('div', { class: 'zero-modal zero-modal-card' });
     Object.assign(modal.style, {
         animation: 'none',
-        opacity: '1'
+        opacity: '1',
+        pointerEvents: 'auto'
     });
 
-    if (animStyle === 'scale') {
-        modal.style.transition = 'transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1)';
-    } else if (animStyle === 'slide') {
-        modal.style.transition = 'transform 0.15s cubic-bezier(0.25, 0.8, 0.25, 1)';
-    }
-
-    if (modalStyle === 'center') {
-        modal.style.width = '92%';
-        modal.style.maxWidth = '520px';
-        modal.style.height = `${scale}vh`;
-        modal.style.maxHeight = '90vh';
-        modal.style.borderRadius = '14px';
-        
-        if (animStyle === 'slide') {
-            modal.style.transform = 'translateY(25px)';
-        } else if (animStyle === 'scale') {
-            modal.style.transform = 'scale(0.92)';
+    if (isDesktopWindow) {
+        if (winMode === 'floating') {
+            const vw = window.innerWidth, vh = window.innerHeight;
+            const w = Math.max(260, floatingPos?.w ?? Math.min(Math.round(vw * 0.9), 560));
+            const hVal = Math.max(260, floatingPos?.h ?? Math.min(Math.round(vh * 0.85), 780));
+            const l = Math.max(0, Math.min(floatingPos?.l ?? Math.round((vw - w) / 2), vw - 80));
+            const t = Math.max(0, Math.min(floatingPos?.t ?? Math.round((vh - hVal) / 2), vh - 50));
+            
+            modal.style.position = 'fixed';
+            modal.style.left = `${l}px`;
+            modal.style.top = `${t}px`;
+            modal.style.width = `${w}px`;
+            modal.style.height = `${hVal}px`;
+            modal.style.borderRadius = '14px';
+            modal.style.margin = '0';
+        } else if (winMode === 'docked_right') {
+            modal.style.position = 'fixed';
+            modal.style.top = '0';
+            modal.style.left = 'auto';
+            modal.style.right = '0';
+            modal.style.width = dockRightWidth;
+            modal.style.height = '100vh';
+            modal.style.maxHeight = '100vh';
+            modal.style.borderRadius = '0';
+            modal.style.margin = '0';
+        } else if (winMode === 'docked_left') {
+            modal.style.position = 'fixed';
+            modal.style.top = '0';
+            modal.style.left = '0';
+            modal.style.right = 'auto';
+            modal.style.width = dockLeftWidth;
+            modal.style.height = '100vh';
+            modal.style.maxHeight = '100vh';
+            modal.style.borderRadius = '0';
+            modal.style.margin = '0';
         }
     } else {
-        if (modalStyle === 'top') {
-            modal.style.width = '100%';
-            modal.style.maxWidth = '600px';
-            modal.style.height = `${scale}vh`;
-            modal.style.maxHeight = '100vh';
-            modal.style.borderRadius = '0 0 14px 14px';
-            if (animStyle === 'slide') modal.style.transform = 'translateY(-100%)';
-        } else if (modalStyle === 'bottom') {
-            modal.style.width = '100%';
-            modal.style.maxWidth = '600px';
-            modal.style.height = `${scale}vh`;
-            modal.style.maxHeight = '100vh';
-            modal.style.borderRadius = '14px 14px 0 0';
-            if (animStyle === 'slide') modal.style.transform = 'translateY(100%)';
-        } else if (modalStyle === 'left') {
-            modal.style.width = `${scale}vw`;
-            modal.style.height = '100vh';
-            modal.style.maxHeight = '100vh';
-            modal.style.borderRadius = '0 14px 14px 0';
-            if (animStyle === 'slide') modal.style.transform = 'translateX(-100%)';
-        } else if (modalStyle === 'right') {
-            modal.style.width = `${scale}vw`;
-            modal.style.height = '100vh';
-            modal.style.maxHeight = '100vh';
-            modal.style.borderRadius = '14px 0 0 14px';
-            if (animStyle === 'slide') modal.style.transform = 'translateX(100%)';
+        if (animStyle === 'scale') {
+            modal.style.transition = 'transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1)';
+        } else if (animStyle === 'slide') {
+            modal.style.transition = 'transform 0.15s cubic-bezier(0.25, 0.8, 0.25, 1)';
         }
 
-        if (animStyle === 'scale') {
-            modal.style.transform = 'scale(0.92)';
+        if (modalStyle === 'center') {
+            modal.style.width = '92%';
+            modal.style.maxWidth = '520px';
+            modal.style.height = `${scale}vh`;
+            modal.style.maxHeight = '90vh';
+            modal.style.borderRadius = '14px';
+            
+            if (animStyle === 'slide') {
+                modal.style.transform = 'translateY(25px)';
+            } else if (animStyle === 'scale') {
+                modal.style.transform = 'scale(0.92)';
+            }
+        } else {
+            if (modalStyle === 'top') {
+                modal.style.width = '100%';
+                modal.style.maxWidth = '600px';
+                modal.style.height = `${scale}vh`;
+                modal.style.maxHeight = '100vh';
+                modal.style.borderRadius = '0 0 14px 14px';
+                if (animStyle === 'slide') modal.style.transform = 'translateY(-100%)';
+            } else if (modalStyle === 'bottom') {
+                modal.style.width = '100%';
+                modal.style.maxWidth = '600px';
+                modal.style.height = `${scale}vh`;
+                modal.style.maxHeight = '100vh';
+                modal.style.borderRadius = '14px 14px 0 0';
+                if (animStyle === 'slide') modal.style.transform = 'translateY(100%)';
+            } else if (modalStyle === 'left') {
+                modal.style.width = `${scale}vw`;
+                modal.style.height = '100vh';
+                modal.style.maxHeight = '100vh';
+                modal.style.borderRadius = '0 14px 14px 0';
+                if (animStyle === 'slide') modal.style.transform = 'translateX(-100%)';
+            } else if (modalStyle === 'right') {
+                modal.style.width = `${scale}vw`;
+                modal.style.height = '100vh';
+                modal.style.maxHeight = '100vh';
+                modal.style.borderRadius = '14px 0 0 14px';
+                if (animStyle === 'slide') modal.style.transform = 'translateX(100%)';
+            }
+
+            if (animStyle === 'scale') {
+                modal.style.transform = 'scale(0.92)';
+            }
         }
     }
 
@@ -342,6 +488,18 @@ export function closeUI() {
 
         const modal = overlay.querySelector('.zero-modal');
         const state = UiStateManager.get();
+        const winMode = state.snapshotWindowMode || 'fixed';
+        if (modal && window.innerWidth >= 800 && winMode === 'floating') {
+            const r = modal.getBoundingClientRect();
+            try {
+                localStorage.setItem('zero_snapshot_floating_pos', JSON.stringify({
+                    l: Math.round(r.left),
+                    t: Math.round(r.top),
+                    w: Math.round(r.width),
+                    h: Math.round(r.height)
+                }));
+            } catch (e) {}
+        }
         const modalStyle = state.snapshotModalStyle || 'center';
         const animStyle = state.snapshotModalAnimation || 'slide';
 
@@ -557,11 +715,90 @@ function buildModal(modal, preset, listInfo) {
     });
 
     const header = h('div', { class: 'zero-header' });
+    import('../preset-manager/window.js').then(({ WindowManager }) => {
+        const winMode = UiStateManager.get().snapshotWindowMode || 'fixed';
+        if (window.innerWidth >= 800 && winMode === 'floating') {
+            WindowManager.makeOverlayDraggable(modal, header, () => {
+                if (modal) {
+                    const r = modal.getBoundingClientRect();
+                    try {
+                        localStorage.setItem('zero_snapshot_floating_pos', JSON.stringify({
+                            l: Math.round(r.left),
+                            t: Math.round(r.top),
+                            w: Math.round(r.width),
+                            h: Math.round(r.height)
+                        }));
+                    } catch (e) {}
+                }
+            });
+        } else if (window.innerWidth >= 800 && winMode === 'docked_right') {
+            WindowManager.initDockResizer(modal, 'docked_right', (widthStr) => {
+                UiStateManager.save({ snapshotDockRightWidth: widthStr });
+                try { localStorage.setItem('zero_snapshot_dock_right_width', widthStr); } catch (e) {}
+            });
+        } else if (window.innerWidth >= 800 && winMode === 'docked_left') {
+            WindowManager.initDockResizer(modal, 'docked_left', (widthStr) => {
+                UiStateManager.save({ snapshotDockLeftWidth: widthStr });
+                try { localStorage.setItem('zero_snapshot_dock_left_width', widthStr); } catch (e) {}
+            });
+        }
+    }).catch(() => {});
     const isOpLogEnabled = UiStateManager.get().enablePresetOpLog !== false;
+    const windowState = UiStateManager.get().windowState || {};
+    const showWinModeBtn = windowState.showWinModeBtn !== false && UiStateManager.get().showWinModeBtn !== false;
+    const showWinMinimizeBtn = windowState.showWinMinimizeBtn !== false && UiStateManager.get().showWinMinimizeBtn !== false;
+
     const headerChildren = [
         h('label', { class: 'zero-header-label', text: '当前预设' }),
         select
     ];
+
+    if (window.innerWidth >= 800 && showWinModeBtn) {
+        const curWinMode = UiStateManager.get().snapshotWindowMode || 'fixed';
+        const winModeIcons = {
+            fixed: '<i class="fa-solid fa-expand"></i>',
+            floating: '<i class="fa-solid fa-window-restore"></i>',
+            docked_right: '<i class="fa-solid fa-table-columns"></i>',
+            docked_left: '<i class="fa-solid fa-table-columns fa-flip-horizontal"></i>'
+        };
+        const winModeTitles = {
+            fixed: '当前: 固定配置模式 (点击切换为桌面悬浮窗)',
+            floating: '当前: 桌面悬浮窗 (点击切换为右侧停靠)',
+            docked_right: '当前: 右侧停靠 (点击切换为左侧停靠)',
+            docked_left: '当前: 左侧停靠 (点击切换为固定配置模式)'
+        };
+        headerChildren.push(h('button', {
+            class: 'zero-snapshot-win-mode-btn interactable',
+            title: winModeTitles[curWinMode] || winModeTitles.fixed,
+            html: winModeIcons[curWinMode] || winModeIcons.fixed,
+            onclick: () => {
+                const modeOrder = ['fixed', 'floating', 'docked_right', 'docked_left'];
+                const curIdx = modeOrder.indexOf(curWinMode);
+                const nextMode = modeOrder[(curIdx + 1) % modeOrder.length];
+                UiStateManager.save({ snapshotWindowMode: nextMode });
+                const modeNames = {
+                    fixed: '固定原生模式',
+                    floating: '桌面悬浮窗模式',
+                    docked_right: '右侧停靠模式',
+                    docked_left: '左侧停靠模式'
+                };
+                toastr.success(`已切换快照窗口为: ${modeNames[nextMode]}`);
+                closeUI();
+                setTimeout(() => openUI(), 40);
+            }
+        }));
+    }
+
+    if (showWinMinimizeBtn) {
+        headerChildren.push(h('button', {
+            class: 'zero-snapshot-min-btn interactable',
+            title: '最小化为快照胶囊浮窗',
+            html: '<i class="fa-solid fa-minus"></i>',
+            onclick: () => {
+                minimizeSnapshotUI();
+            }
+        }));
+    }
     if (isOpLogEnabled) {
         headerChildren.push(h('button', {
             class: 'zero-op-log-btn',
@@ -1009,8 +1246,8 @@ function showEntryContextMenu(panel, entry, prompt) {
 
     const name = prompt ? (prompt.name || prompt.identifier) : '条目';
     const menuHtml = `
-        <div id="${modalId}" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); z-index: 20050; display: flex; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box;">
-            <div style="background: var(--SmartThemeBlurTintColor, #1f1f1f); border: 1px solid var(--SmartThemeBorderColor, #444); border-radius: 12px; width: 100%; max-width: 300px; padding: 14px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); display: flex; flex-direction: column; gap: 8px;">
+        <div id="${modalId}" class="zero-overlay" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: transparent; pointer-events: none; z-index: 20050; display: flex; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box;">
+            <div class="zero-modal-card" style="background: var(--zero-bg-color, var(--SmartThemeBlurTintColor-Original, #1e1e28)); color: var(--zero-text-color, inherit); border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #444)); border-radius: 12px; width: 100%; max-width: 300px; padding: 14px; box-shadow: 0 8px 24px rgba(0,0,0,0.65); display: flex; flex-direction: column; gap: 8px; pointer-events: auto;">
                 <div style="font-size: 13px; font-weight: bold; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.08); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--SmartThemeBodyColor); opacity: 0.9;">
                     ${esc(name)}
                 </div>
@@ -4443,7 +4680,7 @@ export function openOpLogModal(presetName) {
     Object.assign(logModal.style, {
         position: 'fixed',
         top: '0', left: '0', width: '100vw', height: '100vh',
-        background: 'rgba(0,0,0,0.82)',
+        background: 'rgba(0,0,0,0.55)',
         zIndex: '22000',
         display: 'flex',
         alignItems: 'center',
@@ -4460,12 +4697,12 @@ export function openOpLogModal(presetName) {
 
     const getTypeColor = (type) => {
         switch(type) {
-            case 'toggle': return 'var(--SmartThemeQuoteColor, #7b8cde)';
-            case 'batch_toggle': return '#ffab00';
-            case 'add': return '#4caf50';
-            case 'delete': return '#ff5252';
-            case 'snapshot_apply': return '#ab47bc';
-            default: return '#7b8cde';
+            case 'toggle': return 'var(--zero-accent-color, var(--SmartThemeQuoteColor, #7b8cde))';
+            case 'batch_toggle': return 'var(--zero-warning-color, #ff8822)';
+            case 'add': return 'var(--zero-success-color, #4CAF50)';
+            case 'delete': return 'var(--zero-danger-color, #ff4d4f)';
+            case 'snapshot_apply': return 'var(--zero-info-color, #2196F3)';
+            default: return 'var(--zero-accent-color, var(--SmartThemeQuoteColor, #7b8cde))';
         }
     };
 
@@ -4514,7 +4751,7 @@ export function openOpLogModal(presetName) {
     }
 
     logModal.innerHTML = `
-        <div style="background: var(--SmartThemeBlurTintColor, #1f1f1f); border: 1px solid var(--SmartThemeBorderColor, #444); border-radius: 14px; width: 100%; max-width: 520px; display: flex; flex-direction: column; max-height: 85vh; overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,0.6);">
+        <div class="zero-modal-card" style="background: var(--zero-bg-color, var(--SmartThemeBlurTintColor-Original, #1e1e28)); color: var(--zero-text-color, var(--SmartThemeBodyColor, #e0e0e0)); border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #444)); border-radius: 14px; width: 100%; max-width: 520px; display: flex; flex-direction: column; max-height: 85vh; overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,0.6);">
             <!-- Header -->
             <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--SmartThemeBorderColor, #333); flex-shrink: 0;">
                 <div style="display: flex; align-items: center; gap: 8px; font-weight: bold; font-size: 14px; color: var(--SmartThemeBodyColor);">

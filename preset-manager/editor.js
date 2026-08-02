@@ -39,9 +39,9 @@ export async function openQuickEditor(presetName, itemName) {
     `).join('');
 
     const editHtml = `
-        <div id="zero-quick-editor" class="completion_prompt_manager_popup TH-script-editor-container regex_editor_template" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: var(--SmartThemeBlurTintColor, rgba(15,15,15,0.95)); z-index: 20001; display: flex; flex-direction: column; padding: 20px; font-family: var(--mainFontFamily, sans-serif);">
+        <div id="zero-quick-editor" class="zero-modal-card completion_prompt_manager_popup TH-script-editor-container regex_editor_template" style="position: fixed; background: var(--zero-bg-color, var(--SmartThemeBlurTintColor-Original, #1e1e28)); color: var(--zero-text-color, inherit); z-index: 20001; display: flex; flex-direction: column; padding: 20px;">
             <!-- Header with Title-style Name Input and Group Select Badge -->
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; color: var(--SmartThemeBodyColor); gap: 12px;">
+            <div id="zero-quick-editor-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; color: var(--SmartThemeBodyColor); gap: 12px; cursor: default;">
                 <div style="display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0;">
                     <!-- Editable Name Title -->
                     <input type="text" id="edit-prompt-name" class="interactable" style="font-weight: bold; font-size: 16px; background: transparent; border: none; border-bottom: 1px dashed var(--SmartThemeBorderColor); color: var(--SmartThemeBodyColor); padding: 4px; outline: none; width: 55%; max-width: 280px; text-overflow: ellipsis;" value="${escapeHtml(prompt.name || '')}" placeholder="条目名称">
@@ -181,11 +181,34 @@ export async function openQuickEditor(presetName, itemName) {
         if (snapshotOverlay && snapshotWasVisible) {
             snapshotOverlay.style.display = 'flex';
         }
+        const _el = document.getElementById('zero-quick-editor');
+        if (_el) {
+            const r = _el.getBoundingClientRect();
+            try { localStorage.setItem('zero_quick_editor_pos', JSON.stringify({ l: Math.round(r.left), t: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) })); } catch {}
+        }
         $('#zero-quick-editor').remove();
     };
 
     $('body').append(editHtml);
     $('#close-quick-editor').on('click', closeEditor);
+
+    import('./window.js').then(m => {
+        const el = $('#zero-quick-editor')[0];
+        if (el && window.innerWidth >= 800) {
+            const vw = window.innerWidth, vh = window.innerHeight;
+            const saved = (() => { try { return JSON.parse(localStorage.getItem('zero_quick_editor_pos') || 'null'); } catch { return null; } })();
+            const w = saved?.w ?? Math.min(Math.round(vw * 0.88), 1100);
+            const h = saved?.h ?? Math.min(Math.round(vh * 0.88), 860);
+            const l = saved?.l ?? Math.round((vw - w) / 2);
+            const t = saved?.t ?? Math.round((vh - h) / 2);
+            el.style.left   = `${Math.max(0, Math.min(l, vw - 80))}px`;
+            el.style.top    = `${Math.max(0, Math.min(t, vh - 50))}px`;
+            el.style.width  = `${Math.max(480, w)}px`;
+            el.style.height = `${Math.max(380, h)}px`;
+            el.style.margin = '0';
+        }
+        m.WindowManager.makeOverlayDraggable(el, $('#zero-quick-editor-header')[0]);
+    }).catch(() => {});
 
     const $textarea = $('#quick-edit-content');
     $textarea.on('focus keyup click mouseup', function() {
@@ -412,8 +435,8 @@ export async function openQuickEditor(presetName, itemName) {
                 const item = $(`
                     <div style="display: inline-flex; align-items: center; background: rgba(255,255,255,0.04); border: 1px solid var(--SmartThemeBorderColor); border-radius: 6px; padding: 3px 6px; font-size: 11px; gap: 6px;">
                         <span style="font-weight: bold; color: var(--SmartThemeBodyColor); opacity: 0.9;" title="${v.isGlobal ? '全局变量' : '普通变量'}">${escapeHtml(v.name)}</span>
-                        <span class="var-insert-btn interactable" data-macro="get" title="插入读取宏 {{getvar::${v.name}}}" style="padding: 1px 5px; background: color-mix(in srgb, #2288ff 12%, var(--SmartThemeChatTintColor)); color: color-mix(in srgb, #2288ff 85%, var(--SmartThemeBodyColor)); border-radius: 4px; cursor: pointer; font-size: 10px; font-weight: bold; user-select: none;">+ 读</span>
-                        <span class="var-insert-btn interactable" data-macro="set" title="插入设置宏 {{setvar::${v.name}::}}" style="padding: 1px 5px; background: color-mix(in srgb, #ff8822 12%, var(--SmartThemeChatTintColor)); color: color-mix(in srgb, #ff8822 85%, var(--SmartThemeBodyColor)); border-radius: 4px; cursor: pointer; font-size: 10px; font-weight: bold; user-select: none;">+ 写</span>
+                        <span class="var-insert-btn interactable" data-macro="get" title="插入读取宏 {{getvar::${v.name}}}" style="padding: 1px 5px; background: color-mix(in srgb, var(--zero-info-color, #2288ff) 12%, var(--SmartThemeChatTintColor)); color: color-mix(in srgb, var(--zero-info-color, #2288ff) 85%, var(--SmartThemeBodyColor)); border-radius: 4px; cursor: pointer; font-size: 10px; font-weight: bold; user-select: none;">+ 读</span>
+                        <span class="var-insert-btn interactable" data-macro="set" title="插入设置宏 {{setvar::${v.name}::}}" style="padding: 1px 5px; background: color-mix(in srgb, var(--zero-warning-color, #ff8822) 12%, var(--SmartThemeChatTintColor)); color: color-mix(in srgb, var(--zero-warning-color, #ff8822) 85%, var(--SmartThemeBodyColor)); border-radius: 4px; cursor: pointer; font-size: 10px; font-weight: bold; user-select: none;">+ 写</span>
                     </div>
                 `);
                 

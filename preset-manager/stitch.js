@@ -178,7 +178,7 @@ export async function renderStitchList(forceRefresh = true) {
             const metaParts = [];
             if (pA.fav_origin_preset) {
                 let badgeColor = 'rgba(123, 140, 222, 0.15)';
-                let badgeTextColor = '#9fb3f5';
+                let badgeTextColor = 'var(--zero-info-color, #2196F3)';
                 let originText = pA.fav_origin_preset;
                 const exists = currentPresetNames.includes(pA.fav_origin_preset);
                 if (!exists) {
@@ -227,8 +227,9 @@ export async function renderStitchList(forceRefresh = true) {
                             position: absolute;
                             right: 0;
                             top: 24px;
-                            background: var(--SmartThemeBlurTintColor);
-                            border: 1px solid var(--SmartThemeBorderColor);
+                            background: var(--zero-bg-color, var(--SmartThemeBlurTintColor));
+                            color: var(--zero-text-color, inherit);
+                            border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor));
                             border-radius: 8px;
                             z-index: 1000;
                             min-width: 100px;
@@ -696,14 +697,14 @@ export async function showMoveModal(items, presetName) {
             : `在 <b>${presetName}</b> 内移动 <b>${escapeHtml(items[0].name || items[0].identifier)}</b>`;
 
         const modalHtml = `
-            <div id="move-modal" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.85); z-index: 20000; display: flex; align-items: center; justify-content: center; padding: 20px;">
-                <div style="background: var(--SmartThemeBlurTintColor); padding: 24px; border-radius: 16px; width: 100%; max-width: 360px; border: 1px solid var(--SmartThemeBorderColor); display: flex; flex-direction: column;">
-                    <div style="font-weight: bold; margin-bottom: 4px; font-size: 16px;">${title}</div>
-                    <div style="font-size: 11px; opacity: 0.6; margin-bottom: 16px;">${desc}</div>
+            <div id="move-modal" class="zero-overlay" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: transparent; pointer-events: none; z-index: 20000; display: flex; align-items: center; justify-content: center; padding: 20px;">
+                <div class="zero-modal-card" style="pointer-events: auto; background: var(--zero-bg-color, var(--SmartThemeBlurTintColor-Original, #1e1e28)); color: var(--zero-text-color, inherit); padding: 24px; border-radius: 16px; width: 100%; max-width: 360px; border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor)); display: flex; flex-direction: column;">
+                    <div style="font-weight: bold; margin-bottom: 4px; font-size: 16px; color: var(--zero-text-color, inherit);">${title}</div>
+                    <div style="font-size: 11px; color: var(--zero-muted-color, #999); margin-bottom: 16px;">${desc}</div>
                     
                     <div style="margin-bottom: 16px; display: flex; flex-direction: column; gap: 8px;">
                         <label style="font-size: 12px; opacity: 0.8;">插入位置:</label>
-                        <select id="move-position-select" class="interactable" style="padding: 8px; background: rgba(255,255,255,0.05); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 4px; font-size: 13px;">
+                        <select id="move-position-select" class="interactable" style="padding: 8px; background: var(--zero-card-bg, var(--SmartThemeChatTintColor, rgba(255,255,255,0.05))); border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor)); color: inherit; border-radius: 4px; font-size: 13px;">
                             ${targetOptions}
                         </select>
                     </div>

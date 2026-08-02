@@ -14,8 +14,11 @@
 #zero-quick-editor,
 #move-modal,
 #links-manager-modal,
-[id*="zero-"],
-[class*="zero-"] {
+#comparison-overlay,
+.zero-modal-card,
+#standalone-regex-manager-modal,
+#zero-contrast-summary-modal,
+#zero-op-log-modal {
     --SmartThemeBlurTintColor: rgb(from var(--SmartThemeBlurTintColor-Original, rgba(20,20,30,0.95)) r g b / 1);
 }
 
@@ -40,7 +43,7 @@
     width: 100%;
     height: 100%;
     z-index: 10000;
-    background: rgba(0,0,0,0.55);
+    background: var(--zero-overlay-bg, rgba(0,0,0,0.55));
     display: flex;
     align-items: flex-end;
     justify-content: center;
@@ -58,8 +61,9 @@
     max-width: 520px;
     height: 80vh;
     max-height: 80vh;
-    background: var(--SmartThemeBlurTintColor, rgba(20,20,30,0.95));
-    border: 1px solid var(--SmartThemeBorderColor, #555);
+    background: var(--zero-bg-color, var(--SmartThemeBlurTintColor, rgba(20,20,30,0.95)));
+    border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #555));
+    color: var(--zero-text-color, var(--SmartThemeBodyColor, inherit));
     border-radius: 14px;
     display: flex;
     flex-direction: column;
@@ -165,11 +169,14 @@
     cursor: wait;
 }
 
-/* Save & Manage Buttons */
+/* Header Action Buttons (Save, Manage, OpLog, WindowMode, Minimize) */
 .zero-save-btn,
-.zero-manage-btn {
-    padding: 6px 10px;
-    font-size: 18px;
+.zero-manage-btn,
+.zero-op-log-btn,
+.zero-snapshot-win-mode-btn,
+.zero-snapshot-min-btn {
+    padding: 6px;
+    font-size: 15px;
     color: var(--SmartThemeBodyColor, #ccc);
     opacity: 0.7;
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
@@ -177,41 +184,38 @@
     align-items: center;
     justify-content: center;
     border-radius: 6px;
-    touch-action: manipulation;
     background: none;
-    border: none;
-}
-.zero-save-btn:hover,
-.zero-save-btn:active,
-.zero-manage-btn:hover,
-.zero-manage-btn:active {
-    opacity: 1;
-    background: rgba(255,255,255,0.05);
-}
-.zero-save-btn:active,
-.zero-manage-btn:active {
-    transform: scale(0.9);
-}
-.zero-save-btn.zero-save-success {
-    color: #4caf50 !important;
-    opacity: 1;
-}
-
-.zero-op-log-btn {
-    padding: 6px 10px;
-    font-size: 18px;
-    color: var(--SmartThemeBodyColor, #ccc);
-    opacity: 0.7;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 6px;
-    background: transparent;
     border: none;
     cursor: pointer;
     touch-action: manipulation;
     flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    box-sizing: border-box;
+}
+.zero-save-btn:hover,
+.zero-save-btn:active,
+.zero-manage-btn:hover,
+.zero-manage-btn:active,
+.zero-op-log-btn:hover,
+.zero-op-log-btn:active,
+.zero-snapshot-win-mode-btn:hover,
+.zero-snapshot-win-mode-btn:active,
+.zero-snapshot-min-btn:hover,
+.zero-snapshot-min-btn:active {
+    opacity: 1;
+    background: rgba(255,255,255,0.08);
+}
+.zero-save-btn:active,
+.zero-manage-btn:active,
+.zero-op-log-btn:active,
+.zero-snapshot-win-mode-btn:active,
+.zero-snapshot-min-btn:active {
+    transform: scale(0.92);
+}
+.zero-save-btn.zero-save-success {
+    color: #4caf50 !important;
+    opacity: 1;
 }
 .zero-op-log-btn:hover {
     opacity: 1;
@@ -583,8 +587,8 @@
     gap: 6px;
     padding: 10px 14px;
     padding-bottom: calc(10px + env(safe-area-inset-bottom, 0));
-    background: var(--SmartThemeBlurTintColor, rgba(20,20,30,0.95));
-    border-top: 1px solid var(--SmartThemeBorderColor, #555);
+    background: var(--zero-bg-color, var(--SmartThemeBlurTintColor, rgba(20,20,30,0.95)));
+    border-top: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #555));
     z-index: 5;
     animation: zeroSlideBarUp 0.15s ease;
 }
@@ -890,8 +894,9 @@
     padding: 20px;
 }
 .zero-confirm-box {
-    background: var(--SmartThemeBlurTintColor, rgba(30,30,40,0.95));
-    border: 1px solid var(--SmartThemeBorderColor, #555);
+    background: var(--zero-bg-color, var(--SmartThemeBlurTintColor, rgba(30,30,40,0.95)));
+    color: var(--zero-text-color, inherit);
+    border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #555));
     border-radius: 10px;
     padding: 18px;
     max-width: 320px;
@@ -1418,5 +1423,146 @@
     color: var(--SmartThemeBodyColor, #ddd);
     line-height: 1.4;
     flex: 1;
+}
+
+/* ===== Desktop Window Modes & Floating Panel ===== */
+#zero-preset-manager-panel.zero-window-floating {
+    position: fixed !important;
+    border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #555)) !important;
+    box-shadow: 0 12px 36px rgba(0,0,0,0.6) !important;
+    border-radius: 12px !important;
+    resize: both !important;
+    overflow: hidden !important;
+}
+
+#zero-preset-manager-panel.zero-window-docked-right {
+    position: fixed !important;
+    top: 0 !important;
+    right: 0 !important;
+    left: auto !important;
+    height: 100vh !important;
+    border-left: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #555)) !important;
+    box-shadow: -4px 0 24px rgba(0,0,0,0.4) !important;
+    resize: horizontal !important;
+}
+
+#zero-preset-manager-panel.zero-window-docked-left {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: auto !important;
+    height: 100vh !important;
+    border-right: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #555)) !important;
+    box-shadow: 4px 0 24px rgba(0,0,0,0.4) !important;
+    resize: horizontal !important;
+}
+
+/* Header drag cursor when floating mode active */
+#zero-preset-manager-panel.zero-window-floating .zero-tabs-nav {
+    cursor: move;
+}
+
+/* Remove dark overlay backdrop (取消暗色蒙版) so the rest of the screen is not dimmed */
+.zero-overlay,
+#move-modal,
+#links-manager-modal,
+#standalone-regex-manager-modal,
+#zero-contrast-summary-modal,
+#zero-op-log-modal {
+    background: transparent !important;
+    pointer-events: none !important;
+}
+
+/* Ensure inner modal cards & floating panels accept clicks and interactions */
+.zero-modal-card,
+#comparison-overlay,
+#zero-quick-editor,
+#move-modal > div,
+#links-manager-modal > div,
+#standalone-regex-manager-modal > div,
+#zero-contrast-summary-modal > div,
+#zero-op-log-modal > div {
+    pointer-events: auto !important;
+}
+
+/* PC Desktop Adaptation & Responsive Window Layouts */
+@media (min-width: 800px) {
+    /* 1. Comparison Overlay - Desktop Dialog + Draggable + Resizable
+       NOTE: top/left/width/height are intentionally NOT set here - JS sets them at open time
+       so that CSS !important doesn't override JS drag/resize. */
+    #comparison-overlay {
+        border-radius: 14px;
+        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.65);
+        border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #555));
+        overflow: auto;
+        min-width: 500px;
+        min-height: 400px;
+    }
+    .comp-content-grid {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr !important;
+        gap: 16px !important;
+        align-items: stretch !important;
+        flex: 1 !important;
+        min-height: 0 !important;
+        overflow: hidden !important;
+    }
+    .comp-box {
+        margin-top: 0 !important;
+        height: 100% !important;
+        display: flex !important;
+        flex-direction: column !important;
+        min-height: 0 !important;
+        overflow: hidden !important;
+    }
+    #comp-text-a, #comp-text-b {
+        flex: 1 !important;
+        min-height: 250px !important;
+        max-height: 100% !important;
+        overflow-y: auto !important;
+    }
+
+    /* 2. Quick Prompt Editor Overlay - Desktop Dialog + Draggable + Resizable
+       NOTE: same as above - JS sets initial position/size at open time */
+    #zero-quick-editor {
+        border-radius: 14px;
+        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.65);
+        border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #555));
+        overflow: auto;
+        min-width: 480px;
+        min-height: 380px;
+    }
+
+    /* 3. Snapshot Panel Dialog - Desktop Draggable + Resizable */
+    .zero-modal {
+        border-radius: 14px;
+        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.65);
+        border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #555));
+        overflow: hidden;
+        min-width: 240px;
+        min-height: 320px;
+        max-width: 98vw;
+        max-height: 98vh;
+    }
+    .zero-header {
+        cursor: move;
+    }
+
+    /* 4. Sub-modals Solid Background - outer wrapper is transparent, inner card is opaque */
+    .zero-modal-card,
+    #comparison-overlay.zero-modal-card,
+    #zero-quick-editor.zero-modal-card,
+    #move-modal > div,
+    #links-manager-modal > div,
+    #standalone-regex-manager-modal > div,
+    #zero-contrast-summary-modal > div,
+    #zero-op-log-modal > div {
+        background: var(--zero-bg-color, var(--SmartThemeBlurTintColor-Original, #1e1e28)) !important;
+        color: var(--zero-text-color, inherit) !important;
+    }
+
+    #zero-tab-contrast, #zero-tab-stitch {
+        padding: 16px !important;
+    }
 }
 

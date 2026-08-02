@@ -113,18 +113,18 @@ export async function showManualLinksManager() {
     }).join('');
 
     const html = `
-        <div id="links-manager-modal" class="completion_prompt_manager_popup TH-script-editor-container regex_editor_template" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.85); z-index: 20000; display: flex; align-items: center; justify-content: center; padding: 20px;">
-            <div style="background: var(--SmartThemeBlurTintColor); padding: 24px; border-radius: 16px; width: 100%; max-width: 360px; border: 1px solid var(--SmartThemeBorderColor); display: flex; flex-direction: column; max-height: 80vh;">
-                <div style="font-weight: bold; margin-bottom: 4px; font-size: 16px;">手动匹配管理</div>
-                <div style="font-size: 11px; opacity: 0.6; margin-bottom: 16px;">${nameA} ⟷ ${nameB}</div>
+        <div id="links-manager-modal" class="zero-overlay completion_prompt_manager_popup TH-script-editor-container regex_editor_template" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: transparent; pointer-events: none; z-index: 20000; display: flex; align-items: center; justify-content: center; padding: 20px;">
+            <div class="zero-modal-card" style="pointer-events: auto; background: var(--zero-bg-color, var(--SmartThemeBlurTintColor-Original, #1e1e28)); color: var(--zero-text-color, inherit); padding: 24px; border-radius: 16px; width: 100%; max-width: 360px; border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor)); display: flex; flex-direction: column; max-height: 80vh;">
+                <div style="font-weight: bold; margin-bottom: 4px; font-size: 16px; color: var(--zero-text-color, inherit);">手动匹配管理</div>
+                <div style="font-size: 11px; color: var(--zero-muted-color, #999); margin-bottom: 16px;">${nameA} ⟷ ${nameB}</div>
                 
                 <div style="flex: 1; overflow-y: auto; margin-bottom: 20px; min-height: 100px;">
                     ${rows}
                 </div>
                 
                 <div style="display: flex; gap: 10px;">
-                    <button id="clear-all-links" class="interactable" style="flex: 1; padding: 10px; border: none; border-radius: 8px; background: rgba(255,100,100,0.1); color: #ff5555; cursor: pointer; font-size: 13px;">清空全部</button>
-                    <button id="close-links-manager" class="interactable" style="flex: 1; padding: 10px; border: none; border-radius: 8px; background: rgba(255,255,255,0.1); color: inherit; cursor: pointer; font-size: 13px;">关闭</button>
+                    <button id="clear-all-links" class="interactable" style="flex: 1; padding: 10px; border: none; border-radius: 8px; background: rgba(255,77,79,0.15); color: var(--zero-danger-color, #ff4d4f); cursor: pointer; font-size: 13px;">清空全部</button>
+                    <button id="close-links-manager" class="interactable" style="flex: 1; padding: 10px; border: none; border-radius: 8px; background: var(--zero-card-bg, rgba(255,255,255,0.1)); color: inherit; cursor: pointer; font-size: 13px;">关闭</button>
                 </div>
             </div>
         </div>
@@ -363,10 +363,10 @@ export function renderMatchResults(matched, onlyA, onlyB, allItems, manualMatche
 
     const subNavHtml = `
         <div class="zero-sub-tabs" style="display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px;">
-            <div class="zero-sub-tab active" data-sub="matched" style="flex: 1; min-width: 70px; padding: 6px; font-size: 11px; text-align: center; background: rgba(255,255,255,0.1); border-radius: 4px; cursor: pointer;">匹配项目 (${matched.length})</div>
-            <div class="zero-sub-tab" data-sub="manual" style="flex: 1; min-width: 70px; padding: 6px; font-size: 11px; text-align: center; background: rgba(255,255,255,0.05); border-radius: 4px; cursor: pointer;">关联项目 (${manualMatched.length})</div>
-            <div class="zero-sub-tab" data-sub="onlyA" style="flex: 1; min-width: 70px; padding: 6px; font-size: 11px; text-align: center; background: rgba(255,255,255,0.05); border-radius: 4px; cursor: pointer;">仅 A 有 (${onlyA.length})</div>
-            <div class="zero-sub-tab" data-sub="onlyB" style="flex: 1; min-width: 70px; padding: 6px; font-size: 11px; text-align: center; background: rgba(255,255,255,0.05); border-radius: 4px; cursor: pointer;">仅 B 有 (${onlyB.length})</div>
+            <div class="zero-sub-tab active" data-sub="matched" style="flex: 1; min-width: 70px; padding: 6px; font-size: 11px; text-align: center; border-radius: 4px; cursor: pointer;">匹配项目 (${matched.length})</div>
+            <div class="zero-sub-tab" data-sub="manual" style="flex: 1; min-width: 70px; padding: 6px; font-size: 11px; text-align: center; border-radius: 4px; cursor: pointer;">关联项目 (${manualMatched.length})</div>
+            <div class="zero-sub-tab" data-sub="onlyA" style="flex: 1; min-width: 70px; padding: 6px; font-size: 11px; text-align: center; border-radius: 4px; cursor: pointer;">仅 A 有 (${onlyA.length})</div>
+            <div class="zero-sub-tab" data-sub="onlyB" style="flex: 1; min-width: 70px; padding: 6px; font-size: 11px; text-align: center; border-radius: 4px; cursor: pointer;">仅 B 有 (${onlyB.length})</div>
         </div>
         <div id="sub-content-matched" class="zero-sub-content"></div>
         <div id="sub-content-manual" class="zero-sub-content" style="display: none;"></div>
@@ -498,8 +498,8 @@ export function renderMatchResults(matched, onlyA, onlyB, allItems, manualMatche
     $('.zero-sub-tab').on('click', function() {
         const sub = $(this).data('sub');
         localStorage.setItem('zero_last_sub_tab', sub);
-        $('.zero-sub-tab').removeClass('active').css('background', 'rgba(255,255,255,0.05)');
-        $(this).addClass('active').css('background', 'rgba(255,255,255,0.1)');
+        $('.zero-sub-tab').removeClass('active');
+        $(this).addClass('active');
         $('.zero-sub-content').hide();
         $(`#sub-content-${sub}`).show();
         restoreScroll();
@@ -682,25 +682,37 @@ export async function showComparisonDetail(index, allItems) {
         return html;
     };
 
+    // Read saved position/size synchronously BEFORE creating HTML, to avoid position flash
+    const _coSaved = (() => { try { return JSON.parse(localStorage.getItem('zero_comparison_overlay_pos') || 'null'); } catch { return null; } })();
+    const _coVw = window.innerWidth, _coVh = window.innerHeight;
+    const _isDesktop = _coVw >= 800;
+    const _coW = _isDesktop ? Math.max(500, _coSaved?.w ?? Math.min(Math.round(_coVw * 0.92), 1450)) : _coVw;
+    const _coH = _isDesktop ? Math.max(400, _coSaved?.h ?? Math.min(Math.round(_coVh * 0.92), 900)) : _coVh;
+    const _coL = _isDesktop ? Math.max(0, Math.min(_coSaved?.l ?? Math.round((_coVw - _coW) / 2), _coVw - 80)) : 0;
+    const _coT = _isDesktop ? Math.max(0, Math.min(_coSaved?.t ?? Math.round((_coVh - _coH) / 2), _coVh - 50)) : 0;
+
     const detailHtml = `
-        <div id="comparison-overlay" style="
-            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-            background: var(--SmartThemeBlurTintColor, #171717);
+        <div id="comparison-overlay" class="zero-modal-card" style="
+            position: fixed;
+            top: ${_coT}px; left: ${_coL}px; width: ${_coW}px; height: ${_coH}px;
+            background: var(--zero-bg-color, var(--SmartThemeBlurTintColor-Original, #1e1e28));
+            color: var(--zero-text-color, var(--SmartThemeBodyColor, inherit));
             z-index: 20000; display: flex; flex-direction: column;
             padding-top: 0;
+            ${_isDesktop ? 'border-radius: 14px; box-shadow: 0 16px 48px rgba(0,0,0,0.65); border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #555)); min-width: 500px; min-height: 400px;' : ''}
         ">
-            <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--SmartThemeBorderColor);">
+            <div id="comparison-overlay-header" style="display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor)); flex-shrink: 0; cursor: default;">
                 <div style="display: flex; align-items: center; flex: 1; min-width: 0; gap: 8px;">
                     <button id="comp-pin-a" class="interactable" title="钉选 A" style="flex-shrink: 0; padding: 6px; background: none; border: none; color: inherit; cursor: pointer; opacity: 0.5; font-size: 14px;">
                         <i class="fa-solid fa-thumbtack"></i>
                     </button>
-                    <select id="comp-item-selector-a" class="interactable" style="flex: 1; min-width: 0; padding: 6px; background: rgba(255,255,255,0.05); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 4px; font-size: 14px;">
+                    <select id="comp-item-selector-a" class="interactable" style="flex: 1; min-width: 0; padding: 6px; background: var(--zero-card-bg, var(--SmartThemeChatTintColor, rgba(255,255,255,0.05))); border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor)); color: inherit; border-radius: 4px; font-size: 14px;">
                         ${optionsA_html}
                     </select>
                     <button id="comp-link-btn" class="interactable" title="关联" style="flex-shrink: 0; padding: 6px; background: none; border: none; color: inherit; cursor: pointer; opacity: 0.5; font-size: 16px;">
                         <i class="fa-solid fa-link-slash"></i>
                     </button>
-                    <select id="comp-item-selector-b" class="interactable" style="flex: 1; min-width: 0; padding: 6px; background: rgba(255,255,255,0.05); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 4px; font-size: 14px;">
+                    <select id="comp-item-selector-b" class="interactable" style="flex: 1; min-width: 0; padding: 6px; background: var(--zero-card-bg, var(--SmartThemeChatTintColor, rgba(255,255,255,0.05))); border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor)); color: inherit; border-radius: 4px; font-size: 14px;">
                         ${optionsB_html}
                     </select>
                     <button id="comp-pin-b" class="interactable" title="钉选 B" style="flex-shrink: 0; padding: 6px; background: none; border: none; color: inherit; cursor: pointer; opacity: 0.5; font-size: 14px;">
@@ -717,8 +729,16 @@ export async function showComparisonDetail(index, allItems) {
         </div>
     `;
 
-    $('#comparison-overlay').remove(); 
+    $('#comparison-overlay').remove();
     $('body').append(detailHtml);
+
+    // On desktop: initialize drag/resize (position already set in HTML)
+    if (_isDesktop) {
+        import('./window.js').then(m => {
+            const el = document.getElementById('comparison-overlay');
+            m.WindowManager.makeOverlayDraggable(el, document.getElementById('comparison-overlay-header'));
+        }).catch(() => {});
+    }
 
     function renderDetailContent() {
         try {
@@ -850,50 +870,51 @@ export async function showComparisonDetail(index, allItems) {
                 }
             }
 
-            if (pA) {
-                const nameStr = escapeHtml(pA.name || pA.identifier || '未命名');
-                contentHtml += `
-                    <div class="comp-box" style="display: flex; flex-direction: column; flex-shrink: 0;">
-                        <div style="font-size: 11px; opacity: 0.5; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
-                            <span>${isMatched ? `源预设 (A): ${nameA}` : `预设 A 独有`}</span>
-                             <div style="display: flex; gap: 8px;">
-                                ${isMatched ? `<button class="zero-overwrite-btn interactable" data-direction="b-to-a" title="用 B 覆盖 A" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;"><i class="fa-solid fa-file-import"></i></button>` : ''}
-                                ${typeof window.translate === 'function' && pA.content ? `<button class="zero-trans-btn interactable" data-target="a" data-original="${escapeHtml(pA.content)}" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="翻译内容"><i class="fa-solid fa-language"></i></button>` : ''}
-                                <button class="zero-inject-var-btn interactable" data-side="a" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="注入变量包裹"><i class="fa-solid fa-code"></i></button>
-                                <button class="zero-bind-regex-btn interactable" data-side="a" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: ${pA.bound_regex_ids?.length ? 'var(--SmartThemeQuoteColor)' : 'inherit'}; cursor: pointer;" title="绑定预设正则"><i class="fa-solid fa-link"></i></button>
-                                <button class="zero-fav-btn interactable" data-side="a" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="收藏"><i class="fa-solid fa-star" style="color: var(--SmartThemeQuoteColor);"></i></button>
-                                <button class="zero-edit-btn interactable" data-preset="${nameA}" data-item="${nameStr}" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="修改"><i class="fa-solid fa-pencil"></i></button>
-                                <button class="zero-copy-btn interactable" data-text="${escapeHtml(pA.content)}" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="复制"><i class="fa-solid fa-copy"></i></button>
+            if (pA || pB) {
+                contentHtml += `<div class="comp-content-grid">`;
+                if (pA) {
+                    const nameStr = escapeHtml(pA.name || pA.identifier || '未命名');
+                    contentHtml += `
+                        <div class="comp-box" style="display: flex; flex-direction: column; flex-shrink: 0;">
+                            <div style="font-size: 11px; opacity: 0.5; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
+                                <span>${isMatched ? `源预设 (A): ${nameA}` : `预设 A 独有`}</span>
+                                <div style="display: flex; gap: 8px;">
+                                    ${isMatched ? `<button class="zero-overwrite-btn interactable" data-direction="b-to-a" title="用 B 覆盖 A" style="background: var(--zero-card-bg, rgba(255,255,255,0.1)); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;"><i class="fa-solid fa-file-import"></i></button>` : ''}
+                                    ${typeof window.translate === 'function' && pA.content ? `<button class="zero-trans-btn interactable" data-target="a" data-original="${escapeHtml(pA.content)}" style="background: var(--zero-card-bg, rgba(255,255,255,0.1)); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="翻译内容"><i class="fa-solid fa-language"></i></button>` : ''}
+                                    <button class="zero-inject-var-btn interactable" data-side="a" style="background: var(--zero-card-bg, rgba(255,255,255,0.1)); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="注入变量包裹"><i class="fa-solid fa-code"></i></button>
+                                    <button class="zero-bind-regex-btn interactable" data-side="a" style="background: var(--zero-card-bg, rgba(255,255,255,0.1)); border: none; border-radius: 4px; padding: 4px 8px; color: ${pA.bound_regex_ids?.length ? 'var(--zero-accent-color, var(--SmartThemeQuoteColor))' : 'inherit'}; cursor: pointer;" title="绑定预设正则"><i class="fa-solid fa-link"></i></button>
+                                    <button class="zero-fav-btn interactable" data-side="a" style="background: var(--zero-card-bg, rgba(255,255,255,0.1)); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="收藏"><i class="fa-solid fa-star" style="color: var(--zero-accent-color, var(--SmartThemeQuoteColor));"></i></button>
+                                    <button class="zero-edit-btn interactable" data-preset="${nameA}" data-item="${nameStr}" style="background: var(--zero-card-bg, rgba(255,255,255,0.1)); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="修改"><i class="fa-solid fa-pencil"></i></button>
+                                    <button class="zero-copy-btn interactable" data-text="${escapeHtml(pA.content)}" style="background: var(--zero-card-bg, rgba(255,255,255,0.1)); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="复制"><i class="fa-solid fa-copy"></i></button>
+                                </div>
                             </div>
-                        </div>
-                        <div id="comp-text-a" style="overflow-x: hidden; word-break: break-word; padding: 10px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; font-size: 13px; line-height: 1.5; white-space: pre-wrap; font-family: monospace;">
-                            ${isMatched ? diffHtml(pA.content || '', pB ? pB.content : '') : escapeHtml(pA.content || '(空)')}
-                        </div>
-                    </div>`;
-                if (contrastNavMiddle) {
-                    contentHtml += getNavButtonsHtml(navState.canPrev, navState.canNext, 'margin-top: 12px; margin-bottom: 6px;');
+                            <div id="comp-text-a" style="overflow-x: hidden; word-break: break-word; padding: 10px; background: transparent; border: 1px solid var(--zero-border-color, rgba(255,255,255,0.15)); border-radius: 6px; font-size: 13px; line-height: 1.5; white-space: pre-wrap; font-family: monospace; color: var(--zero-text-color, inherit);">
+                                ${isMatched ? diffHtml(pA.content || '', pB ? pB.content : '') : escapeHtml(pA.content || '(空)')}
+                            </div>
+                        </div>`;
                 }
-            }
-            if (pB) {
-                const nameStr = escapeHtml(pB.name || pB.identifier || '未命名');
-                contentHtml += `
-                    <div class="comp-box" style="display: flex; flex-direction: column; flex-shrink: 0; margin-top: 16px;">
-                        <div style="font-size: 11px; opacity: 0.5; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
-                            <span>目标预设 (B): ${nameB}</span>
-                             <div style="display: flex; gap: 8px;">
-                                ${isMatched ? `<button class="zero-overwrite-btn interactable" data-direction="a-to-b" title="用 A 覆盖 B" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;"><i class="fa-solid fa-file-import"></i></button>` : ''}
-                                ${typeof window.translate === 'function' && pB.content ? `<button class="zero-trans-btn interactable" data-target="b" data-original="${escapeHtml(pB.content)}" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="翻译内容"><i class="fa-solid fa-language"></i></button>` : ''}
-                                <button class="zero-inject-var-btn interactable" data-side="b" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="注入变量包裹"><i class="fa-solid fa-code"></i></button>
-                                <button class="zero-bind-regex-btn interactable" data-side="b" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: ${pB.bound_regex_ids?.length ? 'var(--SmartThemeQuoteColor)' : 'inherit'}; cursor: pointer;" title="绑定预设正则"><i class="fa-solid fa-link"></i></button>
-                                <button class="zero-fav-btn interactable" data-side="b" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="收藏"><i class="fa-solid fa-star" style="color: var(--SmartThemeQuoteColor);"></i></button>
-                                <button class="zero-edit-btn interactable" data-preset="${nameB}" data-item="${nameStr}" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="修改"><i class="fa-solid fa-pencil"></i></button>
-                                <button class="zero-copy-btn interactable" data-text="${escapeHtml(pB.content)}" style="background: rgba(255,255,255,0.1); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="复制"><i class="fa-solid fa-copy"></i></button>
+                if (pB) {
+                    const nameStr = escapeHtml(pB.name || pB.identifier || '未命名');
+                    contentHtml += `
+                        <div class="comp-box" style="display: flex; flex-direction: column; flex-shrink: 0; margin-top: 16px;">
+                            <div style="font-size: 11px; opacity: 0.5; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
+                                <span>目标预设 (B): ${nameB}</span>
+                                <div style="display: flex; gap: 8px;">
+                                    ${isMatched ? `<button class="zero-overwrite-btn interactable" data-direction="a-to-b" title="用 A 覆盖 B" style="background: var(--zero-card-bg, rgba(255,255,255,0.1)); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;"><i class="fa-solid fa-file-import"></i></button>` : ''}
+                                    ${typeof window.translate === 'function' && pB.content ? `<button class="zero-trans-btn interactable" data-target="b" data-original="${escapeHtml(pB.content)}" style="background: var(--zero-card-bg, rgba(255,255,255,0.1)); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="翻译内容"><i class="fa-solid fa-language"></i></button>` : ''}
+                                    <button class="zero-inject-var-btn interactable" data-side="b" style="background: var(--zero-card-bg, rgba(255,255,255,0.1)); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="注入变量包裹"><i class="fa-solid fa-code"></i></button>
+                                    <button class="zero-bind-regex-btn interactable" data-side="b" style="background: var(--zero-card-bg, rgba(255,255,255,0.1)); border: none; border-radius: 4px; padding: 4px 8px; color: ${pB.bound_regex_ids?.length ? 'var(--zero-accent-color, var(--SmartThemeQuoteColor))' : 'inherit'}; cursor: pointer;" title="绑定预设正则"><i class="fa-solid fa-link"></i></button>
+                                    <button class="zero-fav-btn interactable" data-side="b" style="background: var(--zero-card-bg, rgba(255,255,255,0.1)); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="收藏"><i class="fa-solid fa-star" style="color: var(--zero-accent-color, var(--SmartThemeQuoteColor));"></i></button>
+                                    <button class="zero-edit-btn interactable" data-preset="${nameB}" data-item="${nameStr}" style="background: var(--zero-card-bg, rgba(255,255,255,0.1)); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="修改"><i class="fa-solid fa-pencil"></i></button>
+                                    <button class="zero-copy-btn interactable" data-text="${escapeHtml(pB.content)}" style="background: var(--zero-card-bg, rgba(255,255,255,0.1)); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="复制"><i class="fa-solid fa-copy"></i></button>
+                                </div>
                             </div>
-                        </div>
-                        <div id="comp-text-b" style="overflow-x: hidden; word-break: break-word; padding: 10px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; font-size: 13px; line-height: 1.5; white-space: pre-wrap; font-family: monospace;">
-                            ${isMatched ? diffHtml(pB.content || '', pA ? pA.content : '') : escapeHtml(pB.content || '(空)')}
-                        </div>
-                    </div>`;
+                            <div id="comp-text-b" style="overflow-x: hidden; word-break: break-word; padding: 10px; background: transparent; border: 1px solid var(--zero-border-color, rgba(255,255,255,0.15)); border-radius: 6px; font-size: 13px; line-height: 1.5; white-space: pre-wrap; font-family: monospace; color: var(--zero-text-color, inherit);">
+                                ${isMatched ? diffHtml(pB.content || '', pA ? pA.content : '') : escapeHtml(pB.content || '(空)')}
+                            </div>
+                        </div>`;
+                }
+                contentHtml += `</div>`;
             }
             if (!pA && !pB) {
                 contentHtml = '<div style="text-align: center; opacity: 0.5; padding: 40px;">未选择或未找到有效条目</div>';
@@ -922,6 +943,11 @@ export async function showComparisonDetail(index, allItems) {
         if (activeRefresh) {
             window.removeEventListener('zero-content-updated', activeRefresh);
             activeRefresh = null;
+        }
+        const _el = document.getElementById('comparison-overlay');
+        if (_el) {
+            const r = _el.getBoundingClientRect();
+            try { localStorage.setItem('zero_comparison_overlay_pos', JSON.stringify({ l: Math.round(r.left), t: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) })); } catch {}
         }
         $('#comparison-overlay').remove();
         performAutoMatch();
@@ -1380,8 +1406,8 @@ export async function showContrastSummaryModal(nameA, nameB) {
     }
 
     const modalHtml = `
-        <div id="${modalId}" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.85); z-index: 21000; display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box;">
-            <div style="background: var(--SmartThemeBlurTintColor, #1f1f1f); border: 1px solid var(--SmartThemeBorderColor, #444); border-radius: 14px; width: 100%; max-width: 680px; height: 85vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,0.6);">
+        <div id="${modalId}" class="zero-overlay" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: transparent; pointer-events: none; z-index: 21000; display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box;">
+            <div class="zero-modal-card" style="pointer-events: auto; background: var(--zero-bg-color, var(--SmartThemeBlurTintColor-Original, #1e1e28)); color: var(--zero-text-color, inherit); border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #444)); border-radius: 14px; width: 100%; max-width: 680px; height: 85vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,0.6);">
                 
                 <!-- Header -->
                 <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--SmartThemeBorderColor, #333); flex-shrink: 0;">
@@ -1394,22 +1420,22 @@ export async function showContrastSummaryModal(nameA, nameB) {
                 </div>
 
                 <!-- KPI Cards -->
-                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; padding: 12px 18px; background: rgba(0,0,0,0.15); border-bottom: 1px solid rgba(255,255,255,0.05); flex-shrink: 0;">
-                    <div style="padding: 10px; background: rgba(76,175,80,0.1); border: 1px solid rgba(76,175,80,0.25); border-radius: 8px; text-align: center;">
-                        <div style="font-size: 18px; font-weight: bold; color: #4caf50;">${onlyBList.length}</div>
-                        <div style="font-size: 11px; opacity: 0.8; color: var(--SmartThemeBodyColor);">新增条目</div>
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; padding: 12px 18px; background: var(--zero-card-bg-light, rgba(0,0,0,0.15)); border-bottom: 1px solid var(--zero-border-color, rgba(255,255,255,0.05)); flex-shrink: 0;">
+                    <div style="padding: 10px; background: rgba(76,175,80,0.12); border: 1px solid rgba(76,175,80,0.25); border-radius: 8px; text-align: center;">
+                        <div style="font-size: 11px; opacity: 0.8;">B 独有 (+${onlyBList.length})</div>
+                        <div style="font-size: 18px; font-weight: bold; color: var(--zero-success-color, #4caf50);">${onlyBList.length}</div>
                     </div>
-                    <div style="padding: 10px; background: rgba(244,67,54,0.1); border: 1px solid rgba(244,67,54,0.25); border-radius: 8px; text-align: center;">
-                        <div style="font-size: 18px; font-weight: bold; color: #f44336;">${onlyAList.length}</div>
-                        <div style="font-size: 11px; opacity: 0.8; color: var(--SmartThemeBodyColor);">移除条目</div>
+                    <div style="padding: 10px; background: rgba(244,67,54,0.12); border: 1px solid rgba(244,67,54,0.25); border-radius: 8px; text-align: center;">
+                        <div style="font-size: 11px; opacity: 0.8;">A 独有 (-${onlyAList.length})</div>
+                        <div style="font-size: 18px; font-weight: bold; color: var(--zero-danger-color, #f44336);">${onlyAList.length}</div>
                     </div>
-                    <div style="padding: 10px; background: rgba(255,152,0,0.1); border: 1px solid rgba(255,152,0,0.25); border-radius: 8px; text-align: center;">
-                        <div style="font-size: 18px; font-weight: bold; color: #ff9800;">${modifiedList.length}</div>
-                        <div style="font-size: 11px; opacity: 0.8; color: var(--SmartThemeBodyColor);">修改条目</div>
+                    <div style="padding: 10px; background: rgba(255,152,0,0.12); border: 1px solid rgba(255,152,0,0.25); border-radius: 8px; text-align: center;">
+                        <div style="font-size: 11px; opacity: 0.8;">存在差异 (${modifiedList.length})</div>
+                        <div style="font-size: 18px; font-weight: bold; color: var(--zero-warning-color, #ff9800);">${modifiedList.length}</div>
                     </div>
-                    <div style="padding: 10px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; text-align: center;">
-                        <div style="font-size: 18px; font-weight: bold; color: #aaa;">${unchangedList.length}</div>
-                        <div style="font-size: 11px; opacity: 0.8; color: var(--SmartThemeBodyColor);">完全相同</div>
+                    <div style="padding: 10px; background: var(--zero-card-bg, rgba(255,255,255,0.04)); border: 1px solid var(--zero-border-color, rgba(255,255,255,0.1)); border-radius: 8px; text-align: center;">
+                        <div style="font-size: 11px; opacity: 0.8;">完全一致 (${unchangedList.length})</div>
+                        <div style="font-size: 18px; font-weight: bold; color: var(--zero-muted-color, #aaa);">${unchangedList.length}</div>
                     </div>
                 </div>
 
@@ -1505,7 +1531,17 @@ export async function showContrastSummaryModal(nameA, nameB) {
         </div>
     `;
 
-    $('body').append(modalHtml);
+    const overlayEl = document.getElementById('comparison-overlay');
+    const appendTarget = overlayEl ? overlayEl : document.body;
+    const outerPositionStyle = overlayEl
+        ? 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.45); pointer-events: auto; z-index: 100; display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box;'
+        : 'position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: transparent; pointer-events: none; z-index: 21000; display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box;';
+
+    // Patch outer div style dynamically since HTML is already a template string
+    const $modal = $(modalHtml);
+    $modal.attr('style', outerPositionStyle);
+    if (!overlayEl) $modal.css('pointer-events', 'none');
+    $(appendTarget).css('position', 'relative').append($modal);
 
     $('.zero-summary-tab').on('click', function() {
         const tab = $(this).data('tab');

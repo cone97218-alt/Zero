@@ -158,15 +158,16 @@ export async function showCollectModal(promptOrPrompts, originPreset = '') {
                 font-family: var(--mainFontFamily, sans-serif);
                 color: var(--SmartThemeBodyColor, #dcdcd2);
             ">
-                <div style="
-                    background: var(--SmartThemeBlurTintColor, #171717);
-                    border: 1px solid var(--SmartThemeBorderColor, #444);
+                <div class="zero-modal-card" style="
+                    background: var(--zero-bg-color, var(--SmartThemeBlurTintColor-Original, #1e1e28));
+                    color: var(--zero-text-color, var(--SmartThemeBodyColor, #e0e0e0));
+                    border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #444));
                     border-radius: 16px;
                     width: 100%;
                     max-width: 380px;
                     display: flex;
                     flex-direction: column;
-                    box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+                    box-shadow: 0 8px 30px rgba(0,0,0,0.6);
                     overflow: hidden;
                 ">
                     <!-- Header -->
@@ -606,9 +607,8 @@ export async function showBindRegexModal(promptOrPrompts, presetName, onSavedCal
                 left: ${isFixedCoords ? left + 'px' : '0'};
                 width: ${isFixedCoords ? width + 'px' : '100vw'};
                 height: ${isFixedCoords ? height + 'px' : '100vh'};
-                background: rgba(0,0,0,0.7);
-                backdrop-filter: blur(4px);
-                z-index: 30005;
+                background: rgba(0,0,0,0.55);
+                z-index: 21500;
                 display: flex;
                 align-items: center;
                 justify-content: center;
@@ -616,15 +616,16 @@ export async function showBindRegexModal(promptOrPrompts, presetName, onSavedCal
                 font-family: var(--mainFontFamily, sans-serif);
                 color: var(--SmartThemeBodyColor, #dcdcd2);
             ">
-                <div style="
-                    background: var(--SmartThemeBlurTintColor, #171717);
-                    border: 1px solid var(--SmartThemeBorderColor, #444);
+                <div class="zero-modal-card" style="
+                    background: var(--zero-bg-color, var(--SmartThemeBlurTintColor-Original, #1e1e28));
+                    color: var(--zero-text-color, var(--SmartThemeBodyColor, #e0e0e0));
+                    border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #444));
                     border-radius: 16px;
                     width: 100%;
                     max-width: 440px;
                     display: flex;
                     flex-direction: column;
-                    box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+                    box-shadow: 0 8px 30px rgba(0,0,0,0.6);
                     overflow: hidden;
                     max-height: 85vh;
                 ">
@@ -770,25 +771,24 @@ export async function showBindPromptToRegexModal(regexScript, presetName, onSave
             <div id="${modalId}" style="
                 position: fixed;
                 top: 0; left: 0; right: 0; bottom: 0;
-                background: rgba(0,0,0,0.6);
-                backdrop-filter: blur(4px);
-                z-index: 11000;
+                background: rgba(0,0,0,0.55);
+                z-index: 21500;
                 display: flex;
                 align-items: center;
                 justify-content: center;
             ">
-                <div style="
-                    background: var(--SmartThemeBlurTintColor, #222);
-                    border: 1px solid var(--SmartThemeBorderColor, #444);
+                <div class="zero-modal-card" style="
+                    background: var(--zero-bg-color, var(--SmartThemeBlurTintColor-Original, #1e1e28));
+                    color: var(--zero-text-color, var(--SmartThemeBodyColor, #e0e0e0));
+                    border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #444));
                     border-radius: 12px;
                     width: 420px;
                     max-width: 90vw;
                     max-height: 80vh;
                     display: flex;
                     flex-direction: column;
-                    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+                    box-shadow: 0 8px 32px rgba(0,0,0,0.6);
                     overflow: hidden;
-                    color: var(--SmartThemeBodyColor);
                 ">
                     <!-- Header -->
                     <div style="
@@ -978,12 +978,12 @@ export async function showStandaloneRegexManagerModal(nameA, nameB, onMigratedCa
         const modalHtml = `
             <div id="${modalId}" style="
                 position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-                background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); z-index: 11000;
+                background: rgba(0,0,0,0.55); z-index: 21500;
                 display: flex; align-items: center; justify-content: center;
             ">
-                <div style="
-                    background: var(--SmartThemeBlurTintColor, #222); border: 1px solid var(--SmartThemeBorderColor, #444); border-radius: 12px;
-                    width: ${nameB ? '680px' : '400px'}; max-width: 95vw; max-height: 80vh; display: flex; flex-direction: column; box-shadow: 0 8px 32px rgba(0,0,0,0.4); overflow: hidden; color: var(--SmartThemeBodyColor);
+                <div class="zero-modal-card" style="
+                    background: var(--zero-bg-color, var(--SmartThemeBlurTintColor-Original, #1e1e28)); color: var(--zero-text-color, var(--SmartThemeBodyColor, #e0e0e0)); border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #444)); border-radius: 12px;
+                    width: ${nameB ? '680px' : '400px'}; max-width: 95vw; max-height: 80vh; display: flex; flex-direction: column; box-shadow: 0 8px 32px rgba(0,0,0,0.6); overflow: hidden;
                 ">
                     <div style="padding: 14px 18px; border-bottom: 1px solid var(--SmartThemeBorderColor); display: flex; align-items: center; justify-content: space-between; background: rgba(0,0,0,0.15);">
                         <div style="font-size: 14px; font-weight: bold; display: flex; align-items: center; gap: 6px;">
@@ -1238,8 +1238,8 @@ export async function showInjectVariableModal(promptOrName, presetName = '', onS
     const originalContent = prompt.content || '';
 
     const modalHtml = `
-        <div id="${modalId}" class="completion_prompt_manager_popup TH-script-editor-container regex_editor_template" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.85); z-index: 21000; display: flex; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box;">
-            <div style="background: var(--SmartThemeBlurTintColor, #1f1f1f); border: 1px solid var(--SmartThemeBorderColor, #444); border-radius: 14px; width: 100%; max-width: 680px; display: flex; flex-direction: column; max-height: 90vh; overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,0.6);">
+        <div id="${modalId}" class="zero-overlay completion_prompt_manager_popup TH-script-editor-container regex_editor_template" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: transparent; pointer-events: none; z-index: 21000; display: flex; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box;">
+            <div class="zero-modal-card" style="pointer-events: auto; background: var(--zero-bg-color, var(--SmartThemeBlurTintColor-Original, #1e1e28)); color: var(--zero-text-color, inherit); border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #444)); border-radius: 14px; width: 100%; max-width: 680px; display: flex; flex-direction: column; max-height: 90vh; overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,0.6);">
                 <!-- Header -->
                 <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--SmartThemeBorderColor, #333); flex-shrink: 0;">
                     <div style="display: flex; align-items: center; gap: 8px; font-weight: bold; font-size: 14px; color: var(--SmartThemeBodyColor);">
