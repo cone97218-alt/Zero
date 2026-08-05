@@ -223,7 +223,7 @@ export const Checker = {
                 const entryName = foundEntry.name || foundEntry.identifier;
                 let existing = entryResults.find(r => r.name === entryName);
                 if (!existing) {
-                    existing = { entry: foundEntry, name: entryName, errors: [] };
+                    existing = { entry: foundEntry, name: entryName, identifier: foundEntry.identifier, errors: [] };
                     entryResults.push(existing);
                 }
 
@@ -579,7 +579,7 @@ export const Checker = {
                         </div>
                     </div>
                 `);
-                row.find('.check-edit-btn').on('click', () => this.openEditor(presetName, issue.name));
+                row.find('.check-edit-btn').on('click', () => this.openEditor(presetName, issue.name, issue.identifier || issue.entry?.identifier));
                 $xmlList.append(row);
             });
         }
@@ -671,7 +671,7 @@ export const Checker = {
                         ` : ''}
                     </div>
                 `);
-                row.find('.entry-edit-btn').on('click', () => this.openEditor(presetName, name));
+                row.find('.entry-edit-btn').on('click', () => this.openEditor(presetName, name, p.identifier, idx));
                 $entryList.append(row);
             });
         };
@@ -1131,7 +1131,7 @@ export const Checker = {
             <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; opacity: 0.7; margin-top: 4px; padding: 2px 4px; background: rgba(0,0,0,0.1); border-radius: 4px;">
                 <input type="checkbox" class="occ-item-checkbox interactable" data-var="${escapeHtml(v.name)}" data-entry="${escapeHtml(o.name)}" data-macro-type="${escapeHtml(o.type)}" style="display: ${isBatchActive ? 'inline-block' : 'none'}; cursor: pointer; accent-color: var(--SmartThemeQuoteColor); margin-right: 6px;">
                 <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">[${o.type.toUpperCase()}] ${escapeHtml(o.name)}</span>
-                <button class="occ-edit-btn interactable" data-entry="${escapeHtml(o.name)}" title="修改对应条目" style="background: none; border: none; color: inherit; cursor: pointer; padding: 2px 5px;"><i class="fa-solid fa-pencil"></i></button>
+                <button class="occ-edit-btn interactable" data-entry="${escapeHtml(o.name)}" data-identifier="${escapeHtml(o.entry?.identifier || '')}" title="修改对应条目" style="background: none; border: none; color: inherit; cursor: pointer; padding: 2px 5px;"><i class="fa-solid fa-pencil"></i></button>
             </div>
         `).join('');
 
@@ -1195,8 +1195,9 @@ export const Checker = {
         `);
 
         row.find('.occ-edit-btn').on('click', (e) => {
-            const entryName = $(e.currentTarget).data('entry');
-            this.openEditor(presetName, entryName);
+            const entryName = $(e.currentTarget).attr('data-entry') || $(e.currentTarget).data('entry');
+            const identifier = $(e.currentTarget).attr('data-identifier') || $(e.currentTarget).data('identifier');
+            this.openEditor(presetName, entryName, identifier);
         });
 
         // Variable Rename Event Handler

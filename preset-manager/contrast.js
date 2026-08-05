@@ -915,7 +915,7 @@ export async function showComparisonDetail(index, allItems) {
                                     <button class="zero-inject-var-btn interactable" data-side="a" style="background: var(--zero-card-bg, rgba(255,255,255,0.1)); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="注入变量包裹"><i class="fa-solid fa-code"></i></button>
                                     <button class="zero-bind-regex-btn interactable" data-side="a" style="background: var(--zero-card-bg, rgba(255,255,255,0.1)); border: none; border-radius: 4px; padding: 4px 8px; color: ${pA.bound_regex_ids?.length ? 'var(--zero-accent-color, var(--SmartThemeQuoteColor))' : 'inherit'}; cursor: pointer;" title="绑定预设正则"><i class="fa-solid fa-link"></i></button>
                                     <button class="zero-fav-btn interactable" data-side="a" style="background: var(--zero-card-bg, rgba(255,255,255,0.1)); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="收藏"><i class="fa-solid fa-star" style="color: var(--zero-accent-color, var(--SmartThemeQuoteColor));"></i></button>
-                                    <button class="zero-edit-btn interactable" data-preset="${nameA}" data-item="${nameStr}" style="background: var(--zero-card-bg, rgba(255,255,255,0.1)); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="修改"><i class="fa-solid fa-pencil"></i></button>
+                                    <button class="zero-edit-btn interactable" data-preset="${nameA}" data-item="${nameStr}" data-identifier="${escapeHtml(pA.identifier || '')}" style="background: var(--zero-card-bg, rgba(255,255,255,0.1)); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="修改"><i class="fa-solid fa-pencil"></i></button>
                                     <button class="zero-copy-btn interactable" data-text="${escapeHtml(pA.content)}" style="background: var(--zero-card-bg, rgba(255,255,255,0.1)); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="复制"><i class="fa-solid fa-copy"></i></button>
                                 </div>
                             </div>
@@ -936,7 +936,7 @@ export async function showComparisonDetail(index, allItems) {
                                     <button class="zero-inject-var-btn interactable" data-side="b" style="background: var(--zero-card-bg, rgba(255,255,255,0.1)); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="注入变量包裹"><i class="fa-solid fa-code"></i></button>
                                     <button class="zero-bind-regex-btn interactable" data-side="b" style="background: var(--zero-card-bg, rgba(255,255,255,0.1)); border: none; border-radius: 4px; padding: 4px 8px; color: ${pB.bound_regex_ids?.length ? 'var(--zero-accent-color, var(--SmartThemeQuoteColor))' : 'inherit'}; cursor: pointer;" title="绑定预设正则"><i class="fa-solid fa-link"></i></button>
                                     <button class="zero-fav-btn interactable" data-side="b" style="background: var(--zero-card-bg, rgba(255,255,255,0.1)); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="收藏"><i class="fa-solid fa-star" style="color: var(--zero-accent-color, var(--SmartThemeQuoteColor));"></i></button>
-                                    <button class="zero-edit-btn interactable" data-preset="${nameB}" data-item="${nameStr}" style="background: var(--zero-card-bg, rgba(255,255,255,0.1)); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="修改"><i class="fa-solid fa-pencil"></i></button>
+                                    <button class="zero-edit-btn interactable" data-preset="${nameB}" data-item="${nameStr}" data-identifier="${escapeHtml(pB.identifier || '')}" style="background: var(--zero-card-bg, rgba(255,255,255,0.1)); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="修改"><i class="fa-solid fa-pencil"></i></button>
                                     <button class="zero-copy-btn interactable" data-text="${escapeHtml(pB.content)}" style="background: var(--zero-card-bg, rgba(255,255,255,0.1)); border: none; border-radius: 4px; padding: 4px 8px; color: inherit; cursor: pointer;" title="复制"><i class="fa-solid fa-copy"></i></button>
                                 </div>
                             </div>
@@ -1121,9 +1121,10 @@ export async function showComparisonDetail(index, allItems) {
     });
 
     $('#comparison-overlay').on('click', '.zero-edit-btn', async function() {
-        const presetName = $(this).data('preset');
-        const itemName = $(this).data('item');
-        openQuickEditor(presetName, itemName);
+        const presetName = $(this).attr('data-preset') || $(this).data('preset');
+        const itemName = $(this).attr('data-item') || $(this).data('item');
+        const identifier = $(this).attr('data-identifier') || $(this).data('identifier');
+        openQuickEditor(presetName, itemName, identifier);
     });
 
     $('#comparison-overlay').on('click', '.zero-inject-var-btn', async function() {

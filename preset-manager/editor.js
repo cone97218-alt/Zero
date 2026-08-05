@@ -2,18 +2,30 @@ import { escapeHtml, savePresetWithoutRegexToast, showVariableRenameModal } from
 import { Checker } from './checker.js';
 import { GroupManager, HistoryManager } from '../qr-snapshot/state.js';
 
-export async function openQuickEditor(presetName, itemName) {
+export async function openQuickEditor(presetName, itemName, identifier, itemIndex) {
     const pm = SillyTavern.getContext().getPresetManager('openai');
     if (!pm) {
         toastr.error('无法获取预设管理器');
         return;
     }
     const preset = pm.getCompletionPresetByName(presetName);
-    if (!preset) return;
-    
-    const prompt = preset.prompts.find(p => p.identifier === itemName) ||
-                   preset.prompts.find(p => p.name === itemName) ||
-                   preset.prompts.find(p => (p.name || p.identifier) === itemName);
+    if (!preset || !Array.isArray(preset.prompts)) return;
+
+    let prompt = null;
+    if (identifier) {
+        prompt = preset.prompts.find(p => p.identifier === identifier);
+    }
+    if (!prompt && typeof itemIndex === 'number' && itemIndex >= 0 && itemIndex < preset.prompts.length) {
+        const candidate = preset.prompts[itemIndex];
+        if (candidate && ((candidate.name || candidate.identifier) === itemName || candidate.identifier === identifier || !itemName)) {
+            prompt = candidate;
+        }
+    }
+    if (!prompt && itemName) {
+        prompt = preset.prompts.find(p => p.identifier === itemName) ||
+                 preset.prompts.find(p => p.name === itemName) ||
+                 preset.prompts.find(p => (p.name || p.identifier) === itemName);
+    }
     if (!prompt) return;
 
     let lastSelectionStart = (prompt.content || '').length;

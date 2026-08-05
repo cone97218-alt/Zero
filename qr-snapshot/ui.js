@@ -1157,11 +1157,11 @@ function setupEntriesDelegation(panel) {
                 if (ic) ic.innerHTML = '<i class="fa-solid fa-circle-check"></i>';
             } else if (action.dataset.action === 'edit') {
                 if (editorModule) {
-                    editorModule.openQuickEditor(_currentPreset.name, prompt.identifier || prompt.name);
+                    editorModule.openQuickEditor(_currentPreset.name, prompt.name || prompt.identifier, prompt.identifier);
                 } else {
                     import('../preset-manager/editor.js').then(m => {
                         editorModule = m;
-                        m.openQuickEditor(_currentPreset.name, prompt.identifier || prompt.name);
+                        m.openQuickEditor(_currentPreset.name, prompt.name || prompt.identifier, prompt.identifier);
                     });
                 }
             }
@@ -1295,11 +1295,11 @@ function showEntryContextMenu(panel, entry, prompt) {
             showContentPreview(_currentModal, prompt);
         } else if (act === 'edit') {
             if (editorModule) {
-                editorModule.openQuickEditor(_currentPreset.name, prompt.identifier || prompt.name);
+                editorModule.openQuickEditor(_currentPreset.name, prompt.name || prompt.identifier, prompt.identifier);
             } else {
                 import('../preset-manager/editor.js').then(m => {
                     editorModule = m;
-                    m.openQuickEditor(_currentPreset.name, prompt.identifier || prompt.name);
+                    m.openQuickEditor(_currentPreset.name, prompt.name || prompt.identifier, prompt.identifier);
                 });
             }
         }
