@@ -1099,26 +1099,50 @@ export const GroupManager = {
 // ═══════════════════════════════════════
 export const PinnedManager = {
     get(presetName) {
+        if (!presetName) return new Set();
         const s = getSettings();
         if (!s.pinned) s.pinned = {};
         return new Set(s.pinned[presetName] || []);
     },
 
-    isPinned(presetName, identifier) {
-        return this.get(presetName).has(identifier);
+    isPinned(presetName, target) {
+        if (!presetName || !target) return false;
+        const set = this.get(presetName);
+        if (typeof target === 'string') {
+            return set.has(target);
+        }
+        const id = target.identifier || target.name;
+        if (!id) return false;
+        if (set.has(id)) return true;
+        if (target.identifier && set.has(target.identifier)) return true;
+        if (target.name && set.has(target.name)) return true;
+        return false;
     },
 
-    togglePin(presetName, identifier) {
+    togglePin(presetName, target) {
+        if (!presetName || !target) return;
         HistoryManager.record();
         const s = getSettings();
         if (!s.pinned) s.pinned = {};
         const list = s.pinned[presetName] || [];
         const set = new Set(list);
-        if (set.has(identifier)) {
-            set.delete(identifier);
-        } else {
-            set.add(identifier);
+        
+        const id = typeof target === 'string' ? target : (target.identifier || target.name);
+        if (!id) return;
+
+        let found = false;
+        if (set.has(id)) {
+            set.delete(id);
+            found = true;
         }
+        if (typeof target === 'object') {
+            if (target.identifier && set.has(target.identifier)) { set.delete(target.identifier); found = true; }
+            if (target.name && set.has(target.name)) { set.delete(target.name); found = true; }
+        }
+        if (!found) {
+            set.add(id);
+        }
+
         s.pinned[presetName] = Array.from(set);
         saveSettings();
     }

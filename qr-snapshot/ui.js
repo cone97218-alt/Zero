@@ -160,23 +160,26 @@ function entryHTML(p, cachedActions = null, isPinned = false) {
     `</div>`;
 }
 
-function groupSectionHTML(group, members, isUngrouped, cachedActions = null, presetName = null) {
-    const enabledCount = members.filter(p => p.enabled).length;
-    const allOn = members.length > 0 && members.every(p => p.enabled);
-    const collapsed = group.col;
+function renderGroupMembersHTML(members, cachedActions = null, presetName = null) {
+    const pName = presetName || _currentPreset?.name || '';
     const actions = (Array.isArray(cachedActions) ? cachedActions : null) || UiStateManager.get().entryActions || ['pin', 'inject-var', 'folder', 'preview'];
     
-    // Sort members so pinned items come first
-    const pSet = PinnedManager.get(presetName || _currentPreset?.name || '');
     const pinnedMembers = [];
     const normalMembers = [];
     members.forEach(m => {
-        if (pSet.has(m.identifier)) pinnedMembers.push(m);
+        if (PinnedManager.isPinned(pName, m)) pinnedMembers.push(m);
         else normalMembers.push(m);
     });
     const sortedMembers = [...pinnedMembers, ...normalMembers];
 
-    const bodyContent = collapsed ? '' : sortedMembers.map(m => entryHTML(m, actions, pSet.has(m.identifier))).join('');
+    return sortedMembers.map(m => entryHTML(m, actions, PinnedManager.isPinned(pName, m))).join('');
+}
+
+function groupSectionHTML(group, members, isUngrouped, cachedActions = null, presetName = null) {
+    const enabledCount = members.filter(p => p.enabled).length;
+    const allOn = members.length > 0 && members.every(p => p.enabled);
+    const collapsed = group.col;
+    const bodyContent = collapsed ? '' : renderGroupMembersHTML(members, cachedActions, presetName);
     
     const isSingle = group.single || false;
     const switchHTML = isSingle ? '' : `<label class="zero-switch"><input type="checkbox"${allOn ? ' checked' : ''}><span class="zero-slider"></span></label>`;
@@ -1345,7 +1348,7 @@ function handleGroupCollapse(header) {
         if (inner && !inner.hasChildNodes()) {
             const gid = groupEl.dataset.gid;
             const members = _groupMemberMap.get(gid) || [];
-            inner.innerHTML = members.map(entryHTML).join('');
+            inner.innerHTML = renderGroupMembersHTML(members, null, _currentPreset?.name);
         }
 
         // Accordion logic: only collapse already expanded ones
@@ -1392,7 +1395,7 @@ function localBatchToggle(groupEl, enabled) {
     // Ensure lazily rendered content is generated before toggling checks
     const inner = body.querySelector('.zero-group-inner');
     if (inner && !inner.hasChildNodes() && members.length > 0) {
-        inner.innerHTML = members.map(entryHTML).join('');
+        inner.innerHTML = renderGroupMembersHTML(members, null, _currentPreset?.name);
     }
 
     body.querySelectorAll('.zero-entry').forEach(entry => {
@@ -1616,7 +1619,7 @@ function showMultiSelectBar(modal, panel, preset) {
                     const groupEl = inner.closest('.zero-group');
                     const gid = groupEl.dataset.gid;
                     const members = _groupMemberMap.get(gid) || [];
-                    inner.innerHTML = members.map(entryHTML).join('');
+                    inner.innerHTML = renderGroupMembersHTML(members, null, _currentPreset?.name);
                 }
             });
             panel.querySelectorAll('.zero-entry[data-id]').forEach(el => {
@@ -1659,7 +1662,7 @@ function showMultiSelectBar(modal, panel, preset) {
                     const groupEl = inner.closest('.zero-group');
                     const gid = groupEl.dataset.gid;
                     const members = _groupMemberMap.get(gid) || [];
-                    inner.innerHTML = members.map(entryHTML).join('');
+                    inner.innerHTML = renderGroupMembersHTML(members, null, _currentPreset?.name);
                 }
             });
             panel.querySelectorAll('.zero-entry[data-id]').forEach(el => {
