@@ -1,3 +1,5 @@
+import { HistoryManager } from '../qr-snapshot/state.js';
+
 export function syncTheme() {
     try {
         if (window.parent && window.parent !== window) {
