@@ -1095,6 +1095,36 @@ export const GroupManager = {
 };
 
 // ═══════════════════════════════════════
+//  Pinned Manager (In-Group Pinning)
+// ═══════════════════════════════════════
+export const PinnedManager = {
+    get(presetName) {
+        const s = getSettings();
+        if (!s.pinned) s.pinned = {};
+        return new Set(s.pinned[presetName] || []);
+    },
+
+    isPinned(presetName, identifier) {
+        return this.get(presetName).has(identifier);
+    },
+
+    togglePin(presetName, identifier) {
+        HistoryManager.record();
+        const s = getSettings();
+        if (!s.pinned) s.pinned = {};
+        const list = s.pinned[presetName] || [];
+        const set = new Set(list);
+        if (set.has(identifier)) {
+            set.delete(identifier);
+        } else {
+            set.add(identifier);
+        }
+        s.pinned[presetName] = Array.from(set);
+        saveSettings();
+    }
+};
+
+// ═══════════════════════════════════════
 //  Hidden Manager
 // ═══════════════════════════════════════
 export const HiddenManager = {

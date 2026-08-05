@@ -12,14 +12,21 @@ export async function openQuickEditor(presetName, itemName, identifier, itemInde
     if (!preset || !Array.isArray(preset.prompts)) return;
 
     let prompt = null;
-    if (identifier) {
-        prompt = preset.prompts.find(p => p.identifier === identifier);
-    }
-    if (!prompt && typeof itemIndex === 'number' && itemIndex >= 0 && itemIndex < preset.prompts.length) {
+    if (typeof itemIndex === 'number' && itemIndex >= 0 && itemIndex < preset.prompts.length) {
         const candidate = preset.prompts[itemIndex];
-        if (candidate && ((candidate.name || candidate.identifier) === itemName || candidate.identifier === identifier || !itemName)) {
-            prompt = candidate;
+        if (candidate) {
+            const candName = candidate.name || candidate.identifier;
+            if (identifier && candidate.identifier === identifier) {
+                prompt = candidate;
+            } else if (itemName && (candName === itemName || candidate.identifier === itemName)) {
+                prompt = candidate;
+            } else if (!identifier && !itemName) {
+                prompt = candidate;
+            }
         }
+    }
+    if (!prompt && identifier) {
+        prompt = preset.prompts.find(p => p.identifier === identifier);
     }
     if (!prompt && itemName) {
         prompt = preset.prompts.find(p => p.identifier === itemName) ||

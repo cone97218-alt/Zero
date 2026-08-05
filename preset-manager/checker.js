@@ -1665,10 +1665,10 @@ export const Checker = {
         return Math.max(sim, levSim);
     },
 
-    openEditor(presetName, itemName) {
+    openEditor(presetName, itemName, identifier, itemIndex) {
         // We will call the editor from ext-ui.js
         const event = new CustomEvent('zero-open-editor', {
-            detail: { presetName, itemName }
+            detail: { presetName, itemName, identifier, itemIndex }
         });
         window.dispatchEvent(event);
     },

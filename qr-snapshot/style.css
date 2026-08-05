@@ -526,6 +526,10 @@
     opacity: 0.4;
     transition: all 0.12s ease;
 }
+.zero-inline-action.pinned {
+    opacity: 0.95 !important;
+    color: var(--SmartThemeQuoteColor, #7b8cde) !important;
+}
 .zero-entry:hover .zero-inline-action,
 .zero-entry:active .zero-inline-action {
     opacity: 0.7;

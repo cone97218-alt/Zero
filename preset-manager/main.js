@@ -592,6 +592,9 @@ function ensurePanel() {
                                 </div>
                                 <div id="zero-setting-snapshot-actions-group" style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px;">
                                     <label style="display: flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer; user-select: none;">
+                                        <input type="checkbox" class="zero-snapshot-action-cb interactable" value="pin"> <i class="fa-solid fa-thumbtack" style="color: var(--SmartThemeQuoteColor);"></i> 组内置顶
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer; user-select: none;">
                                         <input type="checkbox" class="zero-snapshot-action-cb interactable" value="inject-var"> <i class="fa-solid fa-code" style="color: var(--SmartThemeQuoteColor);"></i> 注入变量
                                     </label>
                                     <label style="display: flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer; user-select: none;">
@@ -2397,8 +2400,8 @@ function ensurePanel() {
     });
 
     window.addEventListener('zero-open-editor', (e) => {
-        const { presetName, itemName } = e.detail;
-        _editor.openQuickEditor(presetName, itemName);
+        const { presetName, itemName, identifier, itemIndex } = e.detail;
+        _editor.openQuickEditor(presetName, itemName, identifier, itemIndex);
     });
 
     $('body').off('click', '#stitch-swap-btn').on('click', '#stitch-swap-btn', function() {
@@ -2600,7 +2603,7 @@ function ensurePanel() {
         const presetName = $('#stitch-preset-source').val();
         const itemName = pA.name || pA.identifier;
         if (presetName && itemName) {
-            _editor.openQuickEditor(presetName, itemName);
+            _editor.openQuickEditor(presetName, itemName, pA.identifier, index);
         }
     });
 

@@ -2,7 +2,7 @@
  * Zero Preset Manager - UI
  * Performance-optimized v2: innerHTML templates, event delegation, lazy rendering.
  */
-import { PresetManager, SnapshotManager, GroupManager, HiddenManager, UiStateManager, LinkageManager, zeroTranslate, HistoryManager, ModelProfileManager, SamplingParamsHelper, SnapshotGroupManager, getPresetPromptsWithEnabled, getStringSimilarity, detectPresetRenames, getOpenai, OpLogManager } from './state.js';
+import { PresetManager, SnapshotManager, GroupManager, PinnedManager, HiddenManager, UiStateManager, LinkageManager, zeroTranslate, HistoryManager, ModelProfileManager, SamplingParamsHelper, SnapshotGroupManager, getPresetPromptsWithEnabled, getStringSimilarity, detectPresetRenames, getOpenai, OpLogManager } from './state.js';
 import { matchPrompt } from './search-util.js';
 import { ThemeManager } from '../preset-manager/theme.js';
 
@@ -125,12 +125,15 @@ function showPrompt(modal, msg, defaultVal, onOk) {
 // ═══════════════════════════════════════
 //  HTML Templates (fast innerHTML)
 // ═══════════════════════════════════════
-function entryHTML(p, cachedActions = null) {
+function entryHTML(p, cachedActions = null, isPinned = false) {
     const id = esc(p.identifier);
     const name = esc(p.name || p.identifier);
-    const actions = (Array.isArray(cachedActions) ? cachedActions : null) || UiStateManager.get().entryActions || ['inject-var', 'folder', 'preview'];
+    const actions = (Array.isArray(cachedActions) ? cachedActions : null) || UiStateManager.get().entryActions || ['pin', 'inject-var', 'folder', 'preview'];
 
     let actionBtnsHtml = '';
+    if (actions.includes('pin')) {
+        actionBtnsHtml += `<button class="zero-icon-btn zero-inline-action${isPinned ? ' pinned' : ''}" data-action="pin" title="${isPinned ? '取消组内置顶' : '组内置顶'}" style="${isPinned ? 'color: var(--SmartThemeQuoteColor);' : ''}"><i class="fa-solid fa-thumbtack"></i></button>`;
+    }
     if (actions.includes('inject-var')) {
         actionBtnsHtml += `<button class="zero-icon-btn zero-inline-action" data-action="inject-var" title="注入变量包裹"><i class="fa-solid fa-code"></i></button>`;
     }
@@ -157,12 +160,23 @@ function entryHTML(p, cachedActions = null) {
     `</div>`;
 }
 
-function groupSectionHTML(group, members, isUngrouped, cachedActions = null) {
+function groupSectionHTML(group, members, isUngrouped, cachedActions = null, presetName = null) {
     const enabledCount = members.filter(p => p.enabled).length;
     const allOn = members.length > 0 && members.every(p => p.enabled);
     const collapsed = group.col;
-    const actions = (Array.isArray(cachedActions) ? cachedActions : null) || UiStateManager.get().entryActions || ['inject-var', 'folder', 'preview'];
-    const bodyContent = collapsed ? '' : members.map(m => entryHTML(m, actions)).join('');
+    const actions = (Array.isArray(cachedActions) ? cachedActions : null) || UiStateManager.get().entryActions || ['pin', 'inject-var', 'folder', 'preview'];
+    
+    // Sort members so pinned items come first
+    const pSet = PinnedManager.get(presetName || _currentPreset?.name || '');
+    const pinnedMembers = [];
+    const normalMembers = [];
+    members.forEach(m => {
+        if (pSet.has(m.identifier)) pinnedMembers.push(m);
+        else normalMembers.push(m);
+    });
+    const sortedMembers = [...pinnedMembers, ...normalMembers];
+
+    const bodyContent = collapsed ? '' : sortedMembers.map(m => entryHTML(m, actions, pSet.has(m.identifier))).join('');
     
     const isSingle = group.single || false;
     const switchHTML = isSingle ? '' : `<label class="zero-switch"><input type="checkbox"${allOn ? ' checked' : ''}><span class="zero-slider"></span></label>`;
@@ -979,7 +993,7 @@ function renderEntries(panel, preset, modal) {
         }
         _groupMemberMap.set(g.id, members);
         if (!query || members.length > 0) {
-            html += groupSectionHTML(g, members, false, cachedActions);
+            html += groupSectionHTML(g, members, false, cachedActions, pName);
         }
     });
 
@@ -991,7 +1005,7 @@ function renderEntries(panel, preset, modal) {
     if (filteredUngrouped.length > 0) {
         const ugId = '__ungrouped';
         _groupMemberMap.set(ugId, filteredUngrouped);
-        html += groupSectionHTML({ id: ugId, name: '未分组', col: UiStateManager.get().ungroupedCol }, filteredUngrouped, true, cachedActions);
+        html += groupSectionHTML({ id: ugId, name: '未分组', col: UiStateManager.get().ungroupedCol }, filteredUngrouped, true, cachedActions, pName);
     }
 
     if (!html.trim()) {
@@ -1134,7 +1148,10 @@ function setupEntriesDelegation(panel) {
             const id = entry.dataset.id;
             const prompt = _promptMap.get(id);
             if (!prompt) return;
-            if (action.dataset.action === 'folder') {
+            if (action.dataset.action === 'pin') {
+                PinnedManager.togglePin(_currentPreset.name, id);
+                renderEntries(panel, _currentPreset, _currentModal);
+            } else if (action.dataset.action === 'folder') {
                 const groups = GroupManager.get(_currentPreset.name);
                 if (groups.length === 0) { toastr.info('请先在「分组管理」中创建分组'); return; }
                 const groupEl = entry.closest('.zero-group');
@@ -1156,12 +1173,13 @@ function setupEntriesDelegation(panel) {
                 const ic = entry.querySelector('.zero-sel-check');
                 if (ic) ic.innerHTML = '<i class="fa-solid fa-circle-check"></i>';
             } else if (action.dataset.action === 'edit') {
+                const pIdx = _currentPreset?.prompts ? _currentPreset.prompts.indexOf(prompt) : -1;
                 if (editorModule) {
-                    editorModule.openQuickEditor(_currentPreset.name, prompt.name || prompt.identifier, prompt.identifier);
+                    editorModule.openQuickEditor(_currentPreset.name, prompt.name || prompt.identifier, prompt.identifier, pIdx >= 0 ? pIdx : undefined);
                 } else {
                     import('../preset-manager/editor.js').then(m => {
                         editorModule = m;
-                        m.openQuickEditor(_currentPreset.name, prompt.name || prompt.identifier, prompt.identifier);
+                        m.openQuickEditor(_currentPreset.name, prompt.name || prompt.identifier, prompt.identifier, pIdx >= 0 ? pIdx : undefined);
                     });
                 }
             }
@@ -1222,6 +1240,7 @@ function showEntryContextMenu(panel, entry, prompt) {
     $(`#${modalId}`).remove();
 
     const name = prompt ? (prompt.name || prompt.identifier) : '条目';
+    const isPinned = PinnedManager.isPinned(_currentPreset.name, prompt.identifier);
     const menuHtml = `
         <div id="${modalId}" class="zero-overlay" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: transparent; pointer-events: none; z-index: 20050; display: flex; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box;">
             <div class="zero-modal-card" style="background: var(--zero-bg-color, var(--SmartThemeBlurTintColor-Original, #1e1e28)); color: var(--zero-text-color, inherit); border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #444)); border-radius: 12px; width: 100%; max-width: 300px; padding: 14px; box-shadow: 0 8px 24px rgba(0,0,0,0.65); display: flex; flex-direction: column; gap: 8px; pointer-events: auto;">
@@ -1229,6 +1248,11 @@ function showEntryContextMenu(panel, entry, prompt) {
                     ${esc(name)}
                 </div>
                 
+                <div class="zero-ctx-item interactable" data-act="pin" style="padding: 10px 12px; font-size: 13px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.04);">
+                    <i class="fa-solid fa-thumbtack" style="color: var(--SmartThemeQuoteColor); width: 16px;"></i>
+                    <span>${isPinned ? '取消组内置顶' : '组内置顶'}</span>
+                </div>
+
                 <div class="zero-ctx-item interactable" data-act="inject-var" style="padding: 10px 12px; font-size: 13px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.04);">
                     <i class="fa-solid fa-code" style="color: var(--SmartThemeQuoteColor); width: 16px;"></i>
                     <span>注入变量 (自动包裹)</span>
@@ -1271,7 +1295,10 @@ function showEntryContextMenu(panel, entry, prompt) {
         const act = $(this).data('act');
         $(`#${modalId}`).remove();
 
-        if (act === 'inject-var') {
+        if (act === 'pin') {
+            PinnedManager.togglePin(_currentPreset.name, prompt.identifier);
+            renderEntries(panel, _currentPreset, _currentModal);
+        } else if (act === 'inject-var') {
             import('../preset-manager/utils.js').then(m => {
                 m.showInjectVariableModal(prompt, _currentPreset.name, (freshPreset) => {
                     renderModalContent(_currentModal, freshPreset || _currentPreset);
@@ -1294,12 +1321,13 @@ function showEntryContextMenu(panel, entry, prompt) {
         } else if (act === 'preview') {
             showContentPreview(_currentModal, prompt);
         } else if (act === 'edit') {
+            const pIdx = _currentPreset?.prompts ? _currentPreset.prompts.indexOf(prompt) : -1;
             if (editorModule) {
-                editorModule.openQuickEditor(_currentPreset.name, prompt.name || prompt.identifier, prompt.identifier);
+                editorModule.openQuickEditor(_currentPreset.name, prompt.name || prompt.identifier, prompt.identifier, pIdx >= 0 ? pIdx : undefined);
             } else {
                 import('../preset-manager/editor.js').then(m => {
                     editorModule = m;
-                    m.openQuickEditor(_currentPreset.name, prompt.name || prompt.identifier, prompt.identifier);
+                    m.openQuickEditor(_currentPreset.name, prompt.name || prompt.identifier, prompt.identifier, pIdx >= 0 ? pIdx : undefined);
                 });
             }
         }
