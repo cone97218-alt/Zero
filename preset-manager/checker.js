@@ -532,9 +532,9 @@ export const Checker = {
 
         $('body').off('click', '#check-batch-edit-selected-vars').on('click', '#check-batch-edit-selected-vars', function() {
             const selected = $('.occ-item-checkbox:checked').map((_, el) => ({
-                varName: $(el).data('var'),
-                entryName: $(el).data('entry'),
-                macroType: $(el).data('macro-type')
+                varName: $(el).attr('data-var') || $(el).data('var'),
+                entryName: $(el).attr('data-entry') || $(el).data('entry'),
+                macroType: $(el).attr('data-macro-type') || $(el).data('macroType') || ''
             })).get();
 
             if (selected.length === 0) return;

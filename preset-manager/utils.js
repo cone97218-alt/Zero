@@ -13,8 +13,8 @@ export function syncTheme() {
 }
 
 export function escapeHtml(text) {
-    if (!text) return '';
-    return text
+    if (text === null || text === undefined) return '';
+    return String(text)
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;")
@@ -1838,7 +1838,7 @@ export function showBatchEntryVariableEditModal(selectedItems, presetName, callb
     const entriesListHtml = selectedItems.map(item => `
         <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; padding: 4px 8px; background: rgba(255,255,255,0.05); border-radius: 4px; border: 1px solid var(--SmartThemeBorderColor);">
             <span style="font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(item.entryName)}</span>
-            <span style="opacity: 0.7; font-size: 10px; margin-left: 8px; flex-shrink: 0;">(变量: ${escapeHtml(item.varName)}, 语法: ${escapeHtml(item.macroType.toUpperCase())})</span>
+            <span style="opacity: 0.7; font-size: 10px; margin-left: 8px; flex-shrink: 0;">(变量: ${escapeHtml(item.varName || '')}, 语法: ${escapeHtml(String(item.macroType || '').toUpperCase())})</span>
         </div>
     `).join('');
 
