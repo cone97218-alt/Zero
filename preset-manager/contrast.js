@@ -113,7 +113,7 @@ export async function showManualLinksManager() {
     }).join('');
 
     const html = `
-        <div id="links-manager-modal" class="zero-overlay completion_prompt_manager_popup TH-script-editor-container regex_editor_template" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: transparent; pointer-events: none; z-index: 20000; display: flex; align-items: center; justify-content: center; padding: 20px;">
+        <div id="links-manager-modal" class="completion_prompt_manager_popup TH-script-editor-container regex_editor_template" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); backdrop-filter: blur(2px); z-index: 30005; display: flex; align-items: center; justify-content: center; padding: 20px;">
             <div class="zero-modal-card" style="pointer-events: auto; background: var(--zero-bg-color, var(--SmartThemeBlurTintColor-Original, #1e1e28)); color: var(--zero-text-color, inherit); padding: 24px; border-radius: 16px; width: 100%; max-width: 360px; border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor)); display: flex; flex-direction: column; max-height: 80vh;">
                 <div style="font-weight: bold; margin-bottom: 4px; font-size: 16px; color: var(--zero-text-color, inherit);">手动匹配管理</div>
                 <div style="font-size: 11px; color: var(--zero-muted-color, #999); margin-bottom: 16px;">${nameA} ⟷ ${nameB}</div>
@@ -131,6 +131,12 @@ export async function showManualLinksManager() {
     `;
 
     $('body').append(html);
+
+    $('#links-manager-modal').on('click', function(e) {
+        if (e.target.id === 'links-manager-modal') {
+            $('#links-manager-modal').remove();
+        }
+    });
 
     $('.delete-link').on('click', function() {
         HistoryManager.record();

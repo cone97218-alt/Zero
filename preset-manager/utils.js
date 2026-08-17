@@ -134,7 +134,7 @@ export async function showCollectModal(promptOrPrompts, originPreset = '') {
         const $panel = $('#zero-preset-manager-panel');
         let top = 0, left = 0, width = '100vw', height = '100vh';
         let isFixedCoords = false;
-        if ($panel.length) {
+        if ($panel.length && $panel.is(':visible') && !$('#comparison-overlay').is(':visible') && !$('#zero-quick-editor').is(':visible')) {
             const rect = $panel[0].getBoundingClientRect();
             top = rect.top;
             left = rect.left;
@@ -265,6 +265,12 @@ export async function showCollectModal(promptOrPrompts, originPreset = '') {
         };
 
         const getNote = () => $(`#${modalId} #zero-fav-note-input`).val().trim();
+
+        $(`#${modalId}`).on('click', (e) => {
+            if (e.target.id === modalId) {
+                closeModal();
+            }
+        });
 
         $(`#${modalId} .close-collect-modal`).on('click', closeModal);
 
@@ -552,7 +558,7 @@ export async function showBindRegexModal(promptOrPrompts, presetName, onSavedCal
         const $panel = $('#zero-preset-manager-panel');
         let top = 0, left = 0, width = '100vw', height = '100vh';
         let isFixedCoords = false;
-        if ($panel.length) {
+        if ($panel.length && $panel.is(':visible') && !$('#comparison-overlay').is(':visible') && !$('#zero-quick-editor').is(':visible')) {
             const rect = $panel[0].getBoundingClientRect();
             top = rect.top;
             left = rect.left;
@@ -609,8 +615,9 @@ export async function showBindRegexModal(promptOrPrompts, presetName, onSavedCal
                 left: ${isFixedCoords ? left + 'px' : '0'};
                 width: ${isFixedCoords ? width + 'px' : '100vw'};
                 height: ${isFixedCoords ? height + 'px' : '100vh'};
-                background: rgba(0,0,0,0.55);
-                z-index: 21500;
+                background: rgba(0,0,0,0.6);
+                backdrop-filter: blur(2px);
+                z-index: 30005;
                 display: flex;
                 align-items: center;
                 justify-content: center;
@@ -691,6 +698,12 @@ export async function showBindRegexModal(promptOrPrompts, presetName, onSavedCal
         `;
 
         $('body').append(modalHtml);
+
+        $(`#${modalId}`).on('click', (e) => {
+            if (e.target.id === modalId) {
+                $(`#${modalId}`).remove();
+            }
+        });
 
         $(`#${modalId}`).find('.close-bind-modal').on('click', () => {
             $(`#${modalId}`).remove();
@@ -773,8 +786,9 @@ export async function showBindPromptToRegexModal(regexScript, presetName, onSave
             <div id="${modalId}" style="
                 position: fixed;
                 top: 0; left: 0; right: 0; bottom: 0;
-                background: rgba(0,0,0,0.55);
-                z-index: 21500;
+                background: rgba(0,0,0,0.6);
+                backdrop-filter: blur(2px);
+                z-index: 30005;
                 display: flex;
                 align-items: center;
                 justify-content: center;
@@ -858,6 +872,9 @@ export async function showBindPromptToRegexModal(regexScript, presetName, onSave
         $('body').append(modalHtml);
 
         const $modal = $(`#${modalId}`);
+        $modal.on('click', (e) => {
+            if (e.target.id === modalId) $modal.remove();
+        });
         $modal.find('.close-modal').on('click', () => $modal.remove());
 
         $modal.find('#zero-prompt-search-input').on('input', function() {
@@ -980,7 +997,7 @@ export async function showStandaloneRegexManagerModal(nameA, nameB, onMigratedCa
         const modalHtml = `
             <div id="${modalId}" style="
                 position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-                background: rgba(0,0,0,0.55); z-index: 21500;
+                background: rgba(0,0,0,0.6); backdrop-filter: blur(2px); z-index: 30005;
                 display: flex; align-items: center; justify-content: center;
             ">
                 <div class="zero-modal-card" style="
@@ -1027,6 +1044,9 @@ export async function showStandaloneRegexManagerModal(nameA, nameB, onMigratedCa
 
         $('body').append(modalHtml);
         const $modal = $(`#${modalId}`);
+        $modal.on('click', (e) => {
+            if (e.target.id === modalId) $modal.remove();
+        });
         $modal.find('.close-modal').on('click', () => $modal.remove());
 
         $modal.find('.zero-standalone-migrate-btn').on('click', async function() {
@@ -1240,7 +1260,7 @@ export async function showInjectVariableModal(promptOrName, presetName = '', onS
     const originalContent = prompt.content || '';
 
     const modalHtml = `
-        <div id="${modalId}" class="zero-overlay completion_prompt_manager_popup TH-script-editor-container regex_editor_template" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: transparent; pointer-events: none; z-index: 21000; display: flex; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box;">
+        <div id="${modalId}" class="completion_prompt_manager_popup TH-script-editor-container regex_editor_template" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); backdrop-filter: blur(2px); z-index: 30005; display: flex; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box; font-family: var(--mainFontFamily, sans-serif); color: var(--SmartThemeBodyColor, #dcdcd2);">
             <div class="zero-modal-card" style="pointer-events: auto; background: var(--zero-bg-color, var(--SmartThemeBlurTintColor-Original, #1e1e28)); color: var(--zero-text-color, inherit); border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #444)); border-radius: 14px; width: 100%; max-width: 680px; display: flex; flex-direction: column; max-height: 90vh; overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,0.6);">
                 <!-- Header -->
                 <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--SmartThemeBorderColor, #333); flex-shrink: 0;">
@@ -1337,6 +1357,12 @@ export async function showInjectVariableModal(promptOrName, presetName = '', onS
     `;
 
     $('body').append(modalHtml);
+
+    $(`#${modalId}`).on('click', (e) => {
+        if (e.target.id === modalId) {
+            $(`#${modalId}`).remove();
+        }
+    });
 
     // Collapsible Settings Toggle
     $('#toggle-inject-settings-btn').on('click', function() {
