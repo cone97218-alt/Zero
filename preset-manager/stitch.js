@@ -1,4 +1,4 @@
-import { getPresetPrompts, escapeHtml, debounce, savePresetWithoutRegexToast, getPresetRegexScripts, showBindRegexModal, syncBoundRegexOnPromptToggle } from './utils.js';
+import { getPresetPrompts, escapeHtml, debounce, savePresetWithoutRegexToast, getPresetRegexScripts, showBindRegexModal, syncBoundRegexOnPromptToggle, migrateBoundRegexes } from './utils.js';
 import { HistoryManager, UiStateManager, GroupManager, OpLogManager } from '../qr-snapshot/state.js';
 import { matchStitch, highlightText as highlightTextUtil } from '../qr-snapshot/search-util.js';
 
@@ -361,23 +361,31 @@ export async function undoLastStitchGroup() {
     }
 
     const { targetPresetName, items } = _lastStitchAutoGroupState;
-    const tgtGroups = GroupManager.get(targetPresetName);
+    if (!Array.isArray(items) || items.length === 0) return;
 
+    // 1. Unassign all cloned items from target groups in a single batch call
+    const clonedIds = items.map(it => it.clonedIdentifier);
+    GroupManager.unassign(targetPresetName, clonedIds);
+
+    // 2. Restore original source groups if any
+    const restoreGroupMap = new Map();
     items.forEach(item => {
-        tgtGroups.forEach(g => {
-            if (g.ids.includes(item.clonedIdentifier)) {
-                GroupManager.unassign(targetPresetName, item.clonedIdentifier);
-            }
-        });
-
         if (item.originalSourceGroupName) {
-            let origGroup = tgtGroups.find(g => g.name === item.originalSourceGroupName);
-            if (!origGroup) {
-                origGroup = GroupManager.create(targetPresetName, item.originalSourceGroupName);
+            if (!restoreGroupMap.has(item.originalSourceGroupName)) {
+                restoreGroupMap.set(item.originalSourceGroupName, []);
             }
-            GroupManager.assign(targetPresetName, origGroup.id, [item.clonedIdentifier]);
+            restoreGroupMap.get(item.originalSourceGroupName).push(item.clonedIdentifier);
         }
     });
+
+    for (const [origGroupName, ids] of restoreGroupMap.entries()) {
+        const tgtGroups = GroupManager.get(targetPresetName);
+        let origGroup = tgtGroups.find(g => g.name === origGroupName);
+        if (!origGroup) {
+            origGroup = GroupManager.create(targetPresetName, origGroupName);
+        }
+        GroupManager.assign(targetPresetName, origGroup.id, ids);
+    }
 
     _lastStitchAutoGroupState = null;
     toastr.success(`已撤回自动分组，还原 ${items.length} 个条目的分组设置`);
@@ -427,7 +435,10 @@ export async function performStitch(itemsA, targetName, position) {
         } else if (position === 'bottom') {
             insertionIdx = orderArray.length;
         } else {
-            const idx = orderArray.findIndex(o => o && String(o.identifier) === String(position));
+            const idx = orderArray.findIndex(o => {
+                const id = (o && typeof o === 'object') ? o.identifier : o;
+                return String(id) === String(position);
+            });
             if (idx !== -1) {
                 insertionIdx = idx + 1;
             }
@@ -436,71 +447,86 @@ export async function performStitch(itemsA, targetName, position) {
         // Infer adjacent upper/lower item group in targetPreset
         const prevItem = insertionIdx > 0 ? orderArray[insertionIdx - 1] : null;
         const nextItem = insertionIdx < orderArray.length ? orderArray[insertionIdx] : null;
+        const prevId = prevItem ? ((prevItem && typeof prevItem === 'object') ? prevItem.identifier : prevItem) : null;
+        const nextId = nextItem ? ((nextItem && typeof nextItem === 'object') ? nextItem.identifier : nextItem) : null;
         const tgtGroups = GroupManager.get(targetName);
 
-        const prevGroup = prevItem ? tgtGroups.find(g => g.ids.includes(prevItem.identifier)) : null;
-        const nextGroup = nextItem ? tgtGroups.find(g => g.ids.includes(nextItem.identifier)) : null;
+        const prevGroup = prevId ? tgtGroups.find(g => g.ids.includes(prevId)) : null;
+        const nextGroup = nextId ? tgtGroups.find(g => g.ids.includes(nextId)) : null;
 
         let autoInferredGroup = null;
-        if (prevGroup && nextGroup && prevGroup.id === nextGroup.id) {
-            autoInferredGroup = prevGroup;
-        } else if (prevGroup) {
-            autoInferredGroup = prevGroup;
-        } else if (nextGroup) {
-            autoInferredGroup = nextGroup;
+        if (position !== 'top' && position !== 'bottom') {
+            if (prevGroup && nextGroup && prevGroup.id === nextGroup.id) {
+                autoInferredGroup = prevGroup;
+            } else if (prevGroup) {
+                autoInferredGroup = prevGroup;
+            }
         }
 
         const clones = [];
         const sourcePresetName = $('#stitch-preset-source').val();
         const autoGroupItems = [];
+        const isObjOrderFormat = orderArray.length === 0 || typeof orderArray[0] === 'object';
+        const srcGroups = sourcePresetName ? GroupManager.get(sourcePresetName) : [];
+
+        const srcGroupMap = new Map();
+        const autoInferredIds = [];
+
+        const autoMigrate = sourcePresetName && sourcePresetName !== targetName && UiStateManager.get().autoMigrateBoundRegex !== false;
+        const srcPresetObj = autoMigrate ? pm.getCompletionPresetByName(sourcePresetName) : null;
 
         for (const itemA of items) {
             const cloneA = JSON.parse(JSON.stringify(itemA));
             cloneA.identifier = 'system_prompt_' + Date.now() + Math.floor(Math.random() * 1000) + '_' + Math.floor(Math.random() * 1000); 
             targetPreset.prompts.push(cloneA);
-            clones.push({ identifier: cloneA.identifier, enabled: false });
+            clones.push(isObjOrderFormat ? { identifier: cloneA.identifier, enabled: false } : cloneA.identifier);
 
             let srcGroupName = null;
             if (sourcePresetName) {
-                const srcGroups = GroupManager.get(sourcePresetName);
                 const srcGroup = srcGroups.find(g => g.ids.includes(itemA.identifier));
                 if (srcGroup) srcGroupName = srcGroup.name;
             }
 
-            if (autoInferredGroup) {
-                GroupManager.assign(targetName, autoInferredGroup.id, [cloneA.identifier]);
-            } else if (srcGroupName && sourcePresetName !== targetName) {
-                let tgtGroup = tgtGroups.find(g => g.name === srcGroupName);
-                if (!tgtGroup) {
-                    tgtGroup = GroupManager.create(targetName, srcGroupName);
+            if (srcGroupName && sourcePresetName !== targetName) {
+                // Item has an original group from source preset -> preserve it in target preset
+                if (!srcGroupMap.has(srcGroupName)) {
+                    srcGroupMap.set(srcGroupName, []);
                 }
-                GroupManager.assign(targetName, tgtGroup.id, [cloneA.identifier]);
+                srcGroupMap.get(srcGroupName).push(cloneA.identifier);
+            } else if (autoInferredGroup) {
+                // Item had NO original group, but was inserted inside a group in target preset
+                autoInferredIds.push(cloneA.identifier);
+                autoGroupItems.push({
+                    clonedIdentifier: cloneA.identifier,
+                    inferredGroupName: autoInferredGroup.name,
+                    originalSourceGroupName: srcGroupName
+                });
             }
 
-            autoGroupItems.push({
-                clonedIdentifier: cloneA.identifier,
-                inferredGroupName: autoInferredGroup ? autoInferredGroup.name : null,
-                originalSourceGroupName: srcGroupName
-            });
-
             // Auto-migrate bound regexes if enabled
-            if (sourcePresetName && sourcePresetName !== targetName) {
-                const { UiStateManager } = await import('../qr-snapshot/state.js');
-                const autoMigrate = UiStateManager.get().autoMigrateBoundRegex !== false;
-                if (autoMigrate && Array.isArray(itemA.bound_regex_ids) && itemA.bound_regex_ids.length > 0) {
-                    const srcPresetObj = pm.getCompletionPresetByName(sourcePresetName);
-                    if (srcPresetObj) {
-                        const { migrateBoundRegexes } = await import('./utils.js');
-                        migrateBoundRegexes(srcPresetObj, targetPreset, itemA.bound_regex_ids);
-                    }
-                }
+            if (autoMigrate && srcPresetObj && Array.isArray(itemA.bound_regex_ids) && itemA.bound_regex_ids.length > 0) {
+                migrateBoundRegexes(srcPresetObj, targetPreset, itemA.bound_regex_ids);
             }
         }
 
-        _lastStitchAutoGroupState = {
+        // Apply group assignments in batch
+        for (const [groupName, ids] of srcGroupMap.entries()) {
+            const currentTgtGroups = GroupManager.get(targetName);
+            let tgtGroup = currentTgtGroups.find(g => g.name === groupName);
+            if (!tgtGroup) {
+                tgtGroup = GroupManager.create(targetName, groupName);
+            }
+            GroupManager.assign(targetName, tgtGroup.id, ids);
+        }
+
+        if (autoInferredGroup && autoInferredIds.length > 0) {
+            GroupManager.assign(targetName, autoInferredGroup.id, autoInferredIds);
+        }
+
+        _lastStitchAutoGroupState = autoGroupItems.length > 0 ? {
             targetPresetName: targetName,
             items: autoGroupItems
-        };
+        } : null;
 
         if (position === 'top') {
             orderArray.unshift(...clones);
@@ -525,12 +551,14 @@ export async function performStitch(itemsA, targetName, position) {
         });
         OpLogManager.add(targetName, 'stitch', '缝合', items.length === 1 ? (items[0].name || items[0].identifier) : `缝合 ${items.length} 个条目`, `从「${sourcePresetName || '其它预设'}」缝合至此预设`);
 
-        $('body').off('click', '#undo-stitch-group-link').on('click', '#undo-stitch-group-link', function() {
+        $('body').off('click', '#undo-stitch-group-link').on('click', '#undo-stitch-group-link', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
             undoLastStitchGroup();
         });
 
-        if (autoInferredGroup) {
-            toastr.success(`已缝合 ${items.length} 个条目，并根据上下文自动加入分组「${autoInferredGroup.name}」 <a id="undo-stitch-group-link" style="color: #ffaa55; text-decoration: underline; margin-left: 6px; cursor: pointer; font-weight: bold;">[撤回分组]</a>`, '', { timeOut: 10000 });
+        if (autoGroupItems.length > 0 && autoInferredGroup) {
+            toastr.success(`已缝合 ${items.length} 个条目，并根据上下文自动加入分组「${escapeHtml(autoInferredGroup.name)}」 <a id="undo-stitch-group-link" style="color: #ffaa55; text-decoration: underline; margin-left: 6px; cursor: pointer; font-weight: bold;">[撤回分组]</a>`, '', { timeOut: 10000, escapeHtml: false });
         } else if (UiStateManager.get().toastOnPresetStitch === true) {
             toastr.success(`成功缝合至预设「${targetName}」`);
         }

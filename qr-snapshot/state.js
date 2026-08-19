@@ -1027,7 +1027,8 @@ export const GroupManager = {
     unassign(presetName, identifier) {
         HistoryManager.record();
         const groups = this.get(presetName);
-        for (const g of groups) g.ids = g.ids.filter(id => id !== identifier);
+        const idsToRemove = Array.isArray(identifier) ? identifier : [identifier];
+        for (const g of groups) g.ids = g.ids.filter(id => !idsToRemove.includes(id));
         this._save(presetName, groups);
     },
 
