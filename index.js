@@ -1,5 +1,5 @@
 import { openUI } from './qr-snapshot/ui.js';
-import { preloadOpenai, PresetManager, UiStateManager } from './qr-snapshot/state.js';
+import { preloadOpenai, PresetManager, UiStateManager, StreamManager } from './qr-snapshot/state.js';
 import { init as initPresetManager } from './preset-manager/main.js';
 import { initPresetPerformanceOptimizer } from './qr-snapshot/performance.js';
 import { ThemeManager } from './preset-manager/theme.js';
@@ -202,7 +202,9 @@ window.Zero = {
             delete ctx.extensionSettings[MODULE_NAME].linkages[presetName];
         }
         ctx.saveSettingsDebounced();
-    }
+    },
+    isStreamEnabled: () => StreamManager.isStreamEnabled(),
+    toggleStream: (enable, showToast = true) => StreamManager.setStreamEnabled(enable, showToast)
 };
 
 // ── Event Listeners ────────────────────────────────────────────────────────
@@ -297,7 +299,24 @@ export async function registerZeroSlashCommands() {
             },
         }));
 
-        console.log('[Zero] Slash commands /zero-snapshot, /zero-preset and /zero-reload registered successfully');
+        // 4. Stream Toggle command
+        SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+            name: 'zero-stream',
+            aliases: ['zerostream', 'zero-streaming'],
+            helpString: '快捷开启/关闭流式输出 (支持参数 on / off / toggle)',
+            callback: async (args) => {
+                const { StreamManager } = await import('./qr-snapshot/state.js');
+                const rawArg = typeof args === 'string' ? args : (args?.unnamed || '');
+                const arg = String(rawArg).trim().toLowerCase();
+                let target = undefined;
+                if (arg === 'on' || arg === 'true' || arg === '1' || arg === '开启') target = true;
+                else if (arg === 'off' || arg === 'false' || arg === '0' || arg === '关闭') target = false;
+                const res = await StreamManager.setStreamEnabled(target);
+                return res ? '流式输出已开启' : '流式输出已关闭';
+            },
+        }));
+
+        console.log('[Zero] Slash commands /zero-snapshot, /zero-preset, /zero-reload and /zero-stream registered successfully');
     } catch (e) {
         console.warn('[Zero] Failed to register slash commands:', e);
     }

@@ -169,10 +169,11 @@
     cursor: wait;
 }
 
-/* Header Action Buttons (Save, Manage, OpLog, WindowMode, Minimize) */
+/* Header Action Buttons (Save, Manage, OpLog, WindowMode, Minimize, Stream) */
 .zero-save-btn,
 .zero-manage-btn,
 .zero-op-log-btn,
+.zero-stream-btn,
 .zero-snapshot-win-mode-btn,
 .zero-snapshot-min-btn {
     padding: 6px;
@@ -199,6 +200,8 @@
 .zero-manage-btn:active,
 .zero-op-log-btn:hover,
 .zero-op-log-btn:active,
+.zero-stream-btn:hover,
+.zero-stream-btn:active,
 .zero-snapshot-win-mode-btn:hover,
 .zero-snapshot-win-mode-btn:active,
 .zero-snapshot-min-btn:hover,
@@ -209,9 +212,18 @@
 .zero-save-btn:active,
 .zero-manage-btn:active,
 .zero-op-log-btn:active,
+.zero-stream-btn:active,
 .zero-snapshot-win-mode-btn:active,
 .zero-snapshot-min-btn:active {
     transform: scale(0.92);
+}
+.zero-stream-btn.active {
+    color: var(--SmartThemeQuoteColor, #4a90e2) !important;
+    opacity: 1;
+    text-shadow: 0 0 8px rgba(74, 144, 226, 0.4);
+}
+.zero-stream-btn.active:hover {
+    background: rgba(74, 144, 226, 0.15);
 }
 .zero-save-btn.zero-save-success {
     color: #4caf50 !important;

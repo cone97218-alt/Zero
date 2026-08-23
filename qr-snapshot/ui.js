@@ -2,7 +2,7 @@
  * Zero Preset Manager - UI
  * Performance-optimized v2: innerHTML templates, event delegation, lazy rendering.
  */
-import { PresetManager, SnapshotManager, GroupManager, PinnedManager, HiddenManager, UiStateManager, LinkageManager, zeroTranslate, HistoryManager, ModelProfileManager, SamplingParamsHelper, SnapshotGroupManager, getPresetPromptsWithEnabled, getStringSimilarity, detectPresetRenames, getOpenai, OpLogManager } from './state.js';
+import { PresetManager, SnapshotManager, GroupManager, PinnedManager, HiddenManager, UiStateManager, LinkageManager, zeroTranslate, HistoryManager, ModelProfileManager, SamplingParamsHelper, SnapshotGroupManager, getPresetPromptsWithEnabled, getStringSimilarity, detectPresetRenames, getOpenai, OpLogManager, StreamManager } from './state.js';
 import { matchPrompt } from './search-util.js';
 import { ThemeManager } from '../preset-manager/theme.js';
 
@@ -743,7 +743,6 @@ function buildModal(modal, preset, listInfo) {
     const showWinMinimizeBtn = windowState.showWinMinimizeBtn !== false && UiStateManager.get().showWinMinimizeBtn !== false;
 
     const headerChildren = [
-        h('label', { class: 'zero-header-label', text: '当前预设' }),
         select
     ];
 
@@ -801,6 +800,43 @@ function buildModal(modal, preset, listInfo) {
             onclick: () => openOpLogModal((select && select.value) ? select.value : preset.name)
         }));
     }
+
+    // ─── Stream Toggle Button ───
+    const showStreamBtn = UiStateManager.get().showStreamBtn !== false;
+    if (showStreamBtn) {
+        const isStreamOn = StreamManager.isStreamEnabled();
+        const streamBtn = h('button', {
+            class: `zero-stream-btn interactable ${isStreamOn ? 'active' : ''}`,
+            title: isStreamOn ? '流式输出: 已开启 (点击切换为非流式)' : '流式输出: 已关闭 (点击开启流式)',
+            html: '<i class="fa-solid fa-bars-staggered"></i>',
+            onclick: async (e) => {
+                const btn = e.currentTarget;
+                const newState = await StreamManager.setStreamEnabled();
+                updateStreamBtnState(btn, newState);
+            }
+        });
+
+        function updateStreamBtnState(btn, active) {
+            if (!btn) return;
+            if (active) {
+                btn.classList.add('active');
+                btn.title = '流式输出: 已开启 (点击切换为非流式)';
+            } else {
+                btn.classList.remove('active');
+                btn.title = '流式输出: 已关闭 (点击开启流式)';
+            }
+        }
+
+        const streamSyncListener = (e) => {
+            if (e.target && (e.target.id === 'stream_toggle' || e.target.id === 'streaming_textgenerationwebui' || e.target.id === 'streaming_kobold' || e.target.id === 'streaming_novel')) {
+                updateStreamBtnState(streamBtn, StreamManager.isStreamEnabled());
+            }
+        };
+        document.addEventListener('change', streamSyncListener);
+
+        headerChildren.push(streamBtn);
+    }
+
     headerChildren.push(
         h('button', {
             class: 'zero-manage-btn',

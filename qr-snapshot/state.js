@@ -2049,4 +2049,91 @@ export const OpLogManager = {
     }
 };
 
+// ─── Stream Manager ───
+export const StreamManager = {
+    /**
+     * 检测当前是否开启了流式输出
+     */
+    isStreamEnabled() {
+        const toggle = document.getElementById('stream_toggle');
+        if (toggle) {
+            return !!toggle.checked;
+        }
+        const textgen = document.getElementById('streaming_textgenerationwebui');
+        if (textgen && textgen.offsetParent !== null) return !!textgen.checked;
+        const kobold = document.getElementById('streaming_kobold');
+        if (kobold && kobold.offsetParent !== null) return !!kobold.checked;
+        const novel = document.getElementById('streaming_novel');
+        if (novel && novel.offsetParent !== null) return !!novel.checked;
+
+        try {
+            const ctx = SillyTavern.getContext();
+            if (ctx.oai_settings && typeof ctx.oai_settings.stream_openai === 'boolean') {
+                return ctx.oai_settings.stream_openai;
+            }
+        } catch (e) {}
+
+        return false;
+    },
+
+    /**
+     * 切换或设置流式输出状态
+     * @param {boolean} [enable] 指定目标状态，若未传则取反
+     * @param {boolean} [showToast=true] 是否弹出 Toast 提示
+     */
+    async setStreamEnabled(enable, showToast = true) {
+        const targetState = (typeof enable === 'boolean') ? enable : !this.isStreamEnabled();
+
+        // 1. 同步 OpenAI / Claude / ChatCompletion
+        const toggle = document.getElementById('stream_toggle');
+        if (toggle) {
+            toggle.checked = targetState;
+            toggle.dispatchEvent(new Event('change', { bubbles: true }));
+            toggle.dispatchEvent(new Event('input', { bubbles: true }));
+            if (typeof $ !== 'undefined') {
+                $(toggle).trigger('change');
+            }
+        } else {
+            try {
+                const openai = await getOpenai();
+                if (openai && openai.oai_settings) {
+                    openai.oai_settings.stream_openai = targetState;
+                }
+            } catch (e) {}
+        }
+
+        // 2. 同步 TextGen / Kobold / NovelAI 等流式开关
+        ['#streaming_textgenerationwebui', '#streaming_kobold', '#streaming_novel'].forEach(sel => {
+            const el = document.querySelector(sel);
+            if (el) {
+                el.checked = targetState;
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                if (typeof $ !== 'undefined') {
+                    $(el).trigger('change');
+                }
+            }
+        });
+
+        // 3. 触发持久化保存
+        try {
+            const ctx = SillyTavern.getContext();
+            if (typeof ctx.saveSettingsDebounced === 'function') {
+                ctx.saveSettingsDebounced();
+            }
+        } catch (e) {}
+
+        if (showToast && typeof toastr !== 'undefined') {
+            if (targetState) {
+                toastr.success('已开启流式输出 (Streaming On)');
+            } else {
+                toastr.info('已关闭流式输出 (Streaming Off)');
+            }
+        }
+
+        return targetState;
+    }
+};
+
+
 

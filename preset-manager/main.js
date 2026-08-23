@@ -956,6 +956,18 @@ function ensurePanel() {
                                          </label>
                                      </div>
 
+                                     <!-- 显示流式切换图标 -->
+                                     <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 12px; margin-top: 4px;">
+                                         <div style="flex: 1;">
+                                             <strong style="display: block; font-size: 12px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">显示流式切换图标</strong>
+                                             <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">在快照面板顶栏显示快捷切换流式/非流式输出的按钮。</span>
+                                         </div>
+                                         <label class="zero-switch">
+                                             <input type="checkbox" id="zero-setting-ui-show-stream-btn" class="interactable">
+                                             <span class="zero-slider"></span>
+                                         </label>
+                                     </div>
+
                                     <!-- 快照弹窗所占比例 -->
                                     <div style="display: flex; flex-direction: column; gap: 6px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 12px; margin-top: 4px;">
                                         <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px;">
@@ -1843,6 +1855,12 @@ function ensurePanel() {
         UiStateManager.save({ showWinMinimizeBtn: checked, windowState: ws });
         import('./window.js').then(m => m.WindowManager.applyWindowMode());
         toastr.success(checked ? '已开启显示最小化胶囊按钮' : '已关闭显示最小化胶囊按钮');
+    });
+
+    $('body').off('change', '#zero-setting-ui-show-stream-btn').on('change', '#zero-setting-ui-show-stream-btn', function() {
+        const checked = $(this).is(':checked');
+        UiStateManager.save({ showStreamBtn: checked });
+        toastr.success(checked ? '已开启显示流式切换按钮' : '已关闭显示流式切换按钮');
     });
 
     $('body').off('change', '#zero-setting-ui-modal-style').on('change', '#zero-setting-ui-modal-style', function() {
@@ -2912,6 +2930,7 @@ export function renderSettingsTab() {
     const windowState = state.windowState || {};
     $('#zero-setting-ui-show-win-mode-btn').prop('checked', windowState.showWinModeBtn !== false && state.showWinModeBtn !== false);
     $('#zero-setting-ui-show-win-min-btn').prop('checked', windowState.showWinMinimizeBtn !== false && state.showWinMinimizeBtn !== false);
+    $('#zero-setting-ui-show-stream-btn').prop('checked', state.showStreamBtn !== false);
     const scale = state.snapshotModalScale || 80;
     $('#zero-setting-ui-modal-scale').val(scale);
     $('#zero-setting-ui-modal-scale-val').text(`${scale}%`);
