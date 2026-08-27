@@ -319,13 +319,12 @@ export const PresetManager = {
         this._nativeFlushTimer = null;
         const pm = this._nativeFlushPm;
         if (!pm) return;
-        pm.saveServiceSettings();
-        if (typeof pm.renderDebounced === 'function') {
-            pm.renderDebounced();
-        } else if (typeof pm.render === 'function') {
-            pm.render();
+        if (typeof pm.saveServiceSettings === 'function') {
+            pm.saveServiceSettings();
         }
-        // Don't null out _nativeFlushPm — it's reused across multiple flushes
+        // Do NOT call pm.renderDebounced() or pm.render() while working inside Zero modal,
+        // as waking up the background native list triggers third-party extension auto-save hooks
+        // (e.g. BaiBai's pending changes save) which causes disk writes and toast popups!
     },
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -1215,9 +1214,10 @@ export const GroupManager = {
                 }
             }
 
-            const isActive = pm && typeof pm.getSelectedPresetName === 'function' ? (pm.getSelectedPresetName() === presetName) : false;
-            if (pm && typeof pm.savePreset === 'function' && preset) {
-                pm.savePreset(presetName, preset, { skipUpdate: !isActive });
+            // Silently persist to settings via debounce; NEVER call pm.savePreset() here,
+            // as pm.savePreset triggers full HTTP POST disk writes, event broadcasts, and toast popups!
+            if (typeof ctx.saveSettingsDebounced === 'function') {
+                ctx.saveSettingsDebounced();
             } else if (typeof ctx.saveSettings === 'function') {
                 ctx.saveSettings();
             }
