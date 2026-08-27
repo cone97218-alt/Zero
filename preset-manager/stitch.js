@@ -645,21 +645,22 @@ export async function performStitch(itemsA, targetName, position) {
                 if (srcGroup) srcGroupName = srcGroup.name;
             }
 
-            if (srcGroupName && sourcePresetName !== targetName) {
-                // Item has an original group from source preset -> preserve it in target preset
-                if (!srcGroupMap.has(srcGroupName)) {
-                    srcGroupMap.set(srcGroupName, []);
-                }
-                srcGroupMap.get(srcGroupName).push(cloneA.identifier);
-            } else if (autoInferredGroup) {
-                // Item had NO original group, but was inserted inside a group in target preset
+            if (autoInferredGroup) {
+                // 1. 优先归入临近条目所在分组（用户明确插入至该组上下文位置）
                 autoInferredIds.push(cloneA.identifier);
                 autoGroupItems.push({
                     clonedIdentifier: cloneA.identifier,
                     inferredGroupName: autoInferredGroup.name,
                     originalSourceGroupName: srcGroupName
                 });
+            } else if (srcGroupName && sourcePresetName !== targetName) {
+                // 2. 其次继承原预设分组（如插入顶部/底部或未分组区）
+                if (!srcGroupMap.has(srcGroupName)) {
+                    srcGroupMap.set(srcGroupName, []);
+                }
+                srcGroupMap.get(srcGroupName).push(cloneA.identifier);
             }
+            // 3. 否则保持未分类
 
             // Auto-migrate bound regexes if enabled
             if (autoMigrate && srcPresetObj && Array.isArray(itemA.bound_regex_ids) && itemA.bound_regex_ids.length > 0) {
