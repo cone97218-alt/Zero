@@ -82,6 +82,131 @@ export function resetStitchBatchMode() {
     stitch_batch_mode = false;
 }
 
+function renderStitchRowHTML(pA, index, effectiveName, regexMapA, currentPresetNames, highlightText, badgeMode, nameA, nameB) {
+    const nameStr = highlightText(pA.name || pA.identifier || '未命名', 'name');
+    const boundIds = Array.isArray(pA.bound_regex_ids) ? pA.bound_regex_ids : [];
+
+    let regexBadgeHtml = '';
+    if (badgeMode === 'all') {
+        if (boundIds.length > 0) {
+            const boundNames = boundIds.map(id => regexMapA.get(String(id)) || id);
+            const boundTitle = `已绑定 ${boundIds.length} 个预设正则:\n` + boundNames.join('\n');
+            regexBadgeHtml = `<span class="stitch-bound-regex-badge interactable" data-prompt-id="${escapeHtml(pA.identifier)}" data-preset="${escapeHtml(effectiveName)}" style="background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor); color: var(--SmartThemeQuoteColor); padding: 1px 6px; border-radius: 4px; font-size: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;" title="${escapeHtml(boundTitle)} (点击管理绑定正则)"><i class="fa-solid fa-link"></i> 正则 (${boundIds.length}): ${escapeHtml(boundNames.slice(0, 2).join(', '))}${boundNames.length > 2 ? '...' : ''}</span>`;
+        } else {
+            regexBadgeHtml = `<span class="stitch-bound-regex-badge interactable" data-prompt-id="${escapeHtml(pA.identifier)}" data-preset="${escapeHtml(effectiveName)}" style="background: rgba(255,255,255,0.03); border: 1px dashed var(--SmartThemeBorderColor); color: var(--SmartThemeEmColor); padding: 1px 6px; border-radius: 4px; font-size: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 3px; opacity: 0.7;" title="点击绑定预设正则"><i class="fa-solid fa-link"></i> 绑定正则</span>`;
+        }
+    } else if (badgeMode === 'bound_only') {
+        if (boundIds.length > 0) {
+            const boundNames = boundIds.map(id => regexMapA.get(String(id)) || id);
+            const boundTitle = `已绑定 ${boundIds.length} 个预设正则:\n` + boundNames.join('\n');
+            regexBadgeHtml = `<span class="stitch-bound-regex-badge interactable" data-prompt-id="${escapeHtml(pA.identifier)}" data-preset="${escapeHtml(effectiveName)}" style="background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor); color: var(--SmartThemeQuoteColor); padding: 1px 6px; border-radius: 4px; font-size: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;" title="${escapeHtml(boundTitle)} (点击管理绑定正则)"><i class="fa-solid fa-link"></i> 正则 (${boundIds.length}): ${escapeHtml(boundNames.slice(0, 2).join(', '))}${boundNames.length > 2 ? '...' : ''}</span>`;
+        }
+    }
+    
+    let metaHtml = '';
+    const metaParts = [];
+    if (pA.fav_origin_preset) {
+        let badgeColor = 'rgba(123, 140, 222, 0.15)';
+        let badgeTextColor = 'var(--zero-info-color, #2196F3)';
+        let originText = pA.fav_origin_preset;
+        const exists = currentPresetNames.includes(pA.fav_origin_preset);
+        if (!exists) {
+            badgeColor = 'rgba(255, 255, 255, 0.05)';
+            badgeTextColor = 'rgba(255, 255, 255, 0.4)';
+            originText = `${pA.fav_origin_preset} (已删除)`;
+        }
+        metaParts.push(`<span style="background: ${badgeColor}; color: ${badgeTextColor}; padding: 1px 6px; border-radius: 4px; font-size: 10px; display: inline-flex; align-items: center; gap: 4px;"><i class="fa-solid fa-map-pin"></i> ${highlightText(originText, 'origin')}</span>`);
+    }
+    if (pA.fav_note) {
+        metaParts.push(`<span style="color: var(--SmartThemeBodyColor); opacity: 0.6; display: inline-flex; align-items: center; gap: 4px;"><i class="fa-solid fa-tag"></i> 备注: ${highlightText(pA.fav_note, 'note')}</span>`);
+    }
+    if (regexBadgeHtml) {
+        metaParts.push(regexBadgeHtml);
+    }
+    if (metaParts.length > 0) {
+        metaHtml = `<div class="stitch-item-meta" style="font-size: 11px; margin-top: 4px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; opacity: 0.85;">${metaParts.join('')}</div>`;
+    }
+
+    return `
+        <div class="stitch-row interactable" style="
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 6px 10px;
+            background: rgba(255,255,255,0.03);
+            border-radius: 6px;
+            font-size: 13px;
+            margin-bottom: 2px;
+            cursor: pointer;
+        ">
+            <label style="margin: 0; display: ${stitch_batch_mode ? 'flex' : 'none'}; align-items: center; cursor: pointer;">
+                <input type="checkbox" class="stitch-item-cb interactable" data-index="${index}" style="margin: 0; cursor: pointer;">
+            </label>
+            <div class="stitch-row-expand-trigger" style="flex: 1; overflow: hidden;">
+                <div style="text-overflow: ellipsis; white-space: nowrap; overflow: hidden;">${nameStr}</div>
+                ${metaHtml}
+            </div>
+            <div style="display: ${stitch_batch_mode ? 'none' : 'flex'}; gap: 12px; align-items: center; margin-left: 8px; position: relative;">
+                <i class="fa-solid fa-chevron-down stitch-row-expand-trigger" style="padding: 4px; font-size: 10px; opacity: 0.5; cursor: pointer;"></i>
+                <button class="stitch-menu-btn interactable" data-index="${index}" title="操作" style="padding: 4px; background: none; border: none; color: inherit; cursor: pointer; opacity: 0.6; font-size: 14px;">
+                    <i class="fa-solid fa-ellipsis-vertical"></i>
+                </button>
+                <div class="stitch-action-dropdown" data-index="${index}" style="
+                    display: none;
+                    position: absolute;
+                    right: 0;
+                    top: 24px;
+                    background: var(--zero-bg-color, var(--SmartThemeBlurTintColor));
+                    color: var(--zero-text-color, inherit);
+                    border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor));
+                    border-radius: 8px;
+                    z-index: 1000;
+                    min-width: 100px;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                    flex-direction: column;
+                    overflow: hidden;
+                ">
+                    <div class="stitch-bind-regex-btn interactable" data-index="${index}" style="padding: 8px 12px; cursor: pointer; font-size: 12px; color: var(--SmartThemeQuoteColor); display: flex; align-items: center; gap: 8px;">
+                        <i class="fa-solid fa-link" style="width: 14px;"></i> 绑定正则
+                    </div>
+                    <div class="stitch-edit-btn interactable" data-index="${index}" style="padding: 8px 12px; cursor: pointer; font-size: 12px; display: flex; align-items: center; gap: 8px;">
+                        <i class="fa-solid fa-pencil" style="width: 14px;"></i> 编辑
+                    </div>
+                    <div class="stitch-clone-btn interactable" data-index="${index}" style="padding: 8px 12px; cursor: pointer; font-size: 12px; display: flex; align-items: center; gap: 8px;">
+                        <i class="fa-solid fa-clone" style="width: 14px;"></i> 复制
+                    </div>
+                    <div class="stitch-move-btn interactable" data-index="${index}" style="padding: 8px 12px; cursor: pointer; font-size: 12px; display: flex; align-items: center; gap: 8px;">
+                        <i class="fa-solid fa-sort" style="width: 14px;"></i> 移动
+                    </div>
+                    <div class="stitch-fav-btn interactable" data-index="${index}" style="padding: 8px 12px; cursor: pointer; font-size: 12px; display: flex; align-items: center; gap: 8px;">
+                        <i class="fa-solid fa-star" style="width: 14px; color: var(--SmartThemeQuoteColor);"></i> 收藏
+                    </div>
+                    ${nameA && nameB ? `
+                    <div class="stitch-action-btn interactable" data-index="${index}" style="padding: 8px 12px; cursor: pointer; font-size: 12px; display: flex; align-items: center; gap: 8px;">
+                        <i class="fa-solid fa-arrow-right-to-bracket" style="width: 14px;"></i> 缝合
+                    </div>` : ''}
+                    <div class="stitch-delete-btn interactable" data-index="${index}" style="padding: 8px 12px; cursor: pointer; font-size: 12px; color: #ff5f5f; display: flex; align-items: center; gap: 8px; border-top: 1px solid rgba(255,255,255,0.05);">
+                        <i class="fa-solid fa-trash-can" style="width: 14px;"></i> 删除
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="stitch-content" data-index="${index}" style="
+            display: none;
+            padding: 8px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 6px;
+            margin-top: 2px;
+            margin-bottom: 4px;
+            font-family: monospace;
+            font-size: 11px;
+            white-space: pre-wrap;
+            word-break: break-all;
+            color: var(--SmartThemeBodyColor);
+        ">${highlightText(pA.content || '', 'content')}</div>
+    `;
+}
+
 export async function renderStitchList(forceRefresh = true) {
     isRefreshingStitchList = true;
     const nameA = $('#stitch-preset-source').val();
@@ -152,132 +277,165 @@ export async function renderStitchList(forceRefresh = true) {
         }
 
         const badgeMode = UiStateManager.get().stitchRegexBadgeMode || 'bound_only';
-        const rowParts = [];
-        promptsA.forEach((pA, index) => {
-            const nameStr = highlightText(pA.name || pA.identifier || '未命名', 'name');
-            const boundIds = Array.isArray(pA.bound_regex_ids) ? pA.bound_regex_ids : [];
+        const isGroupDisplay = UiStateManager.get().stitchGroupByPresetGroup === true;
 
-            let regexBadgeHtml = '';
-            if (badgeMode === 'all') {
-                if (boundIds.length > 0) {
-                    const boundNames = boundIds.map(id => regexMapA.get(String(id)) || id);
-                    const boundTitle = `已绑定 ${boundIds.length} 个预设正则:\n` + boundNames.join('\n');
-                    regexBadgeHtml = `<span class="stitch-bound-regex-badge interactable" data-prompt-id="${escapeHtml(pA.identifier)}" data-preset="${escapeHtml(effectiveName)}" style="background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor); color: var(--SmartThemeQuoteColor); padding: 1px 6px; border-radius: 4px; font-size: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;" title="${escapeHtml(boundTitle)} (点击管理绑定正则)"><i class="fa-solid fa-link"></i> 正则 (${boundIds.length}): ${escapeHtml(boundNames.slice(0, 2).join(', '))}${boundNames.length > 2 ? '...' : ''}</span>`;
-                } else {
-                    regexBadgeHtml = `<span class="stitch-bound-regex-badge interactable" data-prompt-id="${escapeHtml(pA.identifier)}" data-preset="${escapeHtml(effectiveName)}" style="background: rgba(255,255,255,0.03); border: 1px dashed var(--SmartThemeBorderColor); color: var(--SmartThemeEmColor); padding: 1px 6px; border-radius: 4px; font-size: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 3px; opacity: 0.7;" title="点击绑定预设正则"><i class="fa-solid fa-link"></i> 绑定正则</span>`;
-                }
-            } else if (badgeMode === 'bound_only') {
-                if (boundIds.length > 0) {
-                    const boundNames = boundIds.map(id => regexMapA.get(String(id)) || id);
-                    const boundTitle = `已绑定 ${boundIds.length} 个预设正则:\n` + boundNames.join('\n');
-                    regexBadgeHtml = `<span class="stitch-bound-regex-badge interactable" data-prompt-id="${escapeHtml(pA.identifier)}" data-preset="${escapeHtml(effectiveName)}" style="background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor); color: var(--SmartThemeQuoteColor); padding: 1px 6px; border-radius: 4px; font-size: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;" title="${escapeHtml(boundTitle)} (点击管理绑定正则)"><i class="fa-solid fa-link"></i> 正则 (${boundIds.length}): ${escapeHtml(boundNames.slice(0, 2).join(', '))}${boundNames.length > 2 ? '...' : ''}</span>`;
-                }
-            }
-            
-            let metaHtml = '';
-            const metaParts = [];
-            if (pA.fav_origin_preset) {
-                let badgeColor = 'rgba(123, 140, 222, 0.15)';
-                let badgeTextColor = 'var(--zero-info-color, #2196F3)';
-                let originText = pA.fav_origin_preset;
-                const exists = currentPresetNames.includes(pA.fav_origin_preset);
-                if (!exists) {
-                    badgeColor = 'rgba(255, 255, 255, 0.05)';
-                    badgeTextColor = 'rgba(255, 255, 255, 0.4)';
-                    originText = `${pA.fav_origin_preset} (已删除)`;
-                }
-                metaParts.push(`<span style="background: ${badgeColor}; color: ${badgeTextColor}; padding: 1px 6px; border-radius: 4px; font-size: 10px; display: inline-flex; align-items: center; gap: 4px;"><i class="fa-solid fa-map-pin"></i> ${highlightText(originText, 'origin')}</span>`);
-            }
-            if (pA.fav_note) {
-                metaParts.push(`<span style="color: var(--SmartThemeBodyColor); opacity: 0.6; display: inline-flex; align-items: center; gap: 4px;"><i class="fa-solid fa-tag"></i> 备注: ${highlightText(pA.fav_note, 'note')}</span>`);
-            }
-            if (regexBadgeHtml) {
-                metaParts.push(regexBadgeHtml);
-            }
-            if (metaParts.length > 0) {
-                metaHtml = `<div class="stitch-item-meta" style="font-size: 11px; margin-top: 4px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; opacity: 0.85;">${metaParts.join('')}</div>`;
-            }
+        if (isGroupDisplay) {
+            const rawGroups = GroupManager.get(effectiveName) || [];
+            const assignedIds = new Set();
+            const groupSections = [];
 
-            rowParts.push(`
-                <div class="stitch-row interactable" style="
-                    display: flex;
-                    align-items: center;
-                    gap: 10px;
-                    padding: 6px 10px;
-                    background: rgba(255,255,255,0.03);
-                    border-radius: 6px;
-                    font-size: 13px;
-                    margin-bottom: 2px;
-                    cursor: pointer;
-                ">
-                    <label style="margin: 0; display: ${stitch_batch_mode ? 'flex' : 'none'}; align-items: center; cursor: pointer;">
-                        <input type="checkbox" class="stitch-item-cb interactable" data-index="${index}" style="margin: 0; cursor: pointer;">
-                    </label>
-                    <div class="stitch-row-expand-trigger" style="flex: 1; overflow: hidden;">
-                        <div style="text-overflow: ellipsis; white-space: nowrap; overflow: hidden;">${nameStr}</div>
-                        ${metaHtml}
-                    </div>
-                    <div style="display: ${stitch_batch_mode ? 'none' : 'flex'}; gap: 12px; align-items: center; margin-left: 8px; position: relative;">
-                        <i class="fa-solid fa-chevron-down stitch-row-expand-trigger" style="padding: 4px; font-size: 10px; opacity: 0.5; cursor: pointer;"></i>
-                        <button class="stitch-menu-btn interactable" data-index="${index}" title="操作" style="padding: 4px; background: none; border: none; color: inherit; cursor: pointer; opacity: 0.6; font-size: 14px;">
-                            <i class="fa-solid fa-ellipsis-vertical"></i>
-                        </button>
-                        <div class="stitch-action-dropdown" data-index="${index}" style="
-                            display: none;
-                            position: absolute;
-                            right: 0;
-                            top: 24px;
-                            background: var(--zero-bg-color, var(--SmartThemeBlurTintColor));
-                            color: var(--zero-text-color, inherit);
-                            border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor));
-                            border-radius: 8px;
-                            z-index: 1000;
-                            min-width: 100px;
-                            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-                            flex-direction: column;
-                            overflow: hidden;
-                        ">
-                            <div class="stitch-bind-regex-btn interactable" data-index="${index}" style="padding: 8px 12px; cursor: pointer; font-size: 12px; color: var(--SmartThemeQuoteColor); display: flex; align-items: center; gap: 8px; hover: background: rgba(255,255,255,0.05);">
-                                <i class="fa-solid fa-link" style="width: 14px;"></i> 绑定正则
+            rawGroups.forEach(g => {
+                const groupMembers = [];
+                const gIds = new Set(g.ids || []);
+                gIds.forEach(id => assignedIds.add(id));
+
+                promptsA.forEach((pA, index) => {
+                    if (gIds.has(pA.identifier)) {
+                        groupMembers.push({ pA, index });
+                    }
+                });
+
+                if (groupMembers.length > 0) {
+                    const rowsHtml = groupMembers.map(m => renderStitchRowHTML(m.pA, m.index, effectiveName, regexMapA, currentPresetNames, highlightText, badgeMode, nameA, nameB)).join('');
+                    const isCollapsed = g.col === true;
+                    groupSections.push(`
+                        <div class="stitch-group" data-gid="${escapeHtml(g.id)}">
+                            <div class="stitch-group-header interactable" data-gid="${escapeHtml(g.id)}" style="
+                                display: flex;
+                                align-items: center;
+                                justify-content: space-between;
+                                padding: 7px 10px;
+                                background: rgba(255, 255, 255, 0.04);
+                                border: 1px solid rgba(255, 255, 255, 0.08);
+                                border-radius: 6px;
+                                cursor: pointer;
+                                user-select: none;
+                                margin-top: 4px;
+                                margin-bottom: 4px;
+                            ">
+                                <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;">
+                                    <i class="fa-solid fa-chevron-down stitch-group-chevron" style="font-size: 11px; opacity: 0.7; transition: transform 0.2s; ${isCollapsed ? 'transform: rotate(-90deg);' : ''}"></i>
+                                    <i class="fa-solid fa-folder" style="color: var(--SmartThemeQuoteColor); font-size: 12px; opacity: 0.9;"></i>
+                                    <span style="font-weight: 600; font-size: 13px; color: var(--SmartThemeBodyColor); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(g.name)}</span>
+                                    <span style="font-size: 10px; opacity: 0.6; background: rgba(255,255,255,0.08); padding: 1px 6px; border-radius: 8px; flex-shrink: 0;">${groupMembers.length}</span>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 6px;">
+                                    <label class="stitch-group-cb-label" style="display: ${stitch_batch_mode ? 'flex' : 'none'}; align-items: center; gap: 4px; font-size: 11px; margin: 0; cursor: pointer; opacity: 0.85;">
+                                        <input type="checkbox" class="stitch-group-select-all interactable" data-gid="${escapeHtml(g.id)}" style="margin: 0; cursor: pointer;" title="全选/取消全选本组条目">
+                                        <span>全选</span>
+                                    </label>
+                                </div>
                             </div>
-                            <div class="stitch-edit-btn interactable" data-index="${index}" style="padding: 8px 12px; cursor: pointer; font-size: 12px; display: flex; align-items: center; gap: 8px; hover: background: rgba(255,255,255,0.05);">
-                                <i class="fa-solid fa-pencil" style="width: 14px;"></i> 编辑
-                            </div>
-                            <div class="stitch-clone-btn interactable" data-index="${index}" style="padding: 8px 12px; cursor: pointer; font-size: 12px; display: flex; align-items: center; gap: 8px; hover: background: rgba(255,255,255,0.05);">
-                                <i class="fa-solid fa-clone" style="width: 14px;"></i> 复制
-                            </div>
-                            <div class="stitch-move-btn interactable" data-index="${index}" style="padding: 8px 12px; cursor: pointer; font-size: 12px; display: flex; align-items: center; gap: 8px; hover: background: rgba(255,255,255,0.05);">
-                                <i class="fa-solid fa-sort" style="width: 14px;"></i> 移动
-                            </div>
-                            <div class="stitch-fav-btn interactable" data-index="${index}" style="padding: 8px 12px; cursor: pointer; font-size: 12px; display: flex; align-items: center; gap: 8px; hover: background: rgba(255,255,255,0.05);">
-                                <i class="fa-solid fa-star" style="width: 14px; color: var(--SmartThemeQuoteColor);"></i> 收藏
-                            </div>
-                            ${nameA && nameB ? `
-                            <div class="stitch-action-btn interactable" data-index="${index}" style="padding: 8px 12px; cursor: pointer; font-size: 12px; display: flex; align-items: center; gap: 8px; hover: background: rgba(255,255,255,0.05);">
-                                <i class="fa-solid fa-arrow-right-to-bracket" style="width: 14px;"></i> 缝合
-                            </div>` : ''}
-                            <div class="stitch-delete-btn interactable" data-index="${index}" style="padding: 8px 12px; cursor: pointer; font-size: 12px; color: #ff5f5f; display: flex; align-items: center; gap: 8px; border-top: 1px solid rgba(255,255,255,0.05); hover: background: rgba(255,255,255,0.05);">
-                                <i class="fa-solid fa-trash-can" style="width: 14px;"></i> 删除
+                            <div class="stitch-group-body" data-gid="${escapeHtml(g.id)}" style="
+                                display: ${isCollapsed ? 'none' : 'flex'};
+                                flex-direction: column;
+                                gap: 2px;
+                                padding-left: 8px;
+                                border-left: 2px solid rgba(255,255,255,0.06);
+                                margin-left: 8px;
+                                margin-bottom: 6px;
+                            ">
+                                ${rowsHtml}
                             </div>
                         </div>
+                    `);
+                }
+            });
+
+            // Ungrouped prompts
+            const ungroupedMembers = [];
+            promptsA.forEach((pA, index) => {
+                if (!assignedIds.has(pA.identifier)) {
+                    ungroupedMembers.push({ pA, index });
+                }
+            });
+
+            if (ungroupedMembers.length > 0) {
+                const rowsHtml = ungroupedMembers.map(m => renderStitchRowHTML(m.pA, m.index, effectiveName, regexMapA, currentPresetNames, highlightText, badgeMode, nameA, nameB)).join('');
+                const ugCollapsed = UiStateManager.get().ungroupedCol === true;
+                groupSections.push(`
+                    <div class="stitch-group" data-gid="__ungrouped">
+                        <div class="stitch-group-header interactable" data-gid="__ungrouped" style="
+                            display: flex;
+                            align-items: center;
+                            justify-content: space-between;
+                            padding: 7px 10px;
+                            background: rgba(255, 255, 255, 0.04);
+                            border: 1px solid rgba(255, 255, 255, 0.08);
+                            border-radius: 6px;
+                            cursor: pointer;
+                            user-select: none;
+                            margin-top: 4px;
+                            margin-bottom: 4px;
+                        ">
+                            <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;">
+                                <i class="fa-solid fa-chevron-down stitch-group-chevron" style="font-size: 11px; opacity: 0.7; transition: transform 0.2s; ${ugCollapsed ? 'transform: rotate(-90deg);' : ''}"></i>
+                                <i class="fa-solid fa-folder-open" style="color: var(--SmartThemeEmColor); font-size: 12px; opacity: 0.7;"></i>
+                                <span style="font-weight: 600; font-size: 13px; color: var(--SmartThemeBodyColor); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">未分组</span>
+                                <span style="font-size: 10px; opacity: 0.6; background: rgba(255,255,255,0.08); padding: 1px 6px; border-radius: 8px; flex-shrink: 0;">${ungroupedMembers.length}</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <label class="stitch-group-cb-label" style="display: ${stitch_batch_mode ? 'flex' : 'none'}; align-items: center; gap: 4px; font-size: 11px; margin: 0; cursor: pointer; opacity: 0.85;">
+                                    <input type="checkbox" class="stitch-group-select-all interactable" data-gid="__ungrouped" style="margin: 0; cursor: pointer;" title="全选/取消全选本组条目">
+                                    <span>全选</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="stitch-group-body" data-gid="__ungrouped" style="
+                            display: ${ugCollapsed ? 'none' : 'flex'};
+                            flex-direction: column;
+                            gap: 2px;
+                            padding-left: 8px;
+                            border-left: 2px solid rgba(255,255,255,0.06);
+                            margin-left: 8px;
+                            margin-bottom: 6px;
+                        ">
+                            ${rowsHtml}
+                        </div>
                     </div>
-                </div>
-                <div class="stitch-content" data-index="${index}" style="
-                    display: none;
-                    padding: 8px;
-                    background: rgba(0,0,0,0.2);
-                    border-radius: 6px;
-                    margin-top: 2px;
-                    margin-bottom: 4px;
-                    font-family: monospace;
-                    font-size: 11px;
-                    white-space: pre-wrap;
-                    word-break: break-all;
-                    color: var(--SmartThemeBodyColor);
-                ">${highlightText(pA.content || '', 'content')}</div>
-            `);
+                `);
+            }
+
+            $list.html(groupSections.join(''));
+        } else {
+            const rowParts = promptsA.map((pA, index) => renderStitchRowHTML(pA, index, effectiveName, regexMapA, currentPresetNames, highlightText, badgeMode, nameA, nameB));
+            $list.html(rowParts.join(''));
+        }
+
+        // Toggle stitch group collapse
+        $('.stitch-group-header').off('click').on('click', function(e) {
+            if ($(e.target).closest('.stitch-group-select-all, .stitch-group-cb-label').length) return;
+            const gid = String($(this).data('gid'));
+            const $body = $(`.stitch-group-body[data-gid="${gid}"]`);
+            const $chevron = $(this).find('.stitch-group-chevron');
+            const isCurrentlyHidden = $body.css('display') === 'none';
+            if (isCurrentlyHidden) {
+                $body.css('display', 'flex');
+                $chevron.css('transform', 'rotate(0deg)');
+            } else {
+                $body.css('display', 'none');
+                $chevron.css('transform', 'rotate(-90deg)');
+            }
+            if (gid === '__ungrouped') {
+                UiStateManager.save({ ungroupedCol: !isCurrentlyHidden });
+            } else {
+                GroupManager.setCollapse(effectiveName, gid, !isCurrentlyHidden);
+            }
         });
-        $list.html(rowParts.join(''));
+
+        // Group select-all checkbox handler
+        $('.stitch-group-select-all').off('change').on('change', function(e) {
+            e.stopPropagation();
+            const isChecked = $(this).is(':checked');
+            const gid = String($(this).data('gid'));
+            const $body = $(`.stitch-group-body[data-gid="${gid}"]`);
+            $body.find('.stitch-item-cb').prop('checked', isChecked).trigger('change');
+            if (isChecked) {
+                $body.find('.stitch-item-cb').attr('checked', 'checked');
+            } else {
+                $body.find('.stitch-item-cb').removeAttr('checked');
+            }
+        });
 
         // Bind regex modal click handler for badge
         $('.stitch-bound-regex-badge').off('click').on('click', async function(e) {
@@ -851,6 +1009,62 @@ export async function showMoveModal(items, presetName) {
     }
 }
 
+function renderPeekRowHTML(pB, index, nameB, regexMapB, highlightText, badgeMode) {
+    const nameStr = highlightText(pB.name || pB.identifier || '未命名', 'name');
+    const boundIdsB = Array.isArray(pB.bound_regex_ids) ? pB.bound_regex_ids : [];
+
+    let regexBadgeHtmlB = '';
+    if (badgeMode === 'all') {
+        if (boundIdsB.length > 0) {
+            const boundNamesB = boundIdsB.map(id => regexMapB.get(String(id)) || id);
+            const boundTitleB = `已绑定 ${boundIdsB.length} 个预设正则:\n` + boundNamesB.join('\n');
+            regexBadgeHtmlB = `<span class="stitch-peek-bound-regex-badge interactable" data-prompt-id="${escapeHtml(pB.identifier)}" data-preset="${escapeHtml(nameB)}" style="background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor); color: var(--SmartThemeQuoteColor); padding: 1px 5px; border-radius: 4px; font-size: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;" title="${escapeHtml(boundTitleB)} (点击管理绑定正则)"><i class="fa-solid fa-link"></i> 正则 (${boundIdsB.length})</span>`;
+        } else {
+            regexBadgeHtmlB = `<span class="stitch-peek-bound-regex-badge interactable" data-prompt-id="${escapeHtml(pB.identifier)}" data-preset="${escapeHtml(nameB)}" style="background: rgba(255,255,255,0.03); border: 1px dashed var(--SmartThemeBorderColor); color: var(--SmartThemeEmColor); padding: 1px 5px; border-radius: 4px; font-size: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 3px; opacity: 0.7;" title="点击绑定预设正则"><i class="fa-solid fa-link"></i> 正则</span>`;
+        }
+    } else if (badgeMode === 'bound_only') {
+        if (boundIdsB.length > 0) {
+            const boundNamesB = boundIdsB.map(id => regexMapB.get(String(id)) || id);
+            const boundTitleB = `已绑定 ${boundIdsB.length} 个预设正则:\n` + boundNamesB.join('\n');
+            regexBadgeHtmlB = `<span class="stitch-peek-bound-regex-badge interactable" data-prompt-id="${escapeHtml(pB.identifier)}" data-preset="${escapeHtml(nameB)}" style="background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor); color: var(--SmartThemeQuoteColor); padding: 1px 5px; border-radius: 4px; font-size: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;" title="${escapeHtml(boundTitleB)} (点击管理绑定正则)"><i class="fa-solid fa-link"></i> 正则 (${boundIdsB.length})</span>`;
+        }
+    }
+
+    return `
+        <div class="stitch-peek-row interactable" data-index="${index}" style="
+            padding: 6px 10px;
+            background: rgba(255,255,255,0.03);
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2px;
+        ">
+            <span class="stitch-peek-expand-trigger" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">${nameStr}</span>
+            <div style="display: flex; align-items: center; gap: 4px;">
+                ${regexBadgeHtmlB}
+                <i class="fa-solid fa-plus stitch-peek-insert-btn interactable" title="在此处下方插入已勾选的条目" data-id="${pB.identifier}" style="padding: 4px 8px; cursor: pointer; opacity: 0.6; font-size: 13px;"></i>
+                <i class="fa-solid fa-chevron-down stitch-peek-expand-trigger" style="padding: 4px; font-size: 10px; opacity: 0.5;"></i>
+            </div>
+        </div>
+        <div class="stitch-peek-content" data-index="${index}" style="
+            display: none;
+            padding: 8px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 6px;
+            margin-top: 2px;
+            margin-bottom: 4px;
+            font-family: monospace;
+            font-size: 11px;
+            white-space: pre-wrap;
+            word-break: break-all;
+            color: var(--SmartThemeBodyColor);
+        ">${highlightText(pB.content || '', 'content')}</div>
+    `;
+}
+
 export async function renderTargetBPeek() {
     isRefreshingTargetB = true;
     const nameB = $('#stitch-preset-target').val();
@@ -947,63 +1161,139 @@ export async function renderTargetBPeek() {
             `;
 
             const badgeMode = UiStateManager.get().stitchRegexBadgeMode || 'bound_only';
-            const peekParts = [firstInsertRow];
-            promptsB.forEach((pB, index) => {
-                const nameStr = highlightText(pB.name || pB.identifier || '未命名', 'name');
-                const boundIdsB = Array.isArray(pB.bound_regex_ids) ? pB.bound_regex_ids : [];
+            const isGroupDisplay = UiStateManager.get().stitchGroupByPresetGroup === true;
 
-                let regexBadgeHtmlB = '';
-                if (badgeMode === 'all') {
-                    if (boundIdsB.length > 0) {
-                        const boundNamesB = boundIdsB.map(id => regexMapB.get(String(id)) || id);
-                        const boundTitleB = `已绑定 ${boundIdsB.length} 个预设正则:\n` + boundNamesB.join('\n');
-                        regexBadgeHtmlB = `<span class="stitch-peek-bound-regex-badge interactable" data-prompt-id="${escapeHtml(pB.identifier)}" data-preset="${escapeHtml(nameB)}" style="background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor); color: var(--SmartThemeQuoteColor); padding: 1px 5px; border-radius: 4px; font-size: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;" title="${escapeHtml(boundTitleB)} (点击管理绑定正则)"><i class="fa-solid fa-link"></i> 正则 (${boundIdsB.length})</span>`;
-                    } else {
-                        regexBadgeHtmlB = `<span class="stitch-peek-bound-regex-badge interactable" data-prompt-id="${escapeHtml(pB.identifier)}" data-preset="${escapeHtml(nameB)}" style="background: rgba(255,255,255,0.03); border: 1px dashed var(--SmartThemeBorderColor); color: var(--SmartThemeEmColor); padding: 1px 5px; border-radius: 4px; font-size: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 3px; opacity: 0.7;" title="点击绑定预设正则"><i class="fa-solid fa-link"></i> 正则</span>`;
+            if (isGroupDisplay) {
+                const rawGroupsB = GroupManager.get(nameB) || [];
+                const assignedIdsB = new Set();
+                const peekSections = [firstInsertRow];
+
+                rawGroupsB.forEach(g => {
+                    const groupMembers = [];
+                    const gIds = new Set(g.ids || []);
+                    gIds.forEach(id => assignedIdsB.add(id));
+
+                    promptsB.forEach((pB, index) => {
+                        if (gIds.has(pB.identifier)) {
+                            groupMembers.push({ pB, index });
+                        }
+                    });
+
+                    if (groupMembers.length > 0) {
+                        const rowsHtml = groupMembers.map(m => renderPeekRowHTML(m.pB, m.index, nameB, regexMapB, highlightText, badgeMode)).join('');
+                        const isCollapsed = g.col === true;
+                        peekSections.push(`
+                            <div class="stitch-peek-group" data-gid="${escapeHtml(g.id)}">
+                                <div class="stitch-peek-group-header interactable" data-gid="${escapeHtml(g.id)}" style="
+                                    display: flex;
+                                    align-items: center;
+                                    justify-content: space-between;
+                                    padding: 5px 8px;
+                                    background: rgba(255, 255, 255, 0.04);
+                                    border: 1px solid rgba(255, 255, 255, 0.08);
+                                    border-radius: 6px;
+                                    cursor: pointer;
+                                    user-select: none;
+                                    margin-top: 4px;
+                                    margin-bottom: 4px;
+                                ">
+                                    <div style="display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0;">
+                                        <i class="fa-solid fa-chevron-down stitch-peek-group-chevron" style="font-size: 10px; opacity: 0.7; transition: transform 0.2s; ${isCollapsed ? 'transform: rotate(-90deg);' : ''}"></i>
+                                        <i class="fa-solid fa-folder" style="color: var(--SmartThemeQuoteColor); font-size: 11px; opacity: 0.9;"></i>
+                                        <span style="font-weight: 600; font-size: 12px; color: var(--SmartThemeBodyColor); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(g.name)}</span>
+                                        <span style="font-size: 10px; opacity: 0.6; background: rgba(255,255,255,0.08); padding: 1px 5px; border-radius: 8px; flex-shrink: 0;">${groupMembers.length}</span>
+                                    </div>
+                                </div>
+                                <div class="stitch-peek-group-body" data-gid="${escapeHtml(g.id)}" style="
+                                    display: ${isCollapsed ? 'none' : 'flex'};
+                                    flex-direction: column;
+                                    gap: 2px;
+                                    padding-left: 6px;
+                                    border-left: 2px solid rgba(255,255,255,0.06);
+                                    margin-left: 6px;
+                                    margin-bottom: 4px;
+                                ">
+                                    ${rowsHtml}
+                                </div>
+                            </div>
+                        `);
                     }
-                } else if (badgeMode === 'bound_only') {
-                    if (boundIdsB.length > 0) {
-                        const boundNamesB = boundIdsB.map(id => regexMapB.get(String(id)) || id);
-                        const boundTitleB = `已绑定 ${boundIdsB.length} 个预设正则:\n` + boundNamesB.join('\n');
-                        regexBadgeHtmlB = `<span class="stitch-peek-bound-regex-badge interactable" data-prompt-id="${escapeHtml(pB.identifier)}" data-preset="${escapeHtml(nameB)}" style="background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor); color: var(--SmartThemeQuoteColor); padding: 1px 5px; border-radius: 4px; font-size: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;" title="${escapeHtml(boundTitleB)} (点击管理绑定正则)"><i class="fa-solid fa-link"></i> 正则 (${boundIdsB.length})</span>`;
+                });
+
+                // Ungrouped prompts in B
+                const ungroupedMembersB = [];
+                promptsB.forEach((pB, index) => {
+                    if (!assignedIdsB.has(pB.identifier)) {
+                        ungroupedMembersB.push({ pB, index });
                     }
+                });
+
+                if (ungroupedMembersB.length > 0) {
+                    const rowsHtml = ungroupedMembersB.map(m => renderPeekRowHTML(m.pB, m.index, nameB, regexMapB, highlightText, badgeMode)).join('');
+                    const ugCollapsed = UiStateManager.get().ungroupedCol === true;
+                    peekSections.push(`
+                        <div class="stitch-peek-group" data-gid="__ungrouped">
+                            <div class="stitch-peek-group-header interactable" data-gid="__ungrouped" style="
+                                display: flex;
+                                align-items: center;
+                                justify-content: space-between;
+                                padding: 5px 8px;
+                                background: rgba(255, 255, 255, 0.04);
+                                border: 1px solid rgba(255, 255, 255, 0.08);
+                                border-radius: 6px;
+                                cursor: pointer;
+                                user-select: none;
+                                margin-top: 4px;
+                                margin-bottom: 4px;
+                            ">
+                                <div style="display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0;">
+                                    <i class="fa-solid fa-chevron-down stitch-peek-group-chevron" style="font-size: 10px; opacity: 0.7; transition: transform 0.2s; ${ugCollapsed ? 'transform: rotate(-90deg);' : ''}"></i>
+                                    <i class="fa-solid fa-folder-open" style="color: var(--SmartThemeEmColor); font-size: 11px; opacity: 0.7;"></i>
+                                    <span style="font-weight: 600; font-size: 12px; color: var(--SmartThemeBodyColor); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">未分组</span>
+                                    <span style="font-size: 10px; opacity: 0.6; background: rgba(255,255,255,0.08); padding: 1px 5px; border-radius: 8px; flex-shrink: 0;">${ungroupedMembersB.length}</span>
+                                </div>
+                            </div>
+                            <div class="stitch-peek-group-body" data-gid="__ungrouped" style="
+                                display: ${ugCollapsed ? 'none' : 'flex'};
+                                flex-direction: column;
+                                gap: 2px;
+                                padding-left: 6px;
+                                border-left: 2px solid rgba(255,255,255,0.06);
+                                margin-left: 6px;
+                                margin-bottom: 4px;
+                            ">
+                                ${rowsHtml}
+                            </div>
+                        </div>
+                    `);
                 }
 
-                peekParts.push(`
-                    <div class="stitch-peek-row interactable" data-index="${index}" style="
-                        padding: 6px 10px;
-                        background: rgba(255,255,255,0.03);
-                        border-radius: 6px;
-                        font-size: 12px;
-                        cursor: pointer;
-                        display: flex;
-                        justify-content: space-between;
-                        align-items: center;
-                        margin-bottom: 2px;
-                    ">
-                        <span class="stitch-peek-expand-trigger" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">${nameStr}</span>
-                        <div style="display: flex; align-items: center; gap: 4px;">
-                            ${regexBadgeHtmlB}
-                            <i class="fa-solid fa-plus stitch-peek-insert-btn interactable" title="在此处下方插入已勾选的条目" data-id="${pB.identifier}" style="padding: 4px 8px; cursor: pointer; opacity: 0.6; font-size: 13px;"></i>
-                            <i class="fa-solid fa-chevron-down stitch-peek-expand-trigger" style="padding: 4px; font-size: 10px; opacity: 0.5;"></i>
-                        </div>
-                    </div>
-                    <div class="stitch-peek-content" data-index="${index}" style="
-                        display: none;
-                        padding: 8px;
-                        background: rgba(0,0,0,0.2);
-                        border-radius: 6px;
-                        margin-top: 2px;
-                        margin-bottom: 4px;
-                        font-family: monospace;
-                        font-size: 11px;
-                        white-space: pre-wrap;
-                        word-break: break-all;
-                        color: var(--SmartThemeBodyColor);
-                    ">${highlightText(pB.content || '', 'content')}</div>
-                `);
+                $list.html(peekSections.join(''));
+            } else {
+                const peekParts = [firstInsertRow, ...promptsB.map((pB, index) => renderPeekRowHTML(pB, index, nameB, regexMapB, highlightText, badgeMode))];
+                $list.html(peekParts.join(''));
+            }
+
+            // Toggle peek group collapse
+            $('.stitch-peek-group-header').off('click').on('click', function(e) {
+                e.stopPropagation();
+                const gid = String($(this).data('gid'));
+                const $body = $(`.stitch-peek-group-body[data-gid="${gid}"]`);
+                const $chevron = $(this).find('.stitch-peek-group-chevron');
+                const isCurrentlyHidden = $body.css('display') === 'none';
+                if (isCurrentlyHidden) {
+                    $body.css('display', 'flex');
+                    $chevron.css('transform', 'rotate(0deg)');
+                } else {
+                    $body.css('display', 'none');
+                    $chevron.css('transform', 'rotate(-90deg)');
+                }
+                if (gid === '__ungrouped') {
+                    UiStateManager.save({ ungroupedCol: !isCurrentlyHidden });
+                } else {
+                    GroupManager.setCollapse(nameB, gid, !isCurrentlyHidden);
+                }
             });
-            $list.html(peekParts.join(''));
 
             $('.stitch-peek-bound-regex-badge').off('click').on('click', async function(e) {
                 e.stopPropagation();

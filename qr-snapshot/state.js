@@ -299,6 +299,36 @@ export const PresetManager = {
         return true;
     },
 
+    // ─── Native render batch gate ────────────────────────────────────────────
+    // Instead of calling promptManager.saveServiceSettings() + renderDebounced()
+    // on EVERY individual toggle, we accumulate all in-memory mutations and flush
+    // them to the native PromptManager in a single batch 300ms after the last
+    // operation. flushNativeRender() is also called as a gate before closeUI()
+    // to guarantee the native list is always eventually consistent.
+    _nativeFlushTimer: null,
+    _nativeFlushPm: null,
+
+    _scheduleNativeFlush(promptManager) {
+        if (promptManager) this._nativeFlushPm = promptManager;
+        clearTimeout(this._nativeFlushTimer);
+        this._nativeFlushTimer = setTimeout(() => this.flushNativeRender(), 300);
+    },
+
+    flushNativeRender() {
+        clearTimeout(this._nativeFlushTimer);
+        this._nativeFlushTimer = null;
+        const pm = this._nativeFlushPm;
+        if (!pm) return;
+        pm.saveServiceSettings();
+        if (typeof pm.renderDebounced === 'function') {
+            pm.renderDebounced();
+        } else if (typeof pm.render === 'function') {
+            pm.render();
+        }
+        // Don't null out _nativeFlushPm — it's reused across multiple flushes
+    },
+    // ─────────────────────────────────────────────────────────────────────────
+
     async togglePrompt(identifier, enabled) {
         HistoryManager.record();
         let itemName = identifier;
@@ -321,12 +351,8 @@ export const PresetManager = {
                     const counts = promptManager.tokenHandler.getCounts();
                     if (counts) counts[identifier] = null;
                 }
-                promptManager.saveServiceSettings();
-                if (typeof promptManager.renderDebounced === 'function') {
-                    promptManager.renderDebounced();
-                } else if (typeof promptManager.render === 'function') {
-                    promptManager.render();
-                }
+                // Batch: defer saveServiceSettings + renderDebounced to the flush gate
+                this._scheduleNativeFlush(promptManager);
             }
         }
 
@@ -386,12 +412,8 @@ export const PresetManager = {
                 }
             });
             if (changed) {
-                promptManager.saveServiceSettings();
-                if (typeof promptManager.renderDebounced === 'function') {
-                    promptManager.renderDebounced();
-                } else if (typeof promptManager.render === 'function') {
-                    promptManager.render();
-                }
+                // Batch: defer saveServiceSettings + renderDebounced to the flush gate
+                this._scheduleNativeFlush(promptManager);
             }
         }
 
@@ -981,13 +1003,269 @@ export const SnapshotManager = {
 //  Group Manager
 // ═══════════════════════════════════════
 export const GroupManager = {
+    _isBaibaiMode() {
+        return UiStateManager.get().compatBaibaiGroups === true;
+    },
+
+    _getOpenaiSettings() {
+        if (_openaiModule?.oai_settings) return _openaiModule.oai_settings;
+        if (typeof window !== 'undefined') {
+            if (window.oai_settings) return window.oai_settings;
+            if (window.openai?.oai_settings) return window.openai.oai_settings;
+            const ctx = window.SillyTavern?.getContext?.();
+            if (ctx?.oai_settings) return ctx.oai_settings;
+            if (ctx?.getOpenaiModule?.()?.oai_settings) return ctx.getOpenaiModule().oai_settings;
+        }
+        return null;
+    },
+
+    _getBaibaiState(presetName) {
+        if (!presetName) return null;
+        try {
+            const ctx = SillyTavern.getContext();
+            const pm = ctx.getPresetManager ? ctx.getPresetManager('openai') : null;
+            const oai_settings = this._getOpenaiSettings();
+            const promptManager = PresetManager.getPromptManager();
+            const activePresetName = oai_settings?.preset_settings_openai || (pm && typeof pm.getSelectedPresetName === 'function' ? pm.getSelectedPresetName() : null);
+
+            // 1. If this is the active preset, ALWAYS check live in-memory oai_settings and promptManager first!
+            if (activePresetName === presetName || !activePresetName) {
+                if (oai_settings?.extensions?.baibaiToolkit?.presetPromptGroups) {
+                    return oai_settings.extensions.baibaiToolkit.presetPromptGroups;
+                }
+                if (promptManager?.serviceSettings?.extensions?.baibaiToolkit?.presetPromptGroups) {
+                    return promptManager.serviceSettings.extensions.baibaiToolkit.presetPromptGroups;
+                }
+            }
+
+            // 2. Check preset object from PresetManager
+            const preset = pm && typeof pm.getCompletionPresetByName === 'function' ? pm.getCompletionPresetByName(presetName) : null;
+            if (preset?.extensions?.baibaiToolkit?.presetPromptGroups) {
+                return preset.extensions.baibaiToolkit.presetPromptGroups;
+            }
+
+            // 3. Fallback: check oai_settings if matching
+            if (oai_settings?.extensions?.baibaiToolkit?.presetPromptGroups && activePresetName === presetName) {
+                return oai_settings.extensions.baibaiToolkit.presetPromptGroups;
+            }
+        } catch (e) {
+            console.error('[Zero] Error getting BaiBai state:', e);
+        }
+        return null;
+    },
+
+    _getBaibaiGroups(presetName) {
+        if (!presetName) return [];
+        try {
+            const ctx = SillyTavern.getContext();
+            const pm = ctx.getPresetManager ? ctx.getPresetManager('openai') : null;
+            const preset = pm && typeof pm.getCompletionPresetByName === 'function' ? pm.getCompletionPresetByName(presetName) : null;
+            const promptManager = PresetManager.getPromptManager();
+
+            const bbState = this._getBaibaiState(presetName);
+
+            if (bbState && Array.isArray(bbState.groups)) {
+                const promptsMap = (bbState.prompts && typeof bbState.prompts === 'object') ? bbState.prompts : {};
+                const promptOrderMap = new Map();
+
+                let validPromptIds = [];
+                if (promptManager && typeof promptManager.getPromptOrderForCharacter === 'function') {
+                    const promptOrder = promptManager.getPromptOrderForCharacter(promptManager.activeCharacter) || [];
+                    validPromptIds = promptOrder.map(e => e?.identifier).filter(Boolean);
+                }
+                if (validPromptIds.length === 0 && preset && Array.isArray(preset.prompts)) {
+                    validPromptIds = preset.prompts.map(p => p.identifier).filter(Boolean);
+                }
+                validPromptIds.forEach((id, idx) => promptOrderMap.set(id, idx));
+
+                const groups = bbState.groups
+                    .filter(g => g && g.id)
+                    .map((g, index) => {
+                        const gid = String(g.id);
+                        const memberIds = [];
+                        for (const [pId, meta] of Object.entries(promptsMap)) {
+                            if (meta && String(meta.groupId) === gid) {
+                                if (promptOrderMap.size === 0 || promptOrderMap.has(pId)) {
+                                    memberIds.push(pId);
+                                }
+                            }
+                        }
+                        if (promptOrderMap.size > 0) {
+                            memberIds.sort((a, b) => (promptOrderMap.get(a) ?? 9999) - (promptOrderMap.get(b) ?? 9999));
+                        }
+                        return {
+                            id: gid,
+                            name: String(g.name || '未命名分组'),
+                            ids: memberIds,
+                            col: Boolean(g.collapsed),
+                            single: false,
+                            enabled: g.enabled !== false,
+                            type: 'normal',
+                            order: Number.isFinite(Number(g.order)) ? Number(g.order) : index
+                        };
+                    });
+                groups.sort((a, b) => a.order - b.order);
+                return groups;
+            }
+
+            // Fallback: entryGrouping format
+            const entryGrouping = preset?.extensions?.entryGrouping;
+            if (entryGrouping) {
+                let rawEntries = [];
+                if (Array.isArray(entryGrouping)) {
+                    rawEntries = entryGrouping;
+                } else if (typeof entryGrouping === 'object') {
+                    rawEntries = entryGrouping.groups || entryGrouping.entries || entryGrouping.entryGroups || entryGrouping.items || [];
+                }
+                if (Array.isArray(rawEntries) && rawEntries.length > 0) {
+                    const allPromptIds = Array.isArray(preset?.prompts) ? preset.prompts.map(p => p.identifier) : [];
+                    const groups = [];
+                    rawEntries.forEach((entry, idx) => {
+                        if (!entry || typeof entry !== 'object') return;
+                        const gid = String(entry.id || ('eg_' + idx));
+                        const name = String(entry.name || '未命名分组');
+                        let memberIds = [];
+                        if (Array.isArray(entry.memberIdentifiers)) {
+                            memberIds = entry.memberIdentifiers.filter(id => allPromptIds.includes(id));
+                        } else if (entry.startIdentifier && entry.endIdentifier) {
+                            const sIdx = allPromptIds.indexOf(entry.startIdentifier);
+                            const eIdx = allPromptIds.indexOf(entry.endIdentifier);
+                            if (sIdx >= 0 && eIdx >= 0) {
+                                const from = Math.min(sIdx, eIdx);
+                                const to = Math.max(sIdx, eIdx);
+                                memberIds = allPromptIds.slice(from, to + 1);
+                            }
+                        }
+                        groups.push({
+                            id: gid,
+                            name,
+                            ids: memberIds,
+                            col: false,
+                            single: false,
+                            enabled: true,
+                            type: 'normal',
+                            order: idx
+                        });
+                    });
+                    return groups;
+                }
+            }
+        } catch (e) {
+            console.error('[Zero] Error reading BaiBai preset groups:', e);
+        }
+        return [];
+    },
+
+    _saveBaibaiGroups(presetName, groups) {
+        if (!presetName) return;
+        try {
+            const ctx = SillyTavern.getContext();
+            const pm = ctx.getPresetManager ? ctx.getPresetManager('openai') : null;
+            const preset = pm && typeof pm.getCompletionPresetByName === 'function' ? pm.getCompletionPresetByName(presetName) : null;
+            const oai_settings = this._getOpenaiSettings();
+            const promptManager = PresetManager.getPromptManager();
+
+            const bbGroups = [];
+            const bbPrompts = {};
+
+            (groups || []).forEach((g, index) => {
+                const gid = String(g.id);
+                bbGroups.push({
+                    id: gid,
+                    name: String(g.name || '未命名分组'),
+                    order: Number.isFinite(Number(g.order)) ? Number(g.order) : index,
+                    collapsed: Boolean(g.col),
+                    enabled: g.enabled !== false
+                });
+                if (Array.isArray(g.ids)) {
+                    g.ids.forEach(id => {
+                        bbPrompts[id] = { groupId: gid };
+                    });
+                }
+            });
+
+            const newPayload = {
+                version: 1,
+                groups: bbGroups,
+                prompts: bbPrompts
+            };
+
+            if (preset) {
+                if (!preset.extensions) preset.extensions = {};
+                if (!preset.extensions.baibaiToolkit) preset.extensions.baibaiToolkit = {};
+                preset.extensions.baibaiToolkit.presetPromptGroups = newPayload;
+            }
+
+            const activePresetName = oai_settings?.preset_settings_openai || (pm && typeof pm.getSelectedPresetName === 'function' ? pm.getSelectedPresetName() : null);
+
+            if (activePresetName === presetName || !activePresetName) {
+                if (oai_settings) {
+                    if (!oai_settings.extensions) oai_settings.extensions = {};
+                    if (!oai_settings.extensions.baibaiToolkit) oai_settings.extensions.baibaiToolkit = {};
+                    oai_settings.extensions.baibaiToolkit.presetPromptGroups = newPayload;
+                }
+                if (promptManager?.serviceSettings) {
+                    if (!promptManager.serviceSettings.extensions) promptManager.serviceSettings.extensions = {};
+                    if (!promptManager.serviceSettings.extensions.baibaiToolkit) promptManager.serviceSettings.extensions.baibaiToolkit = {};
+                    promptManager.serviceSettings.extensions.baibaiToolkit.presetPromptGroups = newPayload;
+                }
+            }
+
+            const isActive = pm && typeof pm.getSelectedPresetName === 'function' ? (pm.getSelectedPresetName() === presetName) : false;
+            if (pm && typeof pm.savePreset === 'function' && preset) {
+                pm.savePreset(presetName, preset, { skipUpdate: !isActive });
+            } else if (typeof ctx.saveSettings === 'function') {
+                ctx.saveSettings();
+            }
+        } catch (e) {
+            console.error('[Zero] Error saving BaiBai preset groups:', e);
+        }
+    },
+
+    hasBaibaiGroups(presetName) {
+        if (!presetName) return false;
+        try {
+            const bbState = this._getBaibaiState(presetName);
+            if (bbState && typeof bbState === 'object') {
+                if (Array.isArray(bbState.groups) && (bbState.groups.length > 0 || (bbState.prompts && Object.keys(bbState.prompts).length > 0))) {
+                    return true;
+                }
+            }
+
+            const ctx = SillyTavern.getContext();
+            const pm = ctx.getPresetManager ? ctx.getPresetManager('openai') : null;
+            const preset = pm && typeof pm.getCompletionPresetByName === 'function' ? pm.getCompletionPresetByName(presetName) : null;
+            const entryGrouping = preset?.extensions?.entryGrouping;
+            if (entryGrouping) {
+                let rawEntries = [];
+                if (Array.isArray(entryGrouping)) {
+                    rawEntries = entryGrouping;
+                } else if (typeof entryGrouping === 'object') {
+                    rawEntries = entryGrouping.groups || entryGrouping.entries || entryGrouping.entryGroups || entryGrouping.items || [];
+                }
+                if (Array.isArray(rawEntries) && rawEntries.length > 0) {
+                    return true;
+                }
+            }
+        } catch (e) {
+            console.error('[Zero] Error checking BaiBai groups:', e);
+        }
+        return false;
+    },
+
     get(presetName) {
+        if (this._isBaibaiMode() && this.hasBaibaiGroups(presetName)) {
+            return this._getBaibaiGroups(presetName);
+        }
         const s = getSettings();
         if (!s.groups) s.groups = {};
         return s.groups[presetName] || [];
     },
 
     _save(presetName, groups) {
+        if (this._isBaibaiMode() && (this.hasBaibaiGroups(presetName) || (groups && groups.length > 0))) {
+            return this._saveBaibaiGroups(presetName, groups);
+        }
         const s = getSettings();
         if (!s.groups) s.groups = {};
         s.groups[presetName] = groups;
@@ -1106,6 +1384,9 @@ export const PinnedManager = {
         return new Set(s.pinned[presetName] || []);
     },
 
+    // Alias for get() — used in renderEntries to pre-compute once and pass down
+    getSet(presetName) { return this.get(presetName); },
+
     isPinned(presetName, target) {
         if (!presetName || !target) return false;
         const set = this.get(presetName);
@@ -1117,6 +1398,17 @@ export const PinnedManager = {
         if (set.has(id)) return true;
         if (target.identifier && set.has(target.identifier)) return true;
         if (target.name && set.has(target.name)) return true;
+        return false;
+    },
+
+    isPinnedInSet(pinnedSet, target) {
+        if (!pinnedSet || !target) return false;
+        if (typeof target === 'string') return pinnedSet.has(target);
+        const id = target.identifier || target.name;
+        if (!id) return false;
+        if (pinnedSet.has(id)) return true;
+        if (target.identifier && pinnedSet.has(target.identifier)) return true;
+        if (target.name && pinnedSet.has(target.name)) return true;
         return false;
     },
 

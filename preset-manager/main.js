@@ -622,6 +622,20 @@ function ensurePanel() {
                                     <span class="zero-slider"></span>
                                 </label>
                             </div>
+                            <!-- 柏宝箱拓展预设分组适配 -->
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 12px; margin-top: 4px;">
+                                <div style="flex: 1;">
+                                    <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px;">
+                                        <strong style="font-size: 13px; font-weight: 600; color: var(--SmartThemeBodyColor);">柏宝箱适配 (预设分组)</strong>
+                                        <span style="font-size: 10px; padding: 1px 5px; border-radius: 4px; background: rgba(123, 140, 222, 0.2); color: var(--zero-info-color, #4a90e2); font-weight: bold;">拓展兼容</span>
+                                    </div>
+                                    <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">启用后，不使用本拓展内置分组，而是直接对接并读写「柏宝箱」（ST-BaiBai-Tools）拓展的预设分组数据结构（<code style="font-size: 10px; background: rgba(0,0,0,0.2); padding: 1px 4px; border-radius: 3px;">baibaiToolkit.presetPromptGroups</code>）。快照面板、缝合列表及编辑器将统一呈现柏宝箱分组。</span>
+                                </div>
+                                <label class="zero-switch">
+                                    <input type="checkbox" id="zero-setting-compat-baibai-groups" class="interactable">
+                                    <span class="zero-slider"></span>
+                                </label>
+                            </div>
                         </div>
                     </div>
 
@@ -653,8 +667,19 @@ function ensurePanel() {
                             gap: 14px;
                             padding: 0 14px 14px 14px;
                         ">
-                            <!-- 缝合成功后收起目标预设 B -->
+                            <!-- 对接相机面板预设分组显示 -->
                             <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px;">
+                                <div style="flex: 1;">
+                                    <strong style="display: block; font-size: 13px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">对接相机面板预设分组显示</strong>
+                                    <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">在缝合界面中按照相机面板设置的预设分组结构分类展示条目，支持按组折叠/展开与批量勾选。</span>
+                                </div>
+                                <label class="zero-switch">
+                                    <input type="checkbox" id="zero-setting-stitch-group-display" class="interactable">
+                                    <span class="zero-slider"></span>
+                                </label>
+                            </div>
+                            <!-- 缝合成功后收起目标预设 B -->
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 12px; margin-top: 4px;">
                                 <div style="flex: 1;">
                                     <strong style="display: block; font-size: 13px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">缝合成功后收起目标预设 B</strong>
                                     <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">在缝合模块，成功将条目缝合后，目标预设 B 抽屉自动收回折叠状态。</span>
@@ -1875,6 +1900,28 @@ function ensurePanel() {
         toastr.success('快照弹窗动效已更新');
     });
 
+    $('body').off('change', '#zero-setting-compat-baibai-groups').on('change', '#zero-setting-compat-baibai-groups', function() {
+        const checked = $(this).is(':checked');
+        UiStateManager.save({ compatBaibaiGroups: checked });
+        toastr.success(checked ? '已开启柏宝箱预设分组适配' : '已关闭柏宝箱预设分组适配');
+        renderedTabs.delete('stitch');
+        renderedTabs.delete('contrast');
+        renderedTabs.delete('manage');
+        if (_stitch && typeof _stitch.renderStitchList === 'function') {
+            _stitch.renderStitchList(false);
+        }
+    });
+
+    $('body').off('change', '#zero-setting-stitch-group-display').on('change', '#zero-setting-stitch-group-display', function() {
+        const checked = $(this).is(':checked');
+        UiStateManager.save({ stitchGroupByPresetGroup: checked });
+        toastr.success(checked ? '已开启缝合界面预设分组显示' : '已关闭缝合界面预设分组显示');
+        renderedTabs.delete('stitch');
+        if (_stitch && typeof _stitch.renderStitchList === 'function') {
+            _stitch.renderStitchList(false);
+        }
+    });
+
     $('body').off('change', '#zero-setting-stitch-collapse-b').on('change', '#zero-setting-stitch-collapse-b', function() {
         const checked = $(this).is(':checked');
         UiStateManager.save({ collapseTargetBOnStitch: checked });
@@ -2896,8 +2943,10 @@ export function renderSettingsTab() {
     $('#zero-setting-toast-stitch').prop('checked', state.toastOnPresetStitch === true);
     $('#zero-setting-confirm-snapshot').prop('checked', state.confirmOnSnapshot === true);
     $('#zero-setting-enable-op-log').prop('checked', state.enablePresetOpLog !== false);
+    $('#zero-setting-compat-baibai-groups').prop('checked', state.compatBaibaiGroups === true);
 
     // Stitch switches
+    $('#zero-setting-stitch-group-display').prop('checked', state.stitchGroupByPresetGroup === true);
     $('#zero-setting-stitch-collapse-b').prop('checked', state.collapseTargetBOnStitch === true);
     $('#zero-setting-stitch-auto-migrate-regex').prop('checked', state.autoMigrateBoundRegex !== false);
     $('#zero-setting-stitch-regex-badge-mode').val(state.stitchRegexBadgeMode || 'bound_only');

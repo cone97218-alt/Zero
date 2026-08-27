@@ -160,26 +160,40 @@ function entryHTML(p, cachedActions = null, isPinned = false) {
     `</div>`;
 }
 
-function renderGroupMembersHTML(members, cachedActions = null, presetName = null) {
+// pinnedSet: pre-computed Set<string> for the current preset — avoids one getSettings()
+// call per member. Pass null to fall back to the legacy per-call path.
+function renderGroupMembersHTML(members, cachedActions = null, presetName = null, pinnedSet = null) {
     const pName = presetName || _currentPreset?.name || '';
     const actions = (Array.isArray(cachedActions) ? cachedActions : null) || UiStateManager.get().entryActions || ['pin', 'inject-var', 'folder', 'preview'];
     
     const pinnedMembers = [];
     const normalMembers = [];
-    members.forEach(m => {
-        if (PinnedManager.isPinned(pName, m)) pinnedMembers.push(m);
-        else normalMembers.push(m);
-    });
+    if (pinnedSet) {
+        // Fast path: use pre-computed set — O(1) per member, no settings read
+        members.forEach(m => {
+            if (PinnedManager.isPinnedInSet(pinnedSet, m)) pinnedMembers.push(m);
+            else normalMembers.push(m);
+        });
+    } else {
+        // Fallback: read pinned set fresh (only used when called from lazy-expand)
+        const freshSet = PinnedManager.getSet(pName);
+        members.forEach(m => {
+            if (PinnedManager.isPinnedInSet(freshSet, m)) pinnedMembers.push(m);
+            else normalMembers.push(m);
+        });
+    }
     const sortedMembers = [...pinnedMembers, ...normalMembers];
 
-    return sortedMembers.map(m => entryHTML(m, actions, PinnedManager.isPinned(pName, m))).join('');
+    return sortedMembers.map(m => entryHTML(m, actions, pinnedMembers.includes(m))).join('');
 }
 
-function groupSectionHTML(group, members, isUngrouped, cachedActions = null, presetName = null) {
+function groupSectionHTML(group, members, isUngrouped, cachedActions = null, presetName = null, pinnedSet = null) {
     const enabledCount = members.filter(p => p.enabled).length;
     const allOn = members.length > 0 && members.every(p => p.enabled);
     const collapsed = group.col;
-    const bodyContent = collapsed ? '' : renderGroupMembersHTML(members, cachedActions, presetName);
+    // Collapsed groups: always skip member render — lazy expand handles it in handleGroupCollapse.
+    // This avoids building potentially hundreds of entry HTML strings that the user never sees.
+    const bodyContent = collapsed ? '' : renderGroupMembersHTML(members, cachedActions, presetName, pinnedSet);
     
     const isSingle = group.single || false;
     const switchHTML = isSingle ? '' : `<label class="zero-switch"><input type="checkbox"${allOn ? ' checked' : ''}><span class="zero-slider"></span></label>`;
@@ -435,6 +449,7 @@ export async function openUI() {
     }
 
     try {
+        PresetManager.invalidate();
         let preset = PresetManager.loadSync();
         let listInfo = PresetManager.listNamesSync();
         if (!preset) {
@@ -470,6 +485,9 @@ export async function openUI() {
 
 export function closeUI() {
     flushToggles();
+    // Immediately flush any pending native PromptManager render/save
+    // so the native list is consistent the moment the panel closes.
+    PresetManager.flushNativeRender();
     if (msActive) exitMultiSelect();
     if (overlay) {
         // Save scroll position before closing
@@ -1021,6 +1039,9 @@ function renderEntries(panel, preset, modal) {
 
     const query = searchQuery ? searchQuery.trim().toLowerCase() : '';
     const cachedActions = UiStateManager.get().entryActions || ['inject-var', 'folder', 'preview'];
+    // Pre-compute pinned set once for this entire render pass — avoids one
+    // getSettings() + new Set() call per entry (O(n) → O(1) per member).
+    const pinnedSet = PinnedManager.getSet(pName);
 
     // Build all groups as one HTML string
     let html = '';
@@ -1032,7 +1053,7 @@ function renderEntries(panel, preset, modal) {
         }
         _groupMemberMap.set(g.id, members);
         if (!query || members.length > 0) {
-            html += groupSectionHTML(g, members, false, cachedActions, pName);
+            html += groupSectionHTML(g, members, false, cachedActions, pName, pinnedSet);
         }
     });
 
@@ -1044,7 +1065,7 @@ function renderEntries(panel, preset, modal) {
     if (filteredUngrouped.length > 0) {
         const ugId = '__ungrouped';
         _groupMemberMap.set(ugId, filteredUngrouped);
-        html += groupSectionHTML({ id: ugId, name: '未分组', col: UiStateManager.get().ungroupedCol }, filteredUngrouped, true, cachedActions, pName);
+        html += groupSectionHTML({ id: ugId, name: '未分组', col: UiStateManager.get().ungroupedCol }, filteredUngrouped, true, cachedActions, pName, pinnedSet);
     }
 
     if (!html.trim()) {
