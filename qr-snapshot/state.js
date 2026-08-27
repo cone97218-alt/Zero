@@ -1069,10 +1069,19 @@ export const GroupManager = {
                 const promptOrderMap = new Map();
 
                 let validPromptIds = [];
-                if (promptManager && typeof promptManager.getPromptOrderForCharacter === 'function') {
+                const oai_settings_live = this._getOpenaiSettings();
+                const activePresetName = oai_settings_live?.preset_settings_openai ||
+                    (pm && typeof pm.getSelectedPresetName === 'function' ? pm.getSelectedPresetName() : null);
+                const isActivePreset = !activePresetName || activePresetName === presetName;
+
+                if (isActivePreset && promptManager && typeof promptManager.getPromptOrderForCharacter === 'function') {
+                    // Only use the live prompt order when we ARE viewing the active preset.
+                    // For any other preset, promptManager reflects the active preset's prompts,
+                    // causing all member IDs to fail the promptOrderMap.has() check → empty groups.
                     const promptOrder = promptManager.getPromptOrderForCharacter(promptManager.activeCharacter) || [];
                     validPromptIds = promptOrder.map(e => e?.identifier).filter(Boolean);
                 }
+                // Always fall back to preset.prompts for the viewed preset when needed
                 if (validPromptIds.length === 0 && preset && Array.isArray(preset.prompts)) {
                     validPromptIds = preset.prompts.map(p => p.identifier).filter(Boolean);
                 }
