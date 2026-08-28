@@ -4814,3 +4814,18 @@ export function openOpLogModal(presetName) {
     });
 }
 
+// Keep snapshot panel in sync when undo/redo or preset content updates
+$(window).off('zero-history-changed.snapshot zero-content-updated.snapshot').on('zero-history-changed.snapshot zero-content-updated.snapshot', async () => {
+    if (_currentModal && document.body.contains(_currentModal)) {
+        PresetManager.invalidate();
+        const freshPreset = await PresetManager.load();
+        const listInfo = await PresetManager.listNames();
+        if (freshPreset) {
+            _currentPreset = freshPreset;
+            _currentModal.innerHTML = '';
+            buildModal(_currentModal, freshPreset, listInfo);
+        }
+    }
+});
+
+

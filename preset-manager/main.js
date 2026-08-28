@@ -2797,7 +2797,7 @@ function renderTabContent(tab) {
                 if (_stitch && typeof _stitch.restorePeekScroll === 'function') _stitch.restorePeekScroll();
             });
         } else {
-            if (_stitch && typeof _stitch.renderStitchList === 'function') _stitch.renderStitchList(false);
+            if (_stitch && typeof _stitch.renderStitchList === 'function') _stitch.renderStitchList(true);
             if (_stitch && typeof _stitch.restorePeekScroll === 'function') _stitch.restorePeekScroll();
         }
     }

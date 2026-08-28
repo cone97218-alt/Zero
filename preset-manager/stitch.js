@@ -512,11 +512,19 @@ export async function renderStitchList(forceRefresh = true) {
 
 let _lastStitchAutoGroupState = null;
 
+$(window).off('zero-history-changed.stitch').on('zero-history-changed.stitch', () => {
+    _cachedStitchPrompts = null;
+    _cachedStitchName = null;
+    _lastStitchAutoGroupState = null;
+});
+
 export async function undoLastStitchGroup() {
     if (!_lastStitchAutoGroupState || !_lastStitchAutoGroupState.targetPresetName) {
         toastr.info('暂无可撤回的缝合分组变动');
         return;
     }
+
+    HistoryManager.record();
 
     const { targetPresetName, items } = _lastStitchAutoGroupState;
     if (!Array.isArray(items) || items.length === 0) return;

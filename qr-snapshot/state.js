@@ -2120,12 +2120,22 @@ export const HistoryManager = {
             // Deep clone manual links from localStorage
             const manualLinks = JSON.parse(localStorage.getItem('zero_manual_links') || '{}');
 
+            // Deep clone live runtime BaiBai group states from oai_settings and promptManager.serviceSettings
+            const oai_settings = GroupManager._getOpenaiSettings();
+            const promptManager = PresetManager.getPromptManager();
+            const oaiBaibaiGroups = oai_settings?.extensions?.baibaiToolkit?.presetPromptGroups
+                ? JSON.parse(JSON.stringify(oai_settings.extensions.baibaiToolkit.presetPromptGroups)) : null;
+            const pmBaibaiGroups = promptManager?.serviceSettings?.extensions?.baibaiToolkit?.presetPromptGroups
+                ? JSON.parse(JSON.stringify(promptManager.serviceSettings.extensions.baibaiToolkit.presetPromptGroups)) : null;
+
             return {
                 presets: clonedPresets,
                 preset_names: clonedNames,
                 activePresetName: activePresetName,
                 zeroSettings: zeroSettings,
-                manualLinks: manualLinks
+                manualLinks: manualLinks,
+                oaiBaibaiGroups: oaiBaibaiGroups,
+                pmBaibaiGroups: pmBaibaiGroups
             };
         } catch (e) {
             console.error('[Zero] Failed to capture state for undo:', e);
@@ -2297,26 +2307,6 @@ export const HistoryManager = {
                 Object.assign(list.preset_names, snapshot.preset_names);
             }
             
-            // Restore active preset selection
-            const currentActiveName = pm.getSelectedPresetName();
-            if (currentActiveName !== snapshot.activePresetName) {
-                const activeVal = pm.findPreset(snapshot.activePresetName);
-                if (activeVal !== undefined && activeVal !== null) {
-                    await pm.selectPreset(activeVal);
-                }
-            } else {
-                // If active preset didn't change, trigger light-weight refresh of prompt order
-                const openai = await getOpenai();
-                const promptManager = openai?.promptManager;
-                if (promptManager && typeof promptManager.render === 'function') {
-                    if (typeof promptManager.renderDebounced === 'function') {
-                        promptManager.renderDebounced();
-                    } else {
-                        promptManager.render();
-                    }
-                }
-            }
-            
             // Restore Zero extension settings
             const s = getSettings();
             for (const key in s) {
@@ -2331,10 +2321,57 @@ export const HistoryManager = {
             } else {
                 localStorage.removeItem('zero_manual_links');
             }
-            
+
+            // Restore live in-memory BaiBai runtime states
+            const oai_settings = GroupManager._getOpenaiSettings();
+            const promptManager = PresetManager.getPromptManager();
+            if (oai_settings) {
+                if (!oai_settings.extensions) oai_settings.extensions = {};
+                if (!oai_settings.extensions.baibaiToolkit) oai_settings.extensions.baibaiToolkit = {};
+                if (snapshot.oaiBaibaiGroups) {
+                    oai_settings.extensions.baibaiToolkit.presetPromptGroups = JSON.parse(JSON.stringify(snapshot.oaiBaibaiGroups));
+                } else {
+                    delete oai_settings.extensions.baibaiToolkit.presetPromptGroups;
+                }
+            }
+            if (promptManager?.serviceSettings) {
+                if (!promptManager.serviceSettings.extensions) promptManager.serviceSettings.extensions = {};
+                if (!promptManager.serviceSettings.extensions.baibaiToolkit) promptManager.serviceSettings.extensions.baibaiToolkit = {};
+                if (snapshot.pmBaibaiGroups) {
+                    promptManager.serviceSettings.extensions.baibaiToolkit.presetPromptGroups = JSON.parse(JSON.stringify(snapshot.pmBaibaiGroups));
+                } else {
+                    delete promptManager.serviceSettings.extensions.baibaiToolkit.presetPromptGroups;
+                }
+            }
+
             // Invalidate Zero caches
             PresetManager.invalidate();
-            
+
+            // Restore active preset selection and ALWAYS reload preset into promptManager
+            // so SillyTavern native promptManager, BaiBai Toolkit Vue state, and Zero state reload fresh prompts!
+            const currentActiveName = pm.getSelectedPresetName();
+            const targetActiveName = snapshot.activePresetName || currentActiveName;
+            if (targetActiveName) {
+                if (typeof pm.loadPreset === 'function') {
+                    await pm.loadPreset(targetActiveName);
+                } else {
+                    const activeVal = pm.findPreset(targetActiveName);
+                    if (activeVal !== undefined && activeVal !== null) {
+                        await pm.selectPreset(activeVal);
+                    }
+                }
+            }
+
+            const openai = await getOpenai();
+            const freshPm = openai?.promptManager || promptManager;
+            if (freshPm && typeof freshPm.render === 'function') {
+                if (typeof freshPm.renderDebounced === 'function') {
+                    freshPm.renderDebounced();
+                } else {
+                    freshPm.render();
+                }
+            }
+
             // Force refresh native preset manager
             if (typeof pm.render === 'function') pm.render();
             else if (typeof pm.populate === 'function') pm.populate();
