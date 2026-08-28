@@ -1081,6 +1081,15 @@ export const GroupManager = {
                 }
                 Array.from(validPromptIds).forEach((id, idx) => promptOrderMap.set(id, idx));
 
+                const s = getSettings();
+                const zeroGroups = (s.groups && s.groups[presetName]) || [];
+                const zeroGroupMap = new Map();
+                const zeroGroupByName = new Map();
+                zeroGroups.forEach(zg => {
+                    if (zg.id) zeroGroupMap.set(zg.id, zg);
+                    if (zg.name) zeroGroupByName.set(zg.name, zg);
+                });
+
                 const groups = bbState.groups
                     .filter(g => g && g.id)
                     .map((g, index) => {
@@ -1096,14 +1105,19 @@ export const GroupManager = {
                         if (promptOrderMap.size > 0) {
                             memberIds.sort((a, b) => (promptOrderMap.get(a) ?? 9999) - (promptOrderMap.get(b) ?? 9999));
                         }
+
+                        const zeroMeta = zeroGroupMap.get(gid) || zeroGroupByName.get(g.name);
+                        const isSingle = g.single !== undefined ? Boolean(g.single) : Boolean(zeroMeta?.single);
+                        const gType = g.type || zeroMeta?.type || 'normal';
+
                         return {
                             id: gid,
                             name: String(g.name || '未命名分组'),
                             ids: memberIds,
                             col: Boolean(g.collapsed),
-                            single: false,
+                            single: isSingle,
                             enabled: g.enabled !== false,
-                            type: 'normal',
+                            type: gType,
                             order: Number.isFinite(Number(g.order)) ? Number(g.order) : index
                         };
                     });
@@ -1123,6 +1137,15 @@ export const GroupManager = {
                 if (Array.isArray(rawEntries) && rawEntries.length > 0) {
                     const allPromptIds = Array.isArray(preset?.prompts) ? preset.prompts.map(p => p.identifier) : [];
                     const groups = [];
+                    const s = getSettings();
+                    const zeroGroups = (s.groups && s.groups[presetName]) || [];
+                    const zeroGroupMap = new Map();
+                    const zeroGroupByName = new Map();
+                    zeroGroups.forEach(zg => {
+                        if (zg.id) zeroGroupMap.set(zg.id, zg);
+                        if (zg.name) zeroGroupByName.set(zg.name, zg);
+                    });
+
                     rawEntries.forEach((entry, idx) => {
                         if (!entry || typeof entry !== 'object') return;
                         const gid = String(entry.id || ('eg_' + idx));
@@ -1139,14 +1162,19 @@ export const GroupManager = {
                                 memberIds = allPromptIds.slice(from, to + 1);
                             }
                         }
+
+                        const zeroMeta = zeroGroupMap.get(gid) || zeroGroupByName.get(name);
+                        const isSingle = entry.single !== undefined ? Boolean(entry.single) : Boolean(zeroMeta?.single);
+                        const gType = entry.type || zeroMeta?.type || 'normal';
+
                         groups.push({
                             id: gid,
                             name,
                             ids: memberIds,
                             col: false,
-                            single: false,
+                            single: isSingle,
                             enabled: true,
-                            type: 'normal',
+                            type: gType,
                             order: idx
                         });
                     });
@@ -1178,7 +1206,9 @@ export const GroupManager = {
                     name: String(g.name || '未命名分组'),
                     order: Number.isFinite(Number(g.order)) ? Number(g.order) : index,
                     collapsed: Boolean(g.col),
-                    enabled: g.enabled !== false
+                    enabled: g.enabled !== false,
+                    single: Boolean(g.single),
+                    type: g.type || 'normal'
                 });
                 if (Array.isArray(g.ids)) {
                     g.ids.forEach(id => {
@@ -1213,6 +1243,11 @@ export const GroupManager = {
                     promptManager.serviceSettings.extensions.baibaiToolkit.presetPromptGroups = newPayload;
                 }
             }
+
+            // Also mirror to Zero's internal settings so custom metadata (single, type) is double-persisted
+            const s = getSettings();
+            if (!s.groups) s.groups = {};
+            s.groups[presetName] = groups;
 
             // Silently persist to settings via debounce; NEVER call pm.savePreset() here,
             // as pm.savePreset triggers full HTTP POST disk writes, event broadcasts, and toast popups!
