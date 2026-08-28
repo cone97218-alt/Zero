@@ -330,53 +330,14 @@ export const PresetManager = {
 
     async togglePrompt(identifier, enabled) {
         HistoryManager.record();
-        let itemName = identifier;
-        if (_preset && Array.isArray(_preset.prompts)) {
-            const p = _preset.prompts.find(x => x.identifier === identifier || x.name === identifier);
-            if (p) {
-                p.enabled = enabled;
-                itemName = p.name || p.identifier;
-            }
-        }
-
-        const openai = await getOpenai();
-        const promptManager = openai.promptManager;
-        if (promptManager) {
-            const promptOrder = promptManager.getPromptOrderForCharacter(promptManager.activeCharacter) || [];
-            const orderItem = promptOrder.find(o => o.identifier === identifier || o.name === identifier);
-            if (orderItem) {
-                orderItem.enabled = enabled;
-                if (promptManager.tokenHandler && typeof promptManager.tokenHandler.getCounts === 'function') {
-                    const counts = promptManager.tokenHandler.getCounts();
-                    if (counts) counts[identifier] = null;
-                }
-                // Batch: defer saveServiceSettings + renderDebounced to the flush gate
-                this._scheduleNativeFlush(promptManager);
-            }
-        }
-
-        // Sync to ST's active completion preset object as well
         const ctx = window.SillyTavern?.getContext?.();
         const pm = ctx?.getPresetManager?.('openai');
-        if (pm) {
-            const activePresetName = pm.getSelectedPresetName?.();
-            if (activePresetName) {
-                const presetObj = pm.getCompletionPresetByName?.(activePresetName);
-                if (presetObj && Array.isArray(presetObj.prompts)) {
-                    const presetP = presetObj.prompts.find(x => x.identifier === identifier || x.name === identifier || x.name === itemName);
-                    if (presetP) {
-                        presetP.enabled = enabled;
-                    }
-                }
-            }
+        const activePresetName = _preset?.name || pm?.getSelectedPresetName?.();
+        
+        const resolvedMap = resolvePromptConstraints(activePresetName, new Map([[identifier, enabled]]), _preset?.prompts);
+        if (resolvedMap.size > 0) {
+            await this.batchToggleMap(resolvedMap);
         }
-
-        // Record operation log
-        OpLogManager.add(_preset?.name || pm?.getSelectedPresetName?.(), 'toggle', '开关', itemName, enabled ? '切换为 [开启]' : '切换为 [关闭]');
-
-        import('../preset-manager/utils.js').then(m => m.syncBoundRegexOnPromptToggle([{ identifier, enabled }])).catch(e => {
-            console.warn('[Zero] Failed to sync bound regex on togglePrompt:', e);
-        });
     },
 
     /** Batch update from a Map<identifier, enabled> */
@@ -1580,6 +1541,136 @@ export const LinkageManager = {
         this._save(targetPresetName, targetLinks);
     }
 };
+
+/**
+ * Resolves single-select group constraints and linkage propagation recursively.
+ * @param {string} presetName
+ * @param {Map<string, boolean>|Array<{identifier: string, enabled: boolean}>|object} toggledItems
+ * @param {Array<object>|Map<string, object>|null} [promptList]
+ * @returns {Map<string, boolean>} Fully resolved Map of identifier/name -> enabled state
+ */
+export function resolvePromptConstraints(presetName, toggledItems, promptList = null) {
+    const resolvedMap = new Map();
+    if (!presetName) return resolvedMap;
+
+    const groups = GroupManager.get(presetName) || [];
+    const linkages = LinkageManager.get(presetName) || [];
+
+    // Build prompt lookup tables
+    const promptById = new Map();
+    const promptByName = new Map();
+
+    const addPromptToLookup = (p) => {
+        if (!p) return;
+        if (p.identifier !== undefined && p.identifier !== null) {
+            promptById.set(String(p.identifier), p);
+        }
+        if (p.name) {
+            promptByName.set(String(p.name), p);
+        }
+    };
+
+    if (promptList instanceof Map) {
+        promptList.forEach(p => addPromptToLookup(p));
+    } else if (Array.isArray(promptList)) {
+        promptList.forEach(p => addPromptToLookup(p));
+    } else if (_preset && Array.isArray(_preset.prompts) && _preset.name === presetName) {
+        _preset.prompts.forEach(p => addPromptToLookup(p));
+    } else {
+        try {
+            const ctx = SillyTavern?.getContext?.();
+            const pm = ctx?.getPresetManager?.('openai');
+            const presetObj = pm?.getCompletionPresetByName?.(presetName);
+            if (presetObj && Array.isArray(presetObj.prompts)) {
+                presetObj.prompts.forEach(p => addPromptToLookup(p));
+            }
+        } catch (e) {}
+    }
+
+    const queue = [];
+    if (toggledItems instanceof Map) {
+        toggledItems.forEach((enabled, id) => {
+            if (id !== undefined && id !== null) {
+                queue.push({ id: String(id), enabled: Boolean(enabled) });
+            }
+        });
+    } else if (Array.isArray(toggledItems)) {
+        toggledItems.forEach(item => {
+            if (item && item.identifier !== undefined) {
+                queue.push({ id: String(item.identifier), enabled: Boolean(item.enabled) });
+            } else if (item && item.name !== undefined) {
+                queue.push({ id: String(item.name), enabled: Boolean(item.enabled) });
+            }
+        });
+    } else if (toggledItems && typeof toggledItems === 'object') {
+        Object.entries(toggledItems).forEach(([id, enabled]) => {
+            queue.push({ id: String(id), enabled: Boolean(enabled) });
+        });
+    }
+
+    const visited = new Set();
+
+    while (queue.length > 0) {
+        const item = queue.shift();
+        const idStr = String(item.id).trim();
+        if (!idStr) continue;
+
+        const targetEnabled = Boolean(item.enabled);
+        const p = promptById.get(idStr) || promptByName.get(idStr);
+        const pId = p && p.identifier !== undefined && p.identifier !== null ? String(p.identifier) : idStr;
+        const pName = p && p.name ? String(p.name) : '';
+
+        const visitKey = pId + ':' + targetEnabled;
+        if (visited.has(visitKey)) continue;
+        visited.add(visitKey);
+
+        resolvedMap.set(pId, targetEnabled);
+        if (pName) resolvedMap.set(pName, targetEnabled);
+
+        // A. Single-Select Group Constraint (when an entry is enabled)
+        if (targetEnabled === true) {
+            groups.forEach(g => {
+                if (g.single === true && Array.isArray(g.ids)) {
+                    const isMember = g.ids.some(gid => String(gid) === pId || (pName && String(gid) === pName));
+                    if (isMember) {
+                        g.ids.forEach(otherGid => {
+                            const otherGidStr = String(otherGid);
+                            if (otherGidStr !== pId && (!pName || otherGidStr !== pName)) {
+                                const otherP = promptById.get(otherGidStr) || promptByName.get(otherGidStr);
+                                const otherPId = otherP && otherP.identifier !== undefined ? String(otherP.identifier) : otherGidStr;
+                                const curEnabled = resolvedMap.has(otherPId)
+                                    ? resolvedMap.get(otherPId)
+                                    : (otherP ? otherP.enabled !== false : true);
+                                if (curEnabled !== false) {
+                                    queue.push({ id: otherPId, enabled: false });
+                                }
+                            }
+                        });
+                    }
+                }
+            });
+        }
+
+        // B. Linkage Propagation (when an entry is enabled or disabled)
+        linkages.forEach(l => {
+            if (!l) return;
+            const srcStr = String(l.source);
+            if (srcStr === pId || (pName && srcStr === pName)) {
+                const tgtStr = String(l.target);
+                const tgtP = promptById.get(tgtStr) || promptByName.get(tgtStr);
+                const tgtPId = tgtP && tgtP.identifier !== undefined ? String(tgtP.identifier) : tgtStr;
+                const curTgtEnabled = resolvedMap.has(tgtPId)
+                    ? resolvedMap.get(tgtPId)
+                    : (tgtP ? tgtP.enabled !== false : !targetEnabled);
+                if (curTgtEnabled !== targetEnabled) {
+                    queue.push({ id: tgtPId, enabled: targetEnabled });
+                }
+            }
+        });
+    }
+
+    return resolvedMap;
+}
 
 // ═══════════════════════════════════════
 //  Sampling Params Helper

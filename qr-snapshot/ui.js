@@ -2,7 +2,7 @@
  * Zero Preset Manager - UI
  * Performance-optimized v2: innerHTML templates, event delegation, lazy rendering.
  */
-import { PresetManager, SnapshotManager, GroupManager, PinnedManager, HiddenManager, UiStateManager, LinkageManager, zeroTranslate, HistoryManager, ModelProfileManager, SamplingParamsHelper, SnapshotGroupManager, getPresetPromptsWithEnabled, getStringSimilarity, detectPresetRenames, getOpenai, OpLogManager, StreamManager } from './state.js';
+import { PresetManager, SnapshotManager, GroupManager, PinnedManager, HiddenManager, UiStateManager, LinkageManager, resolvePromptConstraints, zeroTranslate, HistoryManager, ModelProfileManager, SamplingParamsHelper, SnapshotGroupManager, getPresetPromptsWithEnabled, getStringSimilarity, detectPresetRenames, getOpenai, OpLogManager, StreamManager } from './state.js';
 import { matchPrompt } from './search-util.js';
 import { ThemeManager } from '../preset-manager/theme.js';
 
@@ -1027,7 +1027,14 @@ function renderEntries(panel, preset, modal) {
     const visiblePrompts = preset.prompts.filter(p => !hidden.has(p.identifier));
     const ungrouped = visiblePrompts.filter(p => !assigned.has(p.identifier));
 
-    _promptMap = new Map(preset.prompts.map(p => [p.identifier, p]));
+    _promptMap = new Map();
+    preset.prompts.forEach(p => {
+        if (p.identifier !== undefined && p.identifier !== null) {
+            _promptMap.set(String(p.identifier), p);
+            _promptMap.set(p.identifier, p);
+        }
+        if (p.name) _promptMap.set(String(p.name), p);
+    });
     _groupMemberMap = new Map();
 
     // Toolbar (small, keep createElement)
@@ -1083,74 +1090,6 @@ function renderEntries(panel, preset, modal) {
     }
 }
 
-function handleSingleSelectConstraint(preset, gid, id) {
-    const groups = GroupManager.get(preset.name);
-    const group = groups.find(g => g.id === gid);
-    if (!group || !group.single) return;
-
-    const toggleMap = new Map();
-    group.ids.forEach(x => {
-        if (x !== id) {
-            const p = _promptMap.get(x);
-            if (p && p.enabled) {
-                p.enabled = false;
-                toggleMap.set(x, false);
-                pendingToggles.set(x, false);
-
-                // Update DOM directly
-                const entryEl = _currentModal?.querySelector(`.zero-entry[data-id="${esc(x)}"]`);
-                if (entryEl) {
-                    const otherCb = entryEl.querySelector('.zero-switch input');
-                    if (otherCb) otherCb.checked = false;
-                    entryEl.querySelector('.zero-entry-name')?.classList.add('disabled');
-                }
-            }
-        }
-    });
-
-    if (toggleMap.size > 0) {
-        PresetManager.batchToggleMap(toggleMap).catch(e => console.error('[Zero] single-select constraint sync failed:', e));
-    }
-}
-
-function propagateLinkages(identifier, enabled, visited = new Set()) {
-    if (visited.has(identifier)) return;
-    visited.add(identifier);
-
-    const presetName = _currentPreset.name;
-    const linkages = LinkageManager.get(presetName);
-    const targets = linkages.filter(l => l.source === identifier).map(l => l.target);
-
-    for (const tgt of targets) {
-        const p = _promptMap.get(tgt);
-        if (p && p.enabled !== enabled) {
-            p.enabled = enabled;
-            pendingToggles.set(tgt, enabled);
-
-            // Update DOM element
-            const entryEl = _currentModal?.querySelector(`.zero-entry[data-id="${esc(tgt)}"]`);
-            if (entryEl) {
-                const cb = entryEl.querySelector('.zero-switch input');
-                if (cb) cb.checked = enabled;
-                entryEl.querySelector('.zero-entry-name')?.classList.toggle('disabled', !enabled);
-                updateGroupCount(entryEl.closest('.zero-group'));
-            }
-
-            // Single select constraint logic if enabled
-            if (enabled) {
-                const tgtGroupEl = entryEl?.closest('.zero-group');
-                if (tgtGroupEl) {
-                    const tgtGid = tgtGroupEl.dataset.gid;
-                    handleSingleSelectConstraint(_currentPreset, tgtGid, tgt);
-                }
-            }
-
-            // Recursively propagate
-            propagateLinkages(tgt, enabled, visited);
-        }
-    }
-}
-
 // ─── Event Delegation for entries tab ───
 function setupEntriesDelegation(panel) {
     // Toggle switches (entry + group header)
@@ -1169,24 +1108,30 @@ function setupEntriesDelegation(panel) {
         if (entry) {
             if (msActive) { cb.checked = !cb.checked; return; }
             const id = entry.dataset.id;
-            const p = _promptMap.get(id);
+            const p = _promptMap.get(id) || _promptMap.get(String(id));
             if (p) {
-                p.enabled = cb.checked;
-                scheduleToggle(id, cb.checked);
-                entry.querySelector('.zero-entry-name').classList.toggle('disabled', !cb.checked);
+                const targetEnabled = cb.checked;
+                const resolvedMap = resolvePromptConstraints(_currentPreset?.name, new Map([[id, targetEnabled]]), _promptMap);
 
-                // Enforce single select constraint if enabled
-                if (cb.checked) {
-                    const groupEl = entry.closest('.zero-group');
-                    if (groupEl) {
-                        handleSingleSelectConstraint(_currentPreset, groupEl.dataset.gid, id);
+                resolvedMap.forEach((en, resId) => {
+                    const resP = _promptMap.get(resId);
+                    if (resP) resP.enabled = en;
+
+                    const entryEl = _currentModal?.querySelector(`.zero-entry[data-id="${esc(resId)}"]`);
+                    if (entryEl) {
+                        const switchCb = entryEl.querySelector('.zero-switch input');
+                        if (switchCb) switchCb.checked = en;
+                        entryEl.querySelector('.zero-entry-name')?.classList.toggle('disabled', !en);
+                        updateGroupCount(entryEl.closest('.zero-group'));
                     }
-                }
-
-                // Enforce linkage propagation
-                propagateLinkages(id, cb.checked);
+                });
 
                 updateGroupCount(entry.closest('.zero-group'));
+
+                PresetManager.batchToggleMap(resolvedMap).catch(e => {
+                    console.error('[Zero] batch toggle failed:', e);
+                    toastr.error('切换失败');
+                });
             }
         }
     });
@@ -1446,7 +1391,6 @@ function handleGroupCollapse(header) {
 function localBatchToggle(groupEl, enabled) {
     const gid = groupEl.dataset.gid;
     const body = groupEl.querySelector('.zero-group-body');
-    const map = new Map();
     const members = _groupMemberMap.get(gid) || [];
 
     // Ensure lazily rendered content is generated before toggling checks
@@ -1455,23 +1399,35 @@ function localBatchToggle(groupEl, enabled) {
         inner.innerHTML = renderGroupMembersHTML(members, null, _currentPreset?.name);
     }
 
-    body.querySelectorAll('.zero-entry').forEach(entry => {
-        const id = entry.dataset.id;
-        const p = _promptMap.get(id);
-        if (p) {
-            p.enabled = enabled;
-            map.set(id, enabled);
-            const cb = entry.querySelector('.zero-switch input');
-            if (cb) cb.checked = enabled;
-            entry.querySelector('.zero-entry-name')?.classList.toggle('disabled', !enabled);
+    const initialMap = new Map();
+    members.forEach(m => {
+        if (m && m.identifier !== undefined && m.identifier !== null) {
+            initialMap.set(String(m.identifier), enabled);
         }
     });
 
-    const countEl = groupEl.querySelector('.zero-group-count');
-    if (countEl) countEl.textContent = `${enabled ? members.length : 0}/${members.length}`;
+    const resolvedMap = resolvePromptConstraints(_currentPreset?.name, initialMap, _promptMap);
 
-    if (map.size > 0) {
-        PresetManager.batchToggleMap(map).catch(e => { console.error('[Zero] batch toggle failed:', e); toastr.error('操作失败'); });
+    resolvedMap.forEach((en, resId) => {
+        const resP = _promptMap.get(resId);
+        if (resP) resP.enabled = en;
+
+        const entryEl = _currentModal?.querySelector(`.zero-entry[data-id="${esc(resId)}"]`);
+        if (entryEl) {
+            const switchCb = entryEl.querySelector('.zero-switch input');
+            if (switchCb) switchCb.checked = en;
+            entryEl.querySelector('.zero-entry-name')?.classList.toggle('disabled', !en);
+            updateGroupCount(entryEl.closest('.zero-group'));
+        }
+    });
+
+    updateGroupCount(groupEl);
+
+    if (resolvedMap.size > 0) {
+        PresetManager.batchToggleMap(resolvedMap).catch(e => {
+            console.error('[Zero] batch toggle failed:', e);
+            toastr.error('操作失败');
+        });
     }
 }
 

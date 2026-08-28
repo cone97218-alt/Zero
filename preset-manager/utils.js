@@ -1116,11 +1116,24 @@ export async function syncBoundRegexOnPromptToggle(toggledItems = null, presetNa
         // Build map of prompt toggles passed explicitly in this call
         const togglesMap = new Map();
         if (toggledItems instanceof Map) {
-            toggledItems.forEach((enabled, id) => togglesMap.set(String(id), !!enabled));
+            toggledItems.forEach((enabled, id) => {
+                if (id !== undefined && id !== null) {
+                    togglesMap.set(String(id), !!enabled);
+                }
+            });
         } else if (Array.isArray(toggledItems)) {
             toggledItems.forEach(item => {
-                if (item && item.identifier !== undefined) {
+                if (item && item.identifier !== undefined && item.identifier !== null) {
                     togglesMap.set(String(item.identifier), !!item.enabled);
+                }
+                if (item && item.name !== undefined && item.name !== null) {
+                    togglesMap.set(String(item.name), !!item.enabled);
+                }
+            });
+        } else if (toggledItems && typeof toggledItems === 'object') {
+            Object.entries(toggledItems).forEach(([id, enabled]) => {
+                if (id !== undefined && id !== null) {
+                    togglesMap.set(String(id), !!enabled);
                 }
             });
         }
@@ -1132,8 +1145,11 @@ export async function syncBoundRegexOnPromptToggle(toggledItems = null, presetNa
                 const promptOrder = pm.getPromptOrderForCharacter(pm.activeCharacter);
                 if (Array.isArray(promptOrder)) {
                     promptOrder.forEach(o => {
-                        if (o && o.identifier !== undefined) {
+                        if (o && o.identifier !== undefined && o.identifier !== null) {
                             activePromptOrderMap.set(String(o.identifier), o.enabled !== false);
+                        }
+                        if (o && o.name !== undefined && o.name !== null) {
+                            activePromptOrderMap.set(String(o.name), o.enabled !== false);
                         }
                     });
                 }
@@ -1145,15 +1161,25 @@ export async function syncBoundRegexOnPromptToggle(toggledItems = null, presetNa
         // Build accurate promptEnabledMap for ALL prompts in the target preset
         const promptEnabledMap = new Map();
         presetObj.prompts.forEach(p => {
-            if (!p || p.identifier === undefined) return;
-            const idStr = String(p.identifier);
-            if (togglesMap.has(idStr)) {
-                promptEnabledMap.set(idStr, togglesMap.get(idStr));
-            } else if (activePromptOrderMap.has(idStr)) {
-                promptEnabledMap.set(idStr, activePromptOrderMap.get(idStr));
+            if (!p) return;
+            const idStr = p.identifier !== undefined && p.identifier !== null ? String(p.identifier) : '';
+            const nameStr = p.name ? String(p.name) : '';
+
+            let isEnabled = null;
+            if (idStr && togglesMap.has(idStr)) {
+                isEnabled = togglesMap.get(idStr);
+            } else if (nameStr && togglesMap.has(nameStr)) {
+                isEnabled = togglesMap.get(nameStr);
+            } else if (idStr && activePromptOrderMap.has(idStr)) {
+                isEnabled = activePromptOrderMap.get(idStr);
+            } else if (nameStr && activePromptOrderMap.has(nameStr)) {
+                isEnabled = activePromptOrderMap.get(nameStr);
             } else {
-                promptEnabledMap.set(idStr, p.enabled !== false);
+                isEnabled = p.enabled !== false;
             }
+
+            if (idStr) promptEnabledMap.set(idStr, isEnabled);
+            if (nameStr) promptEnabledMap.set(nameStr, isEnabled);
         });
 
         // Build mapping from normalized regex script ID -> list of prompts bound to it
@@ -1192,8 +1218,9 @@ export async function syncBoundRegexOnPromptToggle(toggledItems = null, presetNa
             // If ANY prompt bound to this regex is enabled, regex should be enabled.
             // If ALL prompts bound to this regex are disabled, regex should be disabled.
             const hasAnyEnabledBoundPrompt = boundPrompts.some(p => {
-                const idStr = String(p.identifier);
-                return promptEnabledMap.get(idStr) === true;
+                const idStr = p.identifier !== undefined && p.identifier !== null ? String(p.identifier) : '';
+                const nameStr = p.name ? String(p.name) : '';
+                return (idStr && promptEnabledMap.get(idStr) === true) || (nameStr && promptEnabledMap.get(nameStr) === true);
             });
 
             const shouldBeDisabled = !hasAnyEnabledBoundPrompt;

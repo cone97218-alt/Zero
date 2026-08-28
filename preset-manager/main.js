@@ -2907,9 +2907,57 @@ export function init() {
         e.stopPropagation();
     });
 
-    // Listen to native SillyTavern completion prompt checkboxes to sync bound regex scripts on toggle
+    // Listen to native SillyTavern completion prompt checkboxes to sync single-select, linkages, and bound regex scripts on toggle
     $('body').off('change.zero-native-prompt-toggle').on('change.zero-native-prompt-toggle', '#openai_completion_prompts input[type="checkbox"]', function() {
-        import('./utils.js').then(m => m.syncBoundRegexOnPromptToggle(null)).catch(() => {});
+        const cb = this;
+        const enabled = cb.checked;
+        const $el = $(cb);
+        const $promptContainer = $el.closest('.completion_prompt, [data-id], .prompt-entry, .prompt_entry, [data-prompt-id]');
+
+        try {
+            const ctx = SillyTavern.getContext();
+            const pm = ctx.getPresetManager ? ctx.getPresetManager('openai') : null;
+            const presetName = pm ? pm.getSelectedPresetName() : '';
+            if (!presetName) {
+                import('./utils.js').then(m => m.syncBoundRegexOnPromptToggle(null)).catch(() => {});
+                return;
+            }
+
+            const presetObj = pm.getCompletionPresetByName(presetName);
+            if (!presetObj || !Array.isArray(presetObj.prompts)) {
+                import('./utils.js').then(m => m.syncBoundRegexOnPromptToggle(null)).catch(() => {});
+                return;
+            }
+
+            let promptId = $el.closest('[data-id]').data('id') ||
+                $promptContainer.data('id') ||
+                $promptContainer.attr('data-id') ||
+                $promptContainer.data('prompt-id') ||
+                $promptContainer.attr('data-prompt-id');
+
+            if (!promptId) {
+                const promptName = $promptContainer.find('.prompt-name, .name, label, span, h4').first().text().trim();
+                const matched = presetObj.prompts.find(p => p.name === promptName || p.identifier === promptName);
+                if (matched) promptId = matched.identifier;
+            }
+
+            if (promptId) {
+                import('../qr-snapshot/state.js').then(({ resolvePromptConstraints, PresetManager }) => {
+                    const resolvedMap = resolvePromptConstraints(presetName, new Map([[promptId, enabled]]), presetObj.prompts);
+                    if (resolvedMap.size > 1) {
+                        PresetManager.batchToggleMap(resolvedMap).catch(() => {});
+                    } else {
+                        import('./utils.js').then(m => m.syncBoundRegexOnPromptToggle(resolvedMap, presetName)).catch(() => {});
+                    }
+                }).catch(() => {
+                    import('./utils.js').then(m => m.syncBoundRegexOnPromptToggle(null, presetName)).catch(() => {});
+                });
+            } else {
+                import('./utils.js').then(m => m.syncBoundRegexOnPromptToggle(null, presetName)).catch(() => {});
+            }
+        } catch (e) {
+            import('./utils.js').then(m => m.syncBoundRegexOnPromptToggle(null)).catch(() => {});
+        }
     });
     
     // Background preloading of UI modules to eliminate lag on first open
