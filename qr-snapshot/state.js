@@ -1162,10 +1162,11 @@ export const GroupManager = {
 
             (groups || []).forEach((g, index) => {
                 const gid = String(g.id);
+                g.order = index;
                 bbGroups.push({
                     id: gid,
                     name: String(g.name || '未命名分组'),
-                    order: Number.isFinite(Number(g.order)) ? Number(g.order) : index,
+                    order: index,
                     collapsed: Boolean(g.col),
                     enabled: g.enabled !== false,
                     single: Boolean(g.single),
@@ -1341,6 +1342,7 @@ export const GroupManager = {
         const map = new Map(groups.map(g => [g.id, g]));
         const reordered = orderedIds.map(id => map.get(id)).filter(Boolean);
         groups.forEach(g => { if (!orderedIds.includes(g.id)) reordered.push(g); });
+        reordered.forEach((g, idx) => { g.order = idx; });
         this._save(presetName, reordered);
     },
 
