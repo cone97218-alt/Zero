@@ -62,16 +62,26 @@ function formatDate(ts) {
 
 function scheduleToggle(identifier, enabled) {
     pendingToggles.set(identifier, enabled);
+    // Instant local memory mutation on _currentPreset so UI state is immediately consistent
+    if (_currentPreset && Array.isArray(_currentPreset.prompts)) {
+        const p = _currentPreset.prompts.find(x => x.identifier === identifier || x.name === identifier);
+        if (p) p.enabled = enabled;
+    }
     clearTimeout(toggleTimer);
-    toggleTimer = setTimeout(flushToggles, 300);
+    toggleTimer = setTimeout(flushToggles, 120);
 }
 
 async function flushToggles() {
     if (pendingToggles.size === 0) return;
     const batch = new Map(pendingToggles);
     pendingToggles.clear();
-    try { await PresetManager.batchToggleMap(batch); }
-    catch (e) { console.error('[Zero] batch toggle failed:', e); toastr.error('切换失败'); }
+    clearTimeout(toggleTimer);
+    try {
+        await PresetManager.batchToggleMap(batch, false, _currentPreset?.name);
+    } catch (e) {
+        console.error('[Zero] batch toggle failed:', e);
+        toastr.error('切换失败');
+    }
 }
 
 function showConfirm(modal, msg, onYes, requiresSetting = false) {
@@ -484,7 +494,12 @@ export async function openUI() {
 }
 
 export function closeUI() {
-    flushToggles();
+    if (pendingToggles.size > 0) {
+        const batch = new Map(pendingToggles);
+        pendingToggles.clear();
+        clearTimeout(toggleTimer);
+        PresetManager.batchToggleMap(batch, false, _currentPreset?.name).catch(e => console.error('[Zero] closeUI batchToggleMap error:', e));
+    }
     // Immediately flush any pending native PromptManager render/save
     // so the native list is consistent the moment the panel closes.
     PresetManager.flushNativeRender();

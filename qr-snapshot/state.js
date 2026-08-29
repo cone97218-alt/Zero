@@ -311,20 +311,20 @@ export const PresetManager = {
     _scheduleNativeFlush(promptManager) {
         if (promptManager) this._nativeFlushPm = promptManager;
         clearTimeout(this._nativeFlushTimer);
-        this._nativeFlushTimer = setTimeout(() => this.flushNativeRender(), 300);
+        this._nativeFlushTimer = setTimeout(() => this.flushNativeRender(), 120);
     },
 
     flushNativeRender() {
         clearTimeout(this._nativeFlushTimer);
         this._nativeFlushTimer = null;
-        const pm = this._nativeFlushPm;
-        if (!pm) return;
-        if (typeof pm.saveServiceSettings === 'function') {
+        const pm = this._nativeFlushPm || this.getPromptManager();
+        if (pm && typeof pm.saveServiceSettings === 'function') {
             pm.saveServiceSettings();
         }
-        // Do NOT call pm.renderDebounced() or pm.render() while working inside Zero modal,
-        // as waking up the background native list triggers third-party extension auto-save hooks
-        // (e.g. BaiBai's pending changes save) which causes disk writes and toast popups!
+        const ctx = window.SillyTavern?.getContext?.();
+        if (typeof ctx?.saveSettingsDebounced === 'function') {
+            ctx.saveSettingsDebounced();
+        }
     },
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -336,16 +336,22 @@ export const PresetManager = {
         
         const resolvedMap = resolvePromptConstraints(activePresetName, new Map([[identifier, enabled]]), _preset?.prompts);
         if (resolvedMap.size > 0) {
-            await this.batchToggleMap(resolvedMap);
+            await this.batchToggleMap(resolvedMap, false, activePresetName);
         }
     },
 
     /** Batch update from a Map<identifier, enabled> */
-    async batchToggleMap(toggleMap, skipOpLog = false) {
+    async batchToggleMap(toggleMap, skipOpLog = false, explicitPresetName = null) {
         HistoryManager.record();
         if (!_preset) await this.load();
-        
-        // Mutate existing cache instances
+
+        const ctx = window.SillyTavern?.getContext?.();
+        const pm = ctx?.getPresetManager?.('openai');
+        const activePresetName = pm?.getSelectedPresetName?.();
+        const targetPresetName = explicitPresetName || _preset?.name || activePresetName || 'Default';
+        const isActivePreset = !activePresetName || (activePresetName === targetPresetName);
+
+        // 1. Mutate local _preset cache in memory (instant UI consistency)
         if (_preset && Array.isArray(_preset.prompts)) {
             _preset.prompts.forEach(p => {
                 if (toggleMap.has(p.identifier)) {
@@ -356,9 +362,9 @@ export const PresetManager = {
             });
         }
 
-        const openai = await getOpenai();
-        const promptManager = openai.promptManager;
-        if (promptManager) {
+        // 2. Sync to promptManager (for active preset)
+        const promptManager = this.getPromptManager();
+        if (isActivePreset && promptManager) {
             const promptOrder = promptManager.getPromptOrderForCharacter(promptManager.activeCharacter) || [];
             let changed = false;
             const tokenCounts = (promptManager.tokenHandler && typeof promptManager.tokenHandler.getCounts === 'function')
@@ -371,20 +377,23 @@ export const PresetManager = {
                     if (tokenCounts) tokenCounts[o.identifier] = null;
                 }
             });
+            if (Array.isArray(promptManager.prompts)) {
+                promptManager.prompts.forEach(p => {
+                    if (toggleMap.has(p.identifier) || (p.name && toggleMap.has(p.name))) {
+                        p.enabled = toggleMap.has(p.identifier) ? toggleMap.get(p.identifier) : toggleMap.get(p.name);
+                    }
+                });
+            }
             if (changed) {
-                // Batch: defer saveServiceSettings + renderDebounced to the flush gate
                 this._scheduleNativeFlush(promptManager);
             }
         }
 
-        // Sync to ST's active completion preset object as well
-        const ctx = window.SillyTavern?.getContext?.();
-        const pm = ctx?.getPresetManager?.('openai');
+        // 3. Sync to target preset object in SillyTavern's PresetManager (both active & non-active presets)
         if (pm) {
-            const activePresetName = pm.getSelectedPresetName?.();
-            if (activePresetName) {
-                const presetObj = pm.getCompletionPresetByName?.(activePresetName);
-                if (presetObj && Array.isArray(presetObj.prompts)) {
+            const presetObj = pm.getCompletionPresetByName?.(targetPresetName);
+            if (presetObj) {
+                if (Array.isArray(presetObj.prompts)) {
                     presetObj.prompts.forEach(p => {
                         if (toggleMap.has(p.identifier)) {
                             p.enabled = toggleMap.get(p.identifier);
@@ -393,11 +402,29 @@ export const PresetManager = {
                         }
                     });
                 }
+                if (Array.isArray(presetObj.prompt_order)) {
+                    presetObj.prompt_order.forEach(item => {
+                        if (item && Array.isArray(item.order)) {
+                            item.order.forEach(o => {
+                                if (o && (toggleMap.has(o.identifier) || (o.name && toggleMap.has(o.name)))) {
+                                    o.enabled = toggleMap.has(o.identifier) ? toggleMap.get(o.identifier) : toggleMap.get(o.name);
+                                }
+                            });
+                        } else if (item && (toggleMap.has(item.identifier) || (item.name && toggleMap.has(item.name)))) {
+                            item.enabled = toggleMap.has(item.identifier) ? toggleMap.get(item.identifier) : toggleMap.get(item.name);
+                        }
+                    });
+                }
             }
         }
 
+        // 4. Trigger lightweight debounced settings save
+        if (typeof ctx?.saveSettingsDebounced === 'function') {
+            ctx.saveSettingsDebounced();
+        }
+
         if (!skipOpLog && toggleMap && toggleMap.size > 0) {
-            const currentPresetName = _preset?.name || pm?.getSelectedPresetName?.();
+            const currentPresetName = targetPresetName;
             if (toggleMap.size === 1) {
                 const [id, en] = Array.from(toggleMap.entries())[0];
                 const p = _preset?.prompts?.find(x => x.identifier === id || x.name === id);
@@ -422,7 +449,7 @@ export const PresetManager = {
             }
         }
 
-        import('../preset-manager/utils.js').then(m => m.syncBoundRegexOnPromptToggle(toggleMap)).catch(e => {
+        import('../preset-manager/utils.js').then(m => m.syncBoundRegexOnPromptToggle(toggleMap, targetPresetName)).catch(e => {
             console.warn('[Zero] Failed to sync bound regex on batchToggleMap:', e);
         });
     },
