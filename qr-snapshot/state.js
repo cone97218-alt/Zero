@@ -425,24 +425,29 @@ export const PresetManager = {
 
         if (!skipOpLog && toggleMap && toggleMap.size > 0) {
             const currentPresetName = targetPresetName;
-            if (toggleMap.size === 1) {
-                const [id, en] = Array.from(toggleMap.entries())[0];
-                const p = _preset?.prompts?.find(x => x.identifier === id || x.name === id);
+            const promptItems = new Map();
+            const allPrompts = _preset?.prompts || [];
+            for (const [id, en] of toggleMap.entries()) {
+                const p = allPrompts.find(x => String(x.identifier) === String(id) || x.name === id);
+                const uniqueKey = p ? (p.identifier !== undefined && p.identifier !== null ? String(p.identifier) : (p.name || id)) : id;
                 const name = p ? (p.name || p.identifier) : id;
-                OpLogManager.add(currentPresetName, 'toggle', '开关', name, en ? '切换为 [开启]' : '切换为 [关闭]');
-            } else {
+                promptItems.set(uniqueKey, { name, enabled: Boolean(en) });
+            }
+
+            if (promptItems.size === 1) {
+                const item = Array.from(promptItems.values())[0];
+                OpLogManager.add(currentPresetName, 'toggle', '开关', item.name, item.enabled ? '切换为 [开启]' : '切换为 [关闭]');
+            } else if (promptItems.size > 1) {
                 const onNames = [];
                 const offNames = [];
-                for (const [id, en] of toggleMap.entries()) {
-                    const p = _preset?.prompts?.find(x => x.identifier === id || x.name === id);
-                    const name = p ? (p.name || p.identifier) : id;
-                    if (en) onNames.push(name); else offNames.push(name);
+                for (const item of promptItems.values()) {
+                    if (item.enabled) onNames.push(item.name); else offNames.push(item.name);
                 }
                 OpLogManager.add(
                     currentPresetName,
                     'batch_toggle',
                     '批量开关',
-                    `批量修改 ${toggleMap.size} 个条目`,
+                    `批量修改 ${promptItems.size} 个条目`,
                     `开启 ${onNames.length} 个，关闭 ${offNames.length} 个`,
                     { on: onNames, off: offNames }
                 );
@@ -1654,7 +1659,6 @@ export function resolvePromptConstraints(presetName, toggledItems, promptList = 
         visited.add(visitKey);
 
         resolvedMap.set(pId, targetEnabled);
-        if (pName) resolvedMap.set(pName, targetEnabled);
 
         // A. Single-Select Group Constraint (when an entry is enabled)
         if (targetEnabled === true) {
