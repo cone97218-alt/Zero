@@ -366,6 +366,14 @@ export async function performAutoMatch(forceRefresh = false) {
             });
         }
 
+        const diffOnly = localStorage.getItem('zero_contrast_diff_only') === 'true';
+        if (diffOnly) {
+            filteredItems = filteredItems.filter(item => {
+                if (item.type === 'onlyA' || item.type === 'onlyB') return true;
+                return hasPromptDifference(item.a, item.b, nameA, nameB);
+            });
+        }
+
         const matched = filteredItems.filter(i => i.type === 'matched');
         const manualMatched = filteredItems.filter(i => i.type === 'manual');
         const onlyA = filteredItems.filter(i => i.type === 'onlyA');
@@ -502,8 +510,12 @@ export function renderMatchResults(matched, onlyA, onlyB, allItems, manualMatche
     const htmlOnlyA = onlyA.map(a => buildRow(a)).join('');
     const htmlOnlyB = onlyB.map(b => buildRow(b)).join('');
 
-    $('#sub-content-matched').html(htmlMatched || '<div style="text-align:center; padding:20px; opacity:0.5; font-size:12px;">无自动匹配项</div>');
-    $('#sub-content-manual').html(htmlManual || '<div style="text-align:center; padding:20px; opacity:0.5; font-size:12px;">无手动关联项</div>');
+    const diffOnly = localStorage.getItem('zero_contrast_diff_only') === 'true';
+    const emptyMatched = diffOnly ? '无差异匹配项 (匹配条目完全一致)' : '无自动匹配项';
+    const emptyManual = diffOnly ? '无差异关联项 (关联条目完全一致)' : '无手动关联项';
+
+    $('#sub-content-matched').html(htmlMatched || `<div style="text-align:center; padding:20px; opacity:0.5; font-size:12px;">${emptyMatched}</div>`);
+    $('#sub-content-manual').html(htmlManual || `<div style="text-align:center; padding:20px; opacity:0.5; font-size:12px;">${emptyManual}</div>`);
     $('#sub-content-onlyA').html(htmlOnlyA || '<div style="text-align:center; padding:20px; opacity:0.5; font-size:12px;">无仅 A 有项</div>');
     $('#sub-content-onlyB').html(htmlOnlyB || '<div style="text-align:center; padding:20px; opacity:0.5; font-size:12px;">无仅 B 有项</div>');
 

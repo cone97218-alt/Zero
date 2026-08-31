@@ -210,6 +210,9 @@ function ensurePanel() {
                         <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
                             <span style="font-size: 12px; opacity: 0.7; width: 60px; flex-shrink: 0;">预设 B:</span>
                             <select id="contrast-preset-b" class="interactable" style="flex: 1; min-width: 0; padding: 4px; background: var(--SmartThemeChatTintColor); color: inherit; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px;"></select>
+                            <button id="contrast-diff-only-toggle" class="interactable" title="只看差异 (仅显示已修改条目)" style="width: 28px; height: 28px; padding: 0; background: rgba(255,255,255,0.05); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; color: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.15s ease;">
+                                <i class="fa-solid fa-filter"></i>
+                            </button>
                             <button id="contrast-search-toggle" class="interactable" title="展开/折叠搜索" style="width: 28px; height: 28px; padding: 0; background: rgba(255,255,255,0.05); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; color: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
                                 <i class="fa-solid fa-magnifying-glass"></i>
                             </button>
@@ -2219,6 +2222,44 @@ function ensurePanel() {
     $('#contrast-auto-migrate-regex-toggle').prop('checked', autoMigrateInit);
     $('#contrast-auto-migrate-regex-toggle').on('change', function() {
         UiStateManager.save({ autoMigrateBoundRegex: $(this).is(':checked') });
+    });
+
+    const initDiffOnly = localStorage.getItem('zero_contrast_diff_only') === 'true';
+    const $diffToggle = $('#contrast-diff-only-toggle');
+    if (initDiffOnly) {
+        $diffToggle.css({
+            background: 'var(--SmartThemeQuoteColor, #7b8cde)',
+            color: '#fff',
+            borderColor: 'var(--SmartThemeQuoteColor, #7b8cde)'
+        });
+    } else {
+        $diffToggle.css({
+            background: 'rgba(255,255,255,0.05)',
+            color: 'inherit',
+            borderColor: 'var(--SmartThemeBorderColor)'
+        });
+    }
+
+    $('body').off('click', '#contrast-diff-only-toggle').on('click', '#contrast-diff-only-toggle', function() {
+        const current = localStorage.getItem('zero_contrast_diff_only') === 'true';
+        const next = !current;
+        localStorage.setItem('zero_contrast_diff_only', next.toString());
+        if (next) {
+            $(this).css({
+                background: 'var(--SmartThemeQuoteColor, #7b8cde)',
+                color: '#fff',
+                borderColor: 'var(--SmartThemeQuoteColor, #7b8cde)'
+            });
+            toastr.info('已开启：仅显示差异条目');
+        } else {
+            $(this).css({
+                background: 'rgba(255,255,255,0.05)',
+                color: 'inherit',
+                borderColor: 'var(--SmartThemeBorderColor)'
+            });
+            toastr.info('已关闭：显示全部条目');
+        }
+        _contrast.performAutoMatch();
     });
 
     $('#contrast-preset-a').on('change', function() {
