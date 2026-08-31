@@ -53,11 +53,7 @@ function hasPromptDifference(pA, pB, nameA, nameB) {
     const orderDiff = (pA.injection_order ?? 100) !== (pB.injection_order ?? 100);
     const forbidDiff = (pA.forbid_overrides ?? false) !== (pB.forbid_overrides ?? false);
     
-    const groupA = getPromptGroupName(nameA, pA.identifier);
-    const groupB = getPromptGroupName(nameB, pB.identifier);
-    const groupDiff = groupA !== groupB;
-    
-    return contentDiff || nameDiff || roleDiff || posDiff || depthDiff || orderDiff || forbidDiff || groupDiff;
+    return contentDiff || nameDiff || roleDiff || posDiff || depthDiff || orderDiff || forbidDiff;
 }
 
 function getPropValues(p, presetName) {
