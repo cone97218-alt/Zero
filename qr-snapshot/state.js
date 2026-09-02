@@ -223,7 +223,18 @@ export const PresetManager = {
                 }
             }
         } catch (e) {}
-        return { names: [], active: 'Default' };
+
+        // Fallback to DOM if context is unavailable or returns empty
+        let names = [];
+        let active = 'Default';
+        const selectEl = document.getElementById('settings_preset_openai');
+        if (selectEl) {
+            names = Array.from(selectEl.options).map(opt => opt.textContent.trim()).filter(Boolean);
+            if (selectEl.selectedIndex >= 0) {
+                active = selectEl.options[selectEl.selectedIndex].textContent.trim();
+            }
+        }
+        return { names, active };
     },
 
     async listNames() {

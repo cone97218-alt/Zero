@@ -236,6 +236,14 @@ export function markSnapshotDirty() {
     _isSnapshotDirty = true;
     _modalBuilt = false;
     if (_currentPanels) markPanelsDirty(_currentPanels);
+
+    if (_isOpen && modal) {
+        requestAnimationFrame(() => {
+            if (_isOpen && modal) {
+                syncModalDynamicState(modal);
+            }
+        });
+    }
 }
 
 function getOffscreenTransform(state) {
@@ -751,10 +759,15 @@ function buildModal(modal, preset, listInfo) {
         }
         try {
             await PresetManager.switchPreset(name);
+            PresetManager.invalidate();
             const newPreset = await PresetManager.load();
+            const freshList = PresetManager.listNamesSync();
             if (newPreset) {
                 modal.innerHTML = '';
-                buildModal(modal, newPreset, listInfo);
+                buildModal(modal, newPreset, freshList);
+                _modalBuilt = true;
+                _isSnapshotDirty = false;
+                _lastRenderedPresetName = newPreset.name;
             }
         } catch (err) {
             console.error('[Zero] preset switch failed:', err);
