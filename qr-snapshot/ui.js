@@ -222,13 +222,261 @@ function groupSectionHTML(group, members, isUngrouped, cachedActions = null, pre
 }
 
 // ═══════════════════════════════════════
-//  Modal Minimize & Restore
+//  Modal Minimize & Restore & GPU Singleton Architecture
 // ═══════════════════════════════════════
+let modal = null;
+let _isOpen = false;
+let _isSnapshotDirty = true;
+let _lastRenderedPresetName = null;
+let _modalBuilt = false;
+let _lastToggleTime = 0;
 let lastSnapshotRestoreTime = 0;
+
+export function markSnapshotDirty() {
+    _isSnapshotDirty = true;
+    if (_currentPanels) markPanelsDirty(_currentPanels);
+}
+
+function getOffscreenTransform(state) {
+    const isDesktop = window.innerWidth >= 800;
+    const winMode = state?.snapshotWindowMode || 'fixed';
+    const isDesktopWindow = isDesktop && winMode !== 'fixed';
+    const modalStyle = state?.snapshotModalStyle || 'center';
+    const animStyle = state?.snapshotModalAnimation || 'slide';
+
+    if (animStyle === 'none') return 'none';
+    if (animStyle === 'scale' || animStyle === 'fade') return 'scale(0.94)';
+
+    if (isDesktopWindow) {
+        if (winMode === 'docked_right') return 'translate3d(105%, 0, 0)';
+        if (winMode === 'docked_left') return 'translate3d(-105%, 0, 0)';
+        return 'translate3d(0, 20px, 0) scale(0.96)';
+    } else {
+        if (modalStyle === 'right') return 'translate3d(105%, 0, 0)';
+        if (modalStyle === 'left') return 'translate3d(-105%, 0, 0)';
+        if (modalStyle === 'top') return 'translate3d(0, -105%, 0)';
+        if (modalStyle === 'bottom') return 'translate3d(0, 105%, 0)';
+        return 'translate3d(0, 25px, 0) scale(0.94)';
+    }
+}
+
+let _globalOutsideClickListener = null;
+
+function enableClickOutside() {
+    disableClickOutside();
+    _globalOutsideClickListener = (e) => {
+        if (!_isOpen || !modal) return;
+
+        // Prevent immediate close on the same gesture that opened the modal (200ms grace window)
+        if (Date.now() - _lastToggleTime < 200) return;
+
+        // Floating window mode on desktop never closes on outside click
+        const state = UiStateManager.get();
+        const winMode = state?.snapshotWindowMode || 'fixed';
+        const isDesktop = window.innerWidth >= 800;
+        if (isDesktop && winMode === 'floating') {
+            return;
+        }
+
+        const target = e.target;
+        if (!target) return;
+
+        // If clicking inside the modal or header/content/buttons, ignore
+        if (modal.contains(target) || modal === target) return;
+
+        // If clicking on toastr or alert or menu button or minimized badge, ignore
+        if (target.closest && (
+            target.closest('#zero-preset-btn') ||
+            target.closest('#zero-snapshot-minimized-badge') ||
+            target.closest('.zero-confirm') ||
+            target.closest('.zero-preview-box') ||
+            target.closest('#toast-container')
+        )) {
+            return;
+        }
+
+        // Click is outside -> Close UI immediately
+        closeUI();
+    };
+
+    document.addEventListener('pointerdown', _globalOutsideClickListener, true);
+}
+
+function disableClickOutside() {
+    if (_globalOutsideClickListener) {
+        document.removeEventListener('pointerdown', _globalOutsideClickListener, true);
+        _globalOutsideClickListener = null;
+    }
+}
+
+function applySnapshotModalGeometry(modalEl, overlayEl, state) {
+    const modalStyle = state?.snapshotModalStyle || 'center';
+    const scale = state?.snapshotModalScale || 80;
+    const winMode = state?.snapshotWindowMode || 'fixed';
+    const isDesktop = window.innerWidth >= 800;
+    const isDesktopFloating = isDesktop && winMode === 'floating';
+
+    const floatingPos = (() => {
+        try {
+            return JSON.parse(localStorage.getItem('zero_snapshot_floating_pos') || localStorage.getItem('zero_snapshot_modal_pos') || 'null');
+        } catch {
+            return null;
+        }
+    })();
+    const dockRightWidth = state?.snapshotDockRightWidth || localStorage.getItem('zero_snapshot_dock_right_width') || '450px';
+    const dockLeftWidth = state?.snapshotDockLeftWidth || localStorage.getItem('zero_snapshot_dock_left_width') || '450px';
+
+    Object.assign(overlayEl.style, {
+        position: 'fixed',
+        top: '0',
+        left: '0',
+        width: '100vw',
+        height: '100vh',
+        zIndex: '20000',
+        background: 'transparent',
+        backgroundColor: 'transparent',
+        pointerEvents: 'none',
+        display: 'flex',
+        overflow: 'hidden'
+    });
+    modalEl.style.pointerEvents = 'auto';
+
+    if (modalStyle === 'center') {
+        overlayEl.style.alignItems = 'center';
+        overlayEl.style.justifyContent = 'center';
+    } else if (modalStyle === 'top') {
+        overlayEl.style.alignItems = 'flex-start';
+        overlayEl.style.justifyContent = 'center';
+    } else if (modalStyle === 'bottom') {
+        overlayEl.style.alignItems = 'flex-end';
+        overlayEl.style.justifyContent = 'center';
+    } else if (modalStyle === 'left') {
+        overlayEl.style.alignItems = 'stretch';
+        overlayEl.style.justifyContent = 'flex-start';
+    } else if (modalStyle === 'right') {
+        overlayEl.style.alignItems = 'stretch';
+        overlayEl.style.justifyContent = 'flex-end';
+    }
+
+    if (isDesktop && winMode !== 'fixed') {
+        if (winMode === 'floating') {
+            const vw = window.innerWidth, vh = window.innerHeight;
+            const w = Math.max(260, floatingPos?.w ?? Math.min(Math.round(vw * 0.9), 560));
+            const hVal = Math.max(260, floatingPos?.h ?? Math.min(Math.round(vh * 0.85), 780));
+            const l = Math.max(0, Math.min(floatingPos?.l ?? Math.round((vw - w) / 2), vw - 80));
+            const t = Math.max(0, Math.min(floatingPos?.t ?? Math.round((vh - hVal) / 2), vh - 50));
+
+            modalEl.style.position = 'fixed';
+            modalEl.style.left = `${l}px`;
+            modalEl.style.top = `${t}px`;
+            modalEl.style.right = 'auto';
+            modalEl.style.bottom = 'auto';
+            modalEl.style.width = `${w}px`;
+            modalEl.style.height = `${hVal}px`;
+            modalEl.style.maxHeight = '98vh';
+            modalEl.style.borderRadius = '14px';
+            modalEl.style.margin = '0';
+        } else if (winMode === 'docked_right') {
+            modalEl.style.position = 'fixed';
+            modalEl.style.top = '0';
+            modalEl.style.left = 'auto';
+            modalEl.style.right = '0';
+            modalEl.style.bottom = 'auto';
+            modalEl.style.width = dockRightWidth;
+            modalEl.style.height = '100vh';
+            modalEl.style.maxHeight = '100vh';
+            modalEl.style.borderRadius = '0';
+            modalEl.style.margin = '0';
+        } else if (winMode === 'docked_left') {
+            modalEl.style.position = 'fixed';
+            modalEl.style.top = '0';
+            modalEl.style.left = '0';
+            modalEl.style.right = 'auto';
+            modalEl.style.bottom = 'auto';
+            modalEl.style.width = dockLeftWidth;
+            modalEl.style.height = '100vh';
+            modalEl.style.maxHeight = '100vh';
+            modalEl.style.borderRadius = '0';
+            modalEl.style.margin = '0';
+        }
+    } else {
+        modalEl.style.position = 'relative';
+        modalEl.style.left = 'auto';
+        modalEl.style.top = 'auto';
+        modalEl.style.right = 'auto';
+        modalEl.style.bottom = 'auto';
+        modalEl.style.margin = '0';
+
+        if (modalStyle === 'center') {
+            modalEl.style.width = '92%';
+            modalEl.style.maxWidth = '520px';
+            modalEl.style.height = `${scale}vh`;
+            modalEl.style.maxHeight = '90vh';
+            modalEl.style.borderRadius = '14px';
+        } else if (modalStyle === 'top') {
+            modalEl.style.width = '100%';
+            modalEl.style.maxWidth = '600px';
+            modalEl.style.height = `${scale}vh`;
+            modalEl.style.maxHeight = '100vh';
+            modalEl.style.borderRadius = '0 0 14px 14px';
+        } else if (modalStyle === 'bottom') {
+            modalEl.style.width = '100%';
+            modalEl.style.maxWidth = '600px';
+            modalEl.style.height = `${scale}vh`;
+            modalEl.style.maxHeight = '100vh';
+            modalEl.style.borderRadius = '14px 14px 0 0';
+        } else if (modalStyle === 'left') {
+            modalEl.style.width = `${scale}vw`;
+            modalEl.style.maxWidth = '100vw';
+            modalEl.style.height = '100vh';
+            modalEl.style.maxHeight = '100vh';
+            modalEl.style.borderRadius = '0 14px 14px 0';
+        } else if (modalStyle === 'right') {
+            modalEl.style.width = `${scale}vw`;
+            modalEl.style.maxWidth = '100vw';
+            modalEl.style.height = '100vh';
+            modalEl.style.maxHeight = '100vh';
+            modalEl.style.borderRadius = '14px 0 0 14px';
+        }
+    }
+}
+
+export function initSnapshotUI() {
+    if (!overlay || !document.body.contains(overlay)) {
+        let existingOverlay = document.getElementById('zero-overlay');
+        if (existingOverlay) existingOverlay.remove();
+
+        overlay = document.createElement('div');
+        overlay.id = 'zero-overlay';
+        overlay.className = 'zero-overlay';
+
+        overlay.addEventListener('click', (e) => {
+            if (Date.now() - lastSnapshotRestoreTime < 350) return;
+            if (modal && !modal.contains(e.target)) {
+                closeUI();
+            }
+        });
+
+        modal = document.createElement('div');
+        modal.id = 'zero-modal';
+        modal.className = 'zero-modal zero-modal-card';
+        overlay.appendChild(modal);
+
+        const state = UiStateManager.get();
+        applySnapshotModalGeometry(modal, overlay, state);
+        modal.style.transform = getOffscreenTransform(state);
+        overlay.style.display = 'none';
+        overlay.style.visibility = 'hidden';
+        modal.style.visibility = 'hidden';
+
+        document.body.appendChild(overlay);
+    }
+    return { overlay, modal };
+}
 
 export function minimizeSnapshotUI() {
     UiStateManager.save({ snapshotIsMinimized: true });
-    if (overlay) overlay.style.display = 'none';
+    closeUI();
 
     let badge = document.getElementById('zero-snapshot-minimized-badge');
     if (!badge) {
@@ -271,20 +519,15 @@ export function restoreSnapshotUI() {
     UiStateManager.save({ snapshotIsMinimized: false });
     const badge = document.getElementById('zero-snapshot-minimized-badge');
     if (badge) badge.style.display = 'none';
-    if (overlay) {
-        try { overlay.remove(); } catch (e) {}
-        overlay = null;
-    }
     openUI();
 }
 
 export async function openUI() {
-    if (overlay) {
-        try { overlay.remove(); } catch (e) {}
-        overlay = null;
-    }
+    const now = Date.now();
+    if (now - _lastToggleTime < 150) return;
+    _lastToggleTime = now;
 
-    lastSnapshotRestoreTime = Date.now();
+    lastSnapshotRestoreTime = now;
     ThemeManager.applyTheme();
 
     searchQuery = '';
@@ -295,225 +538,129 @@ export async function openUI() {
         searchDebounceTimer = null;
     }
 
-    // Background preload modules to avoid transition lag when entering Preset Manager or editing prompts
-    import('../preset-manager/main.js').then(m => {
-        presetManagerModule = m;
-    }).catch(() => {});
-    import('../preset-manager/editor.js').then(m => {
-        editorModule = m;
-    }).catch(() => {});
+    // Background preload modules
+    import('../preset-manager/main.js').then(m => { presetManagerModule = m; }).catch(() => {});
+    import('../preset-manager/editor.js').then(m => { editorModule = m; }).catch(() => {});
     import('../preset-manager/utils.js').catch(() => {});
 
     UiStateManager.save({ snapshotIsMinimized: false });
     const snapBadge = document.getElementById('zero-snapshot-minimized-badge');
     if (snapBadge) snapBadge.style.display = 'none';
 
+    const { overlay: ov, modal: mo } = initSnapshotUI();
     const state = UiStateManager.get();
-    const modalStyle = state.snapshotModalStyle || 'center';
-    const scale = state.snapshotModalScale || 80;
-    const animStyle = state.snapshotModalAnimation || 'slide';
-    const winMode = state.snapshotWindowMode || 'fixed'; // 'fixed' | 'floating' | 'docked_right' | 'docked_left'
+    applySnapshotModalGeometry(mo, ov, state);
+
     const isDesktop = window.innerWidth >= 800;
-    const isDesktopWindow = isDesktop && winMode !== 'fixed';
-    
-    const floatingPos = (() => {
+    const isDesktopFloating = isDesktop && state.snapshotWindowMode === 'floating';
+
+    // ── STEP 1: 0ms Instant GPU Entrance (Compositor Thread, Zero JANK) ──
+    _isOpen = true;
+    ov.style.display = 'flex';
+    ov.classList.add('open');
+    mo.classList.add('open');
+    ov.style.visibility = 'visible';
+    mo.style.visibility = 'visible';
+    mo.style.transform = 'translate3d(0, 0, 0) scale(1)';
+    mo.style.opacity = '1';
+    ov.style.opacity = '1';
+    ov.style.background = 'transparent';
+    ov.style.backgroundColor = 'transparent';
+    ov.style.pointerEvents = 'none';
+    mo.style.pointerEvents = 'auto';
+    enableClickOutside();
+
+    // ── STEP 2: Async Data Populating & Dirty Checking in requestAnimationFrame ──
+    requestAnimationFrame(async () => {
         try {
-            return JSON.parse(localStorage.getItem('zero_snapshot_floating_pos') || localStorage.getItem('zero_snapshot_modal_pos') || 'null');
-        } catch {
-            return null;
+            const selectEl = document.getElementById('settings_preset_openai');
+            const activePresetName = (selectEl && selectEl.selectedIndex >= 0) ? selectEl.options[selectEl.selectedIndex].textContent.trim() : null;
+
+            const needsFullRebuild = !_modalBuilt || _isSnapshotDirty || (_lastRenderedPresetName && activePresetName && _lastRenderedPresetName !== activePresetName);
+
+            if (needsFullRebuild) {
+                PresetManager.invalidate();
+                let preset = PresetManager.loadSync();
+                let listInfo = PresetManager.listNamesSync();
+                if (!preset) {
+                    PresetManager.invalidate();
+                    const res = await Promise.all([PresetManager.load(), PresetManager.listNames()]);
+                    preset = res[0];
+                    listInfo = res[1];
+                }
+                if (!preset) {
+                    toastr.error('无法加载预设');
+                    closeUI();
+                    return;
+                }
+                mo.innerHTML = '';
+                buildModal(mo, preset, listInfo);
+                _modalBuilt = true;
+                _isSnapshotDirty = false;
+                _lastRenderedPresetName = preset.name;
+            } else {
+                syncModalDynamicState(mo);
+            }
+
+            detectPresetRenames().catch(e => console.warn('[Zero] detectPresetRenames background check:', e));
+        } catch (e) {
+            console.error('[Zero] openUI RAF error:', e);
+            toastr.error('加载预设失败');
+            closeUI();
         }
-    })();
-    const dockRightWidth = state.snapshotDockRightWidth || localStorage.getItem('zero_snapshot_dock_right_width') || '450px';
-    const dockLeftWidth = state.snapshotDockLeftWidth || localStorage.getItem('zero_snapshot_dock_left_width') || '450px';
-
-    overlay = document.createElement('div');
-    overlay.id = 'zero-overlay';
-    Object.assign(overlay.style, {
-        position: 'fixed', top: '0', left: '0', width: '100vw', height: '100vh',
-        zIndex: '10001',
-        background: isDesktopWindow ? 'transparent' : 'rgba(0,0,0,0.55)',
-        pointerEvents: isDesktopWindow ? 'none' : 'auto',
-        display: 'flex', overflow: 'hidden',
-        opacity: '1'
     });
+}
 
-    if (modalStyle === 'center') {
-        overlay.style.alignItems = 'center';
-        overlay.style.justifyContent = 'center';
-    } else if (modalStyle === 'top') {
-        overlay.style.alignItems = 'flex-start';
-        overlay.style.justifyContent = 'center';
-    } else if (modalStyle === 'bottom') {
-        overlay.style.alignItems = 'flex-end';
-        overlay.style.justifyContent = 'center';
-    } else if (modalStyle === 'left') {
-        overlay.style.alignItems = 'stretch';
-        overlay.style.justifyContent = 'flex-start';
-    } else if (modalStyle === 'right') {
-        overlay.style.alignItems = 'stretch';
-        overlay.style.justifyContent = 'flex-end';
+function syncModalDynamicState(modalEl) {
+    if (!modalEl) return;
+    const select = modalEl.querySelector('.zero-preset-select');
+    const nativeSelect = document.getElementById('settings_preset_openai');
+    const activeNativeName = (nativeSelect && nativeSelect.selectedIndex >= 0) ? nativeSelect.options[nativeSelect.selectedIndex].textContent.trim() : null;
+    if (select && activeNativeName && select.value !== activeNativeName) {
+        select.value = activeNativeName;
     }
+    const streamBtn = modalEl.querySelector('.zero-stream-btn');
+    if (streamBtn) {
+        const isStreamOn = StreamManager.isStreamEnabled();
+        streamBtn.classList.toggle('active', isStreamOn);
+        streamBtn.title = isStreamOn ? '流式输出: 已开启 (点击切换为非流式)' : '流式输出: 已关闭 (点击开启流式)';
+    }
+}
 
-    overlay.addEventListener('click', (e) => {
-        if (Date.now() - lastSnapshotRestoreTime < 450) {
-            return;
-        }
-        if (e.target === overlay) closeUI();
-    });
-
-    const modal = h('div', { class: 'zero-modal zero-modal-card' });
-    Object.assign(modal.style, {
-        animation: 'none',
-        opacity: '1',
-        pointerEvents: 'auto'
-    });
-
-    if (isDesktopWindow) {
-        if (winMode === 'floating') {
-            const vw = window.innerWidth, vh = window.innerHeight;
-            const w = Math.max(260, floatingPos?.w ?? Math.min(Math.round(vw * 0.9), 560));
-            const hVal = Math.max(260, floatingPos?.h ?? Math.min(Math.round(vh * 0.85), 780));
-            const l = Math.max(0, Math.min(floatingPos?.l ?? Math.round((vw - w) / 2), vw - 80));
-            const t = Math.max(0, Math.min(floatingPos?.t ?? Math.round((vh - hVal) / 2), vh - 50));
-            
-            modal.style.position = 'fixed';
-            modal.style.left = `${l}px`;
-            modal.style.top = `${t}px`;
-            modal.style.width = `${w}px`;
-            modal.style.height = `${hVal}px`;
-            modal.style.borderRadius = '14px';
-            modal.style.margin = '0';
-        } else if (winMode === 'docked_right') {
-            modal.style.position = 'fixed';
-            modal.style.top = '0';
-            modal.style.left = 'auto';
-            modal.style.right = '0';
-            modal.style.width = dockRightWidth;
-            modal.style.height = '100vh';
-            modal.style.maxHeight = '100vh';
-            modal.style.borderRadius = '0';
-            modal.style.margin = '0';
-        } else if (winMode === 'docked_left') {
-            modal.style.position = 'fixed';
-            modal.style.top = '0';
-            modal.style.left = '0';
-            modal.style.right = 'auto';
-            modal.style.width = dockLeftWidth;
-            modal.style.height = '100vh';
-            modal.style.maxHeight = '100vh';
-            modal.style.borderRadius = '0';
-            modal.style.margin = '0';
-        }
+export function toggleUI(forceState) {
+    const isCurrentlyOpen = _isOpen && overlay && overlay.classList.contains('open');
+    const targetState = typeof forceState === 'boolean' ? forceState : !isCurrentlyOpen;
+    if (targetState) {
+        openUI();
     } else {
-        if (animStyle === 'scale') {
-            modal.style.transition = 'transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1)';
-        } else if (animStyle === 'slide') {
-            modal.style.transition = 'transform 0.15s cubic-bezier(0.25, 0.8, 0.25, 1)';
-        }
-
-        if (modalStyle === 'center') {
-            modal.style.width = '92%';
-            modal.style.maxWidth = '520px';
-            modal.style.height = `${scale}vh`;
-            modal.style.maxHeight = '90vh';
-            modal.style.borderRadius = '14px';
-            
-            if (animStyle === 'slide') {
-                modal.style.transform = 'translateY(25px)';
-            } else if (animStyle === 'scale') {
-                modal.style.transform = 'scale(0.92)';
-            }
-        } else {
-            if (modalStyle === 'top') {
-                modal.style.width = '100%';
-                modal.style.maxWidth = '600px';
-                modal.style.height = `${scale}vh`;
-                modal.style.maxHeight = '100vh';
-                modal.style.borderRadius = '0 0 14px 14px';
-                if (animStyle === 'slide') modal.style.transform = 'translateY(-100%)';
-            } else if (modalStyle === 'bottom') {
-                modal.style.width = '100%';
-                modal.style.maxWidth = '600px';
-                modal.style.height = `${scale}vh`;
-                modal.style.maxHeight = '100vh';
-                modal.style.borderRadius = '14px 14px 0 0';
-                if (animStyle === 'slide') modal.style.transform = 'translateY(100%)';
-            } else if (modalStyle === 'left') {
-                modal.style.width = `${scale}vw`;
-                modal.style.height = '100vh';
-                modal.style.maxHeight = '100vh';
-                modal.style.borderRadius = '0 14px 14px 0';
-                if (animStyle === 'slide') modal.style.transform = 'translateX(-100%)';
-            } else if (modalStyle === 'right') {
-                modal.style.width = `${scale}vw`;
-                modal.style.height = '100vh';
-                modal.style.maxHeight = '100vh';
-                modal.style.borderRadius = '14px 0 0 14px';
-                if (animStyle === 'slide') modal.style.transform = 'translateX(100%)';
-            }
-
-            if (animStyle === 'scale') {
-                modal.style.transform = 'scale(0.92)';
-            }
-        }
-    }
-
-    try {
-        PresetManager.invalidate();
-        let preset = PresetManager.loadSync();
-        let listInfo = PresetManager.listNamesSync();
-        if (!preset) {
-            PresetManager.invalidate();
-            const res = await Promise.all([PresetManager.load(), PresetManager.listNames()]);
-            preset = res[0];
-            listInfo = res[1];
-        }
-        if (!preset) { toastr.error('无法加载预设'); closeUI(); return; }
-        buildModal(modal, preset, listInfo);
-
-        overlay.appendChild(modal);
-        document.body.appendChild(overlay);
-        
-        // Background detect preset renames without blocking UI rendering
-        detectPresetRenames().catch(e => console.warn('[Zero] detectPresetRenames background check:', e));
-    } catch (e) {
-        console.error('[Zero]', e);
-        toastr.error('加载预设失败');
         closeUI();
-        return;
-    }
-
-    // Trigger transform slide/scale animation while modal stays 100% opaque
-    if (animStyle !== 'none') {
-        requestAnimationFrame(() => {
-            if (modal) {
-                modal.style.transform = 'translate(0) scale(1)';
-            }
-        });
     }
 }
 
 export function closeUI() {
+    disableClickOutside();
+    const now = Date.now();
+    if (now - _lastToggleTime < 150 && !_isOpen) return;
+    _lastToggleTime = now;
+
     if (pendingToggles.size > 0) {
         const batch = new Map(pendingToggles);
         pendingToggles.clear();
         clearTimeout(toggleTimer);
         PresetManager.batchToggleMap(batch, false, _currentPreset?.name).catch(e => console.error('[Zero] closeUI batchToggleMap error:', e));
     }
-    // Immediately flush any pending native PromptManager render/save
-    // so the native list is consistent the moment the panel closes.
     PresetManager.flushNativeRender();
     if (msActive) exitMultiSelect();
-    if (overlay) {
+
+    if (overlay && modal) {
         // Save scroll position before closing
-        const content = overlay.querySelector('.zero-content');
+        const content = modal.querySelector('.zero-content');
         if (content) {
             const activeTab = UiStateManager.get().activeTab || 'entries';
             UiStateManager.saveScrollPos(activeTab, content.scrollTop);
             SillyTavern.getContext().saveSettingsDebounced();
         }
 
-        const modal = overlay.querySelector('.zero-modal');
         const state = UiStateManager.get();
         const winMode = state.snapshotWindowMode || 'fixed';
         if (modal && window.innerWidth >= 800 && winMode === 'floating') {
@@ -527,46 +674,28 @@ export function closeUI() {
                 }));
             } catch (e) {}
         }
-        const modalStyle = state.snapshotModalStyle || 'center';
-        const animStyle = state.snapshotModalAnimation || 'slide';
 
-        if (animStyle !== 'none') {
-            overlay.style.transition = 'opacity 0.2s ease-out';
-            overlay.style.opacity = '0';
-            if (modal) {
-                modal.style.opacity = '0';
-                if (animStyle === 'scale') {
-                    modal.style.transform = 'scale(0.85)';
-                } else if (animStyle === 'fade') {
-                    // no transform changes
-                } else if (animStyle === 'slide') {
-                    if (modalStyle === 'center') {
-                        modal.style.transform = 'translateY(40px)';
-                    } else if (modalStyle === 'top') {
-                        modal.style.transform = 'translateY(-100%)';
-                    } else if (modalStyle === 'bottom') {
-                        modal.style.transform = 'translateY(100%)';
-                    } else if (modalStyle === 'left') {
-                        modal.style.transform = 'translateX(-100%)';
-                    } else if (modalStyle === 'right') {
-                        modal.style.transform = 'translateX(100%)';
-                    }
-                }
+        // ── GPU exit transition (Instant and persistent, never destroys DOM) ──
+        _isOpen = false;
+        overlay.classList.remove('open');
+        modal.classList.remove('open');
+        overlay.style.pointerEvents = 'none';
+        modal.style.pointerEvents = 'none';
+
+        const offscreenTransform = getOffscreenTransform(state);
+        modal.style.transform = offscreenTransform;
+        modal.style.opacity = '0';
+        overlay.style.opacity = '0';
+
+        setTimeout(() => {
+            if (!_isOpen && overlay && modal) {
+                overlay.style.visibility = 'hidden';
+                modal.style.visibility = 'hidden';
+                overlay.style.display = 'none';
             }
-
-            const targetOverlay = overlay;
-            overlay = null; // Set to null immediately so subsequent calls know it's closing
-
-            setTimeout(() => {
-                if (targetOverlay && targetOverlay.parentNode) {
-                    targetOverlay.remove();
-                }
-            }, 200);
-        } else {
-            overlay.remove();
-            overlay = null;
-        }
+        }, 240);
     }
+
     try {
         HistoryManager.clear();
     } catch (e) {
@@ -808,9 +937,12 @@ function buildModal(modal, preset, listInfo) {
                     docked_right: '右侧停靠模式',
                     docked_left: '左侧停靠模式'
                 };
-                toastr.success(`已切换快照窗口为: ${modeNames[nextMode]}`);
+                _lastToggleTime = 0;
                 closeUI();
-                setTimeout(() => openUI(), 40);
+                setTimeout(() => {
+                    _lastToggleTime = 0;
+                    openUI();
+                }, 40);
             }
         }));
     }
@@ -995,10 +1127,13 @@ function buildModal(modal, preset, listInfo) {
     });
     modal.appendChild(tabBar);
     modal.appendChild(content);
-
-    // Initial render: pre-render all panel tabs synchronously to eliminate blank flash on tab clicks
+    // Initial render: only render the active tab immediately to maximize opening speed; defer other tabs until clicked
+    renderTab(initialTab, panels[initialTab], preset, modal);
     tabs.forEach(t => {
-        renderTab(t.id, panels[t.id], preset, modal);
+        if (t.id !== initialTab) {
+            panels[t.id]._rendered = false;
+            panels[t.id]._dirty = true;
+        }
     });
     setupScrollTracking(content, initialTab);
     restoreScrollPos(content, initialTab);

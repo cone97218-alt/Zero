@@ -1,4 +1,4 @@
-import { openUI } from './qr-snapshot/ui.js';
+import { openUI, toggleUI, initSnapshotUI, markSnapshotDirty } from './qr-snapshot/ui.js';
 import { preloadOpenai, PresetManager, UiStateManager, StreamManager } from './qr-snapshot/state.js';
 import { init as initPresetManager } from './preset-manager/main.js';
 import { initPresetPerformanceOptimizer } from './qr-snapshot/performance.js';
@@ -144,6 +144,7 @@ window.Zero = {
             // Clean up DOM overlays and buttons
             document.getElementById(BTN_ID)?.remove();
             document.getElementById('zero-modal')?.remove();
+            document.getElementById('zero-overlay')?.remove();
             document.getElementById('zero-preset-manager-modal')?.remove();
             document.getElementById('zero-entry-context-menu-modal')?.remove();
             document.getElementById('zero-inject-var-modal')?.remove();
@@ -157,6 +158,8 @@ window.Zero = {
 
             const { init: initPM } = await import(`./preset-manager/main.js?v=${ts}`);
             initPM();
+            const { initSnapshotUI } = await import(`./qr-snapshot/ui.js?v=${ts}`);
+            initSnapshotUI?.();
             injectWithRetry();
 
             if (!options.silent) {
@@ -210,6 +213,7 @@ window.Zero = {
 // ── Event Listeners ────────────────────────────────────────────────────────
 if (typeof $ !== 'undefined') {
     $(document).on('change', '#settings_preset_openai', function() {
+        markSnapshotDirty();
         if (isSwitchingPresetLinkage) return;
         const selectEl = this;
         const selectedName = selectEl.options[selectEl.selectedIndex]?.textContent?.trim();
@@ -226,6 +230,7 @@ if (typeof $ !== 'undefined') {
 
 if (event_types.PRESET_CHANGED) {
     eventSource.on(event_types.PRESET_CHANGED, (presetName) => {
+        markSnapshotDirty();
         if (isSwitchingPresetLinkage) return;
         const name = typeof presetName === 'string' ? presetName : presetName?.name;
         if (name) {
@@ -267,9 +272,9 @@ export async function registerZeroSlashCommands() {
         SlashCommandParser.addCommandObject(SlashCommand.fromProps({
             name: 'zero-snapshot',
             aliases: ['zero-qr', 'zerosnapshot', 'zero-snapshots'],
-            helpString: '打开 Zero 快照管理弹窗',
+            helpString: '打开/切换 Zero 快照管理面板',
             callback: () => {
-                openUI();
+                toggleUI();
                 return '';
             },
         }));
@@ -334,7 +339,7 @@ function createButton() {
     btn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        openUI();
+        toggleUI();
     });
     return btn;
 }
@@ -401,6 +406,7 @@ preloadOpenai();
 function onAppReady() {
     preloadOpenai();
     ThemeManager.applyTheme();
+    initSnapshotUI();
     injectWithRetry();
     initPresetManager();
     initPresetPerformanceOptimizer(eventSource, event_types);
