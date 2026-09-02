@@ -234,6 +234,7 @@ let lastSnapshotRestoreTime = 0;
 
 export function markSnapshotDirty() {
     _isSnapshotDirty = true;
+    _modalBuilt = false;
     if (_currentPanels) markPanelsDirty(_currentPanels);
 }
 
@@ -573,33 +574,31 @@ export async function openUI() {
     // ── STEP 2: Async Data Populating & Dirty Checking in requestAnimationFrame ──
     requestAnimationFrame(async () => {
         try {
-            const selectEl = document.getElementById('settings_preset_openai');
-            const activePresetName = (selectEl && selectEl.selectedIndex >= 0) ? selectEl.options[selectEl.selectedIndex].textContent.trim() : null;
+            PresetManager.invalidate();
+            let preset = PresetManager.loadSync();
+            let listInfo = PresetManager.listNamesSync();
+            if (!preset) {
+                const res = await Promise.all([PresetManager.load(), PresetManager.listNames()]);
+                preset = res[0];
+                listInfo = res[1];
+            }
+            if (!preset) {
+                toastr.error('无法加载预设');
+                closeUI();
+                return;
+            }
 
+            const activePresetName = preset.name;
             const needsFullRebuild = !_modalBuilt || _isSnapshotDirty || (_lastRenderedPresetName && activePresetName && _lastRenderedPresetName !== activePresetName);
 
             if (needsFullRebuild) {
-                PresetManager.invalidate();
-                let preset = PresetManager.loadSync();
-                let listInfo = PresetManager.listNamesSync();
-                if (!preset) {
-                    PresetManager.invalidate();
-                    const res = await Promise.all([PresetManager.load(), PresetManager.listNames()]);
-                    preset = res[0];
-                    listInfo = res[1];
-                }
-                if (!preset) {
-                    toastr.error('无法加载预设');
-                    closeUI();
-                    return;
-                }
                 mo.innerHTML = '';
                 buildModal(mo, preset, listInfo);
                 _modalBuilt = true;
                 _isSnapshotDirty = false;
                 _lastRenderedPresetName = preset.name;
             } else {
-                syncModalDynamicState(mo);
+                syncModalDynamicState(mo, listInfo);
             }
 
             detectPresetRenames().catch(e => console.warn('[Zero] detectPresetRenames background check:', e));
@@ -611,13 +610,32 @@ export async function openUI() {
     });
 }
 
-function syncModalDynamicState(modalEl) {
+function syncModalDynamicState(modalEl, listInfo) {
     if (!modalEl) return;
+    const freshList = listInfo || PresetManager.listNamesSync();
+    const filteredNames = (freshList.names || []).filter(n => !n.startsWith('★'));
     const select = modalEl.querySelector('.zero-preset-select');
-    const nativeSelect = document.getElementById('settings_preset_openai');
-    const activeNativeName = (nativeSelect && nativeSelect.selectedIndex >= 0) ? nativeSelect.options[nativeSelect.selectedIndex].textContent.trim() : null;
-    if (select && activeNativeName && select.value !== activeNativeName) {
-        select.value = activeNativeName;
+    const activeNativeName = freshList.active || (() => {
+        const nativeSelect = document.getElementById('settings_preset_openai');
+        return (nativeSelect && nativeSelect.selectedIndex >= 0) ? nativeSelect.options[nativeSelect.selectedIndex].textContent.trim() : null;
+    })();
+
+    if (select) {
+        const currentOpts = Array.from(select.options).map(o => o.value);
+        const isListChanged = currentOpts.length !== filteredNames.length || currentOpts.some((val, idx) => val !== filteredNames[idx]);
+
+        if (isListChanged) {
+            select.innerHTML = '';
+            filteredNames.forEach(n => {
+                const opt = document.createElement('option');
+                opt.value = n;
+                opt.textContent = n;
+                if (n === activeNativeName) opt.selected = true;
+                select.appendChild(opt);
+            });
+        } else if (activeNativeName && select.value !== activeNativeName) {
+            select.value = activeNativeName;
+        }
     }
     const streamBtn = modalEl.querySelector('.zero-stream-btn');
     if (streamBtn) {

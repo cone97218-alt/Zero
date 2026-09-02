@@ -74,6 +74,9 @@ export function refreshNativePresetManager(pm) {
     } catch (e) {
         console.warn('[Zero] Failed to refresh native preset manager:', e);
     }
+    try {
+        window.dispatchEvent(new Event('zero-presets-list-changed'));
+    } catch (e) {}
 }
 
 export function debounce(func, wait) {

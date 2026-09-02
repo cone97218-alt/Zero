@@ -211,6 +211,10 @@ window.Zero = {
 };
 
 // ── Event Listeners ────────────────────────────────────────────────────────
+window.addEventListener('zero-presets-list-changed', () => {
+    markSnapshotDirty();
+});
+
 if (typeof $ !== 'undefined') {
     $(document).on('change', '#settings_preset_openai', function() {
         markSnapshotDirty();
@@ -237,6 +241,19 @@ if (event_types.PRESET_CHANGED) {
             triggerApiConfigLinkage(name);
         }
     });
+}
+
+if (event_types.OAI_PRESET_CHANGED_AFTER) {
+    eventSource.on(event_types.OAI_PRESET_CHANGED_AFTER, () => markSnapshotDirty());
+}
+if (event_types.SETTINGS_UPDATED) {
+    eventSource.on(event_types.SETTINGS_UPDATED, () => markSnapshotDirty());
+}
+if (event_types.PRESET_RENAMED_AFTER) {
+    eventSource.on(event_types.PRESET_RENAMED_AFTER, () => markSnapshotDirty());
+}
+if (event_types.PRESET_DELETED_AFTER) {
+    eventSource.on(event_types.PRESET_DELETED_AFTER, () => markSnapshotDirty());
 }
 
 // Listen for ST extension update event if present
