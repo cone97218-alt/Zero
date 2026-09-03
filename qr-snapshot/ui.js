@@ -93,11 +93,18 @@ function showConfirm(modal, msg, onYes, requiresSetting = false) {
         h('div', { class: 'zero-confirm-box' },
             h('div', { class: 'zero-confirm-msg', html: msg.replace(/\n/g, '<br>') }),
             h('div', { class: 'zero-confirm-btns', style: 'margin-top:12px' },
-                h('button', { class: 'zero-btn', text: '取消', onclick: () => box.remove() }),
-                h('button', { class: 'zero-btn primary', text: '确认', onclick: () => { box.remove(); onYes(); } })
+                h('button', { class: 'zero-btn', text: '取消', onclick: (e) => { e.stopPropagation(); box.remove(); } }),
+                h('button', { class: 'zero-btn primary', text: '确认', onclick: (e) => { e.stopPropagation(); box.remove(); onYes(); } })
             )
         )
     );
+    box.addEventListener('pointerdown', (e) => e.stopPropagation());
+    box.addEventListener('click', (e) => {
+        if (e.target === box) {
+            e.stopPropagation();
+            box.remove();
+        }
+    });
     modal.appendChild(box);
 }
 
@@ -120,11 +127,18 @@ function showPrompt(modal, msg, defaultVal, onOk) {
             h('div', { class: 'zero-confirm-msg', text: msg }),
             input,
             h('div', { class: 'zero-confirm-btns', style: 'margin-top:12px' },
-                h('button', { class: 'zero-btn', text: '取消', onclick: () => box.remove() }),
-                h('button', { class: 'zero-btn primary', text: '确认', onclick: () => { const v = input.value.trim(); if (v) { box.remove(); onOk(v); } } })
+                h('button', { class: 'zero-btn', text: '取消', onclick: (e) => { e.stopPropagation(); box.remove(); } }),
+                h('button', { class: 'zero-btn primary', text: '确认', onclick: (e) => { e.stopPropagation(); const v = input.value.trim(); if (v) { box.remove(); onOk(v); } } })
             )
         )
     );
+    box.addEventListener('pointerdown', (e) => e.stopPropagation());
+    box.addEventListener('click', (e) => {
+        if (e.target === box) {
+            e.stopPropagation();
+            box.remove();
+        }
+    });
     modal.appendChild(box);
     setTimeout(() => input.focus(), 50);
 }
@@ -290,15 +304,20 @@ function enableClickOutside() {
         const target = e.target;
         if (!target) return;
 
-        // If clicking inside the modal or header/content/buttons, ignore
+        // Guard 1: If target is detached from document (e.g. removed by a close/delete handler), ignore
+        if (!document.body.contains(target)) return;
+
+        // Guard 2: If clicking inside the modal or header/content/buttons, ignore
         if (modal.contains(target) || modal === target) return;
 
-        // If clicking on toastr or alert or menu button or minimized badge, ignore
+        // Guard 3: If clicking on toastr or alert or menu button or minimized badge or confirm/preview box, ignore
         if (target.closest && (
             target.closest('#zero-preset-btn') ||
             target.closest('#zero-snapshot-minimized-badge') ||
             target.closest('.zero-confirm') ||
             target.closest('.zero-preview-box') ||
+            target.closest('.zero-confirm-box') ||
+            target.closest('#zero-quick-editor') ||
             target.closest('#toast-container')
         )) {
             return;
@@ -1661,9 +1680,19 @@ function showContentPreview(modal, prompt) {
         style: 'opacity: 0.6; color: var(--SmartThemeQuoteColor, #7b8cde);',
         title: '编辑条目',
         html: '<i class="fa-solid fa-pencil"></i>',
-        onclick: () => {
+        onclick: (e) => {
+            e.preventDefault();
+            e.stopPropagation();
             previewBox.remove();
-            openNativeEditor(prompt.identifier);
+            const pIdx = _currentPreset?.prompts ? _currentPreset.prompts.indexOf(prompt) : -1;
+            if (editorModule) {
+                editorModule.openQuickEditor(_currentPreset.name, prompt.name || prompt.identifier, prompt.identifier, pIdx >= 0 ? pIdx : undefined);
+            } else {
+                import('../preset-manager/editor.js').then(m => {
+                    editorModule = m;
+                    m.openQuickEditor(_currentPreset.name, prompt.name || prompt.identifier, prompt.identifier, pIdx >= 0 ? pIdx : undefined);
+                });
+            }
         }
     });
     titleEl.appendChild(editBtn);
@@ -1674,7 +1703,8 @@ function showContentPreview(modal, prompt) {
             style: 'opacity: 0.6;',
             title: '翻译内容',
             html: '<i class="fa-solid fa-language"></i>',
-            onclick: async () => {
+            onclick: async (e) => {
+                e.stopPropagation();
                 if (transBtn.classList.contains('processing')) return;
                 
                 // Toggle back to original if already showing translation
@@ -1726,7 +1756,8 @@ function showContentPreview(modal, prompt) {
         style: 'opacity: 0.6;',
         title: '复制内容',
         html: '<i class="fa-regular fa-copy"></i>',
-        onclick: async () => {
+        onclick: async (e) => {
+            e.stopPropagation();
             const text = bodyEl.textContent;
             if (!text) return;
             try {
@@ -1751,9 +1782,27 @@ function showContentPreview(modal, prompt) {
     else bodyEl.appendChild(h('div', { class: 'zero-empty', style: 'padding:16px 0', text: '（无内容）' }));
     previewContent.appendChild(bodyEl);
     previewContent.appendChild(h('div', { class: 'zero-confirm-btns', style: 'margin-top:12px' },
-        h('button', { class: 'zero-btn primary', text: '关闭', onclick: () => previewBox.remove() })
+        h('button', {
+            class: 'zero-btn primary',
+            text: '关闭',
+            onclick: (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                previewBox.remove();
+            }
+        })
     ));
     previewBox.appendChild(previewContent);
+    previewBox.addEventListener('pointerdown', (e) => {
+        e.stopPropagation();
+    });
+    previewBox.addEventListener('click', (e) => {
+        if (e.target === previewBox) {
+            e.preventDefault();
+            e.stopPropagation();
+            previewBox.remove();
+        }
+    });
     modal.appendChild(previewBox);
 }
 
