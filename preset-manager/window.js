@@ -6,6 +6,7 @@
  */
 
 import { UiStateManager } from '../qr-snapshot/state.js';
+import { FloatingBall } from './floating-ball.js';
 
 const DEFAULT_WINDOW_STATE = {
     mode: 'fullscreen', // 'fullscreen', 'floating', 'docked_right', 'docked_left'
@@ -47,10 +48,10 @@ export const WindowManager = {
         const mode = settings.mode || 'fullscreen';
         const fp = settings.floating || DEFAULT_WINDOW_STATE.floating;
         const panel = document.getElementById('zero-preset-manager-panel');
-        const badge = document.getElementById('zero-minimized-badge');
-
-        if (badge) {
-            badge.style.display = settings.isMinimized ? 'flex' : 'none';
+        if (settings.isMinimized) {
+            FloatingBall.show('preset', () => this.restore());
+        } else {
+            FloatingBall.hide('preset');
         }
 
         if (!panel) return;
@@ -518,59 +519,28 @@ export const WindowManager = {
     },
 
     /**
-     * Minimize window to floating badge on screen edge
+     * Minimize window to floating ball
      */
     minimize() {
         const settings = this.getSettings();
         settings.isMinimized = true;
         UiStateManager.save({ windowState: settings });
 
-        let badge = document.getElementById('zero-minimized-badge');
-        if (!badge) {
-            badge = document.createElement('div');
-            badge.id = 'zero-minimized-badge';
-            badge.className = 'interactable';
-            badge.innerHTML = `
-                <i class="fa-solid fa-list-ul" style="color: var(--SmartThemeQuoteColor);"></i>
-                <span style="font-size: 11px; font-weight: bold;">预设管理</span>
-            `;
-            badge.style.cssText = `
-                position: fixed;
-                bottom: 24px;
-                right: 24px;
-                z-index: 10001;
-                display: flex;
-                align-items: center;
-                gap: 6px;
-                padding: 8px 14px;
-                background: var(--zero-bg-color, var(--SmartThemeBlurTintColor, rgba(20,20,30,0.95)));
-                border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #555));
-                color: var(--zero-text-color, var(--SmartThemeBodyColor, #fff));
-                border-radius: 20px;
-                box-shadow: 0 6px 20px rgba(0,0,0,0.4);
-                cursor: pointer;
-                user-select: none;
-                animation: zeroFadeIn 0.2s ease;
-            `;
-            this.initCapsuleDraggable(badge, () => this.restore());
-            document.body.appendChild(badge);
-        }
-        badge.style.display = 'flex';
+        FloatingBall.show('preset', () => this.restore());
 
         const panel = document.getElementById('zero-preset-manager-panel');
         if (panel) panel.style.display = 'none';
     },
 
     /**
-     * Restore window from minimized badge
+     * Restore window from floating ball
      */
     restore() {
         const settings = this.getSettings();
         settings.isMinimized = false;
         UiStateManager.save({ windowState: settings });
 
-        const badge = document.getElementById('zero-minimized-badge');
-        if (badge) badge.style.display = 'none';
+        FloatingBall.hide('preset');
 
         const panel = document.getElementById('zero-preset-manager-panel');
         if (panel) {

@@ -136,6 +136,196 @@ export async function populatePresetSelects() {
     }
 }
 
+/**
+ * 预设管理面板滑动手势适配与优化
+ * - 顶部导航栏 / 页面顶端左右轻扫：顺畅切换标签页
+ * - 从顶部指示条 / 导航栏 / 内容顶端下滑：跟手阻尼下拉关闭面板（严格防与列表滚动冲突）
+ */
+function setupPanelSwipeGestures(panelEl) {
+    if (!panelEl) return;
+
+    // Helper: find closest scrollable container for accurate top detection
+    const findScrollParent = (startNode, boundary) => {
+        let node = startNode;
+        while (node && node !== boundary && node !== document.body) {
+            if (node.scrollHeight > node.clientHeight + 2) {
+                const style = window.getComputedStyle(node);
+                const overflowY = style.overflowY;
+                if (overflowY === 'auto' || overflowY === 'scroll') {
+                    return node;
+                }
+            }
+            node = node.parentElement;
+        }
+        return null;
+    };
+
+    // Helper: switch tabs dynamically based on visible DOM tabs
+    const switchTabRelative = (offset) => {
+        const tabLinks = Array.from(panelEl.querySelectorAll('.zero-tab-link')).filter(el => el.offsetParent !== null);
+        const activeLink = panelEl.querySelector('.zero-tab-link.active');
+        const curIdx = tabLinks.indexOf(activeLink);
+        if (curIdx === -1) return;
+        const nextIdx = curIdx + offset;
+        if (nextIdx >= 0 && nextIdx < tabLinks.length) {
+            tabLinks[nextIdx].click();
+            if (navigator.vibrate) { try { navigator.vibrate(12); } catch(e) {} }
+        } else {
+            // Edge haptic feedback
+            if (navigator.vibrate) { try { navigator.vibrate(5); } catch(e) {} }
+        }
+    };
+
+    let startX = 0, startY = 0, startTime = 0;
+    let isTracking = false;
+    let isDragging = false;
+    let isSwipingTabs = false;
+    let gestureDirection = null;
+    let canPullDown = false;
+    let activeScrollParent = null;
+
+    const onTouchStart = (e) => {
+        const state = UiStateManager.get();
+        if (state.enableSwipeGestures === false) return;
+        if (e.touches.length !== 1) return;
+        const target = e.target;
+
+        // Skip interactive form controls, sliders, color pickers, drag handles
+        if (target.closest && target.closest('input, textarea, select, button, .zero-icon-btn, .zero-switch, .zero-slider, .zero-range, .zero-color-picker, [draggable="true"], .zero-group-mgr-drag, .dragging')) {
+            return;
+        }
+
+        // On desktop floating window mode, header drag is reserved for repositioning
+        const winSettings = WindowManager.getSettings();
+        if (window.innerWidth >= 800 && winSettings.mode === 'floating') {
+            return;
+        }
+
+        const t = e.touches[0];
+        startX = t.clientX;
+        startY = t.clientY;
+        startTime = Date.now();
+        isTracking = true;
+        isDragging = false;
+        isSwipingTabs = false;
+        gestureDirection = null;
+
+        activeScrollParent = findScrollParent(target, panelEl);
+        const isOnNav = !!(target.closest && target.closest('.zero-tabs-nav'));
+        const isAtTop = !activeScrollParent || activeScrollParent.scrollTop <= 2;
+        canPullDown = isOnNav || isAtTop;
+    };
+
+    const onTouchMove = (e) => {
+        if (!isTracking || e.touches.length !== 1) return;
+        const t = e.touches[0];
+        const dx = t.clientX - startX;
+        const dy = t.clientY - startY;
+        const absX = Math.abs(dx);
+        const absY = Math.abs(dy);
+
+        if (!gestureDirection) {
+            if (absX < 8 && absY < 8) return;
+
+            if (absY > absX) {
+                // If user is scrolled down in a sub-list, check live scrollTop
+                if (activeScrollParent && activeScrollParent.scrollTop > 2) {
+                    canPullDown = false;
+                }
+                if (dy > 0 && canPullDown) {
+                    gestureDirection = 'vertical';
+                    isDragging = true;
+                } else {
+                    // Regular native list scrolling
+                    isTracking = false;
+                    return;
+                }
+            } else if (absX > absY * 1.3) {
+                gestureDirection = 'horizontal';
+                isSwipingTabs = true;
+            } else {
+                isTracking = false;
+                return;
+            }
+        }
+
+        if (isDragging) {
+            if (e.cancelable) e.preventDefault();
+            // Elastic damping formula
+            const rawY = Math.max(0, dy);
+            const dampedY = rawY <= 80 ? rawY : 80 + Math.pow(rawY - 80, 0.85) * 1.5;
+            panelEl.style.transition = 'none';
+            panelEl.style.transform = `translate3d(0, ${dampedY}px, 0)`;
+            panelEl.style.opacity = Math.max(0.35, 1 - (dampedY / 450)).toString();
+        } else if (isSwipingTabs) {
+            // Prevent vertical wobble while horizontally swiping tabs
+            if (e.cancelable) e.preventDefault();
+        }
+    };
+
+    const onTouchEnd = (e) => {
+        if (!isTracking) return;
+        isTracking = false;
+        const elapsed = Math.max(1, Date.now() - startTime);
+
+        if (isDragging) {
+            const t = e.changedTouches ? e.changedTouches[0] : null;
+            const dy = t ? t.clientY - startY : 0;
+            const velocity = dy / elapsed;
+            const shouldClose = dy > 100 || (dy > 45 && velocity > 0.45);
+
+            panelEl.style.transition = 'transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease';
+            if (shouldClose) {
+                panelEl.style.transform = `translate3d(0, 100vh, 0)`;
+                panelEl.style.opacity = '0';
+                setTimeout(() => {
+                    panelEl.style.transition = '';
+                    panelEl.style.transform = '';
+                    panelEl.style.opacity = '';
+                    closePanel();
+                }, 220);
+            } else {
+                panelEl.style.transform = 'translate3d(0, 0, 0)';
+                panelEl.style.opacity = '1';
+                setTimeout(() => {
+                    panelEl.style.transition = '';
+                    panelEl.style.transform = '';
+                    panelEl.style.opacity = '';
+                }, 240);
+            }
+            isDragging = false;
+        } else if (isSwipingTabs) {
+            const t = e.changedTouches ? e.changedTouches[0] : null;
+            const dx = t ? t.clientX - startX : 0;
+            const dy = t ? t.clientY - startY : 0;
+            const absX = Math.abs(dx);
+            const absY = Math.abs(dy);
+
+            if (absX > 45 && absX > absY * 1.4 && elapsed < 600) {
+                switchTabRelative(dx < -45 ? 1 : -1);
+            }
+            isSwipingTabs = false;
+        }
+    };
+
+    // Remove old listeners if re-initialized
+    if (panelEl._zeroPanelTouchStart) {
+        panelEl.removeEventListener('touchstart', panelEl._zeroPanelTouchStart);
+        panelEl.removeEventListener('touchmove', panelEl._zeroPanelTouchMove);
+        panelEl.removeEventListener('touchend', panelEl._zeroPanelTouchEnd);
+        panelEl.removeEventListener('touchcancel', panelEl._zeroPanelTouchEnd);
+    }
+
+    panelEl._zeroPanelTouchStart = onTouchStart;
+    panelEl._zeroPanelTouchMove = onTouchMove;
+    panelEl._zeroPanelTouchEnd = onTouchEnd;
+
+    panelEl.addEventListener('touchstart', onTouchStart, { passive: true });
+    panelEl.addEventListener('touchmove', onTouchMove, { passive: false });
+    panelEl.addEventListener('touchend', onTouchEnd, { passive: true });
+    panelEl.addEventListener('touchcancel', onTouchEnd, { passive: true });
+}
+
 function ensurePanel() {
     if ($(`#${PANEL_ID}`).length) return;
 
@@ -972,14 +1162,26 @@ function ensurePanel() {
                                          </label>
                                      </div>
 
-                                     <!-- 显示最小化胶囊图标 -->
+                                     <!-- 显示最小化悬浮球图标 -->
                                      <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 12px; margin-top: 4px;">
                                          <div style="flex: 1;">
-                                             <strong style="display: block; font-size: 12px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">显示最小化胶囊图标</strong>
-                                             <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">在预设管理与快照面板顶栏显示最小化为胶囊的按钮。</span>
+                                             <strong style="display: block; font-size: 12px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">显示最小化悬浮球图标</strong>
+                                             <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">在顶栏显示最小化按钮，点击后将面板最小化为纯图标贴边悬浮球。</span>
                                          </div>
                                          <label class="zero-switch">
                                              <input type="checkbox" id="zero-setting-ui-show-win-min-btn" class="interactable">
+                                             <span class="zero-slider"></span>
+                                         </label>
+                                     </div>
+
+                                     <!-- 悬浮球闲置贴边半隐 -->
+                                     <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 12px; margin-top: 4px;">
+                                         <div style="flex: 1;">
+                                             <strong style="display: block; font-size: 12px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">悬浮球闲置贴边半隐</strong>
+                                             <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">悬浮球贴靠屏幕边缘 3 秒无操作后，自动向外侧收缩折叠为半透明小弧条，绝不遮挡聊天与输入；碰触或经过即刻展开唤醒。</span>
+                                         </div>
+                                         <label class="zero-switch">
+                                             <input type="checkbox" id="zero-setting-ui-ball-autohide" class="interactable">
                                              <span class="zero-slider"></span>
                                          </label>
                                      </div>
@@ -992,6 +1194,18 @@ function ensurePanel() {
                                          </div>
                                          <label class="zero-switch">
                                              <input type="checkbox" id="zero-setting-ui-show-stream-btn" class="interactable">
+                                             <span class="zero-slider"></span>
+                                         </label>
+                                     </div>
+
+                                     <!-- 手机端手势滑动操作 -->
+                                     <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 12px; margin-top: 4px;">
+                                         <div style="flex: 1;">
+                                             <strong style="display: block; font-size: 12px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">滑动操作 (移动端手势适配)</strong>
+                                             <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">适配手机/触屏手势操作：支持顶部下拉顺滑收起快照面板，顶栏或空旷区域左右滑动无缝切换「条目 / 快照 / 编辑」标签。</span>
+                                         </div>
+                                         <label class="zero-switch">
+                                             <input type="checkbox" id="zero-setting-ui-swipe-gestures" class="interactable">
                                              <span class="zero-slider"></span>
                                          </label>
                                      </div>
@@ -1159,7 +1373,7 @@ function ensurePanel() {
                                     user-select: none;
                                 ">
                                     <div style="font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 6px; color: var(--SmartThemeBodyColor);">
-                                        <i class="fa-solid fa-desktop" style="color: var(--SmartThemeQuoteColor); font-size: 13px;"></i> 电脑端视窗与悬浮窗设置
+                                        <i class="fa-solid fa-desktop" style="color: var(--SmartThemeQuoteColor); font-size: 13px;"></i> 电脑端视窗与悬浮窗设置 <span style="font-size: 10px; opacity: 0.6; font-weight: normal; margin-left: 4px;">(宽屏专享)</span>
                                     </div>
                                     <i class="fa-solid fa-chevron-right zero-settings-chevron" style="transition: transform 0.15s; font-size: 10px; opacity: 0.7;"></i>
                                 </div>
@@ -1576,6 +1790,7 @@ function ensurePanel() {
         const navHandle = panelEl.querySelector('.zero-tabs-nav');
         WindowManager.initDraggable(panelEl, navHandle);
         WindowManager.applyWindowMode();
+        setupPanelSwipeGestures(panelEl);
     }
 
     $(`#${PANEL_ID} .zero-tab-link`).on('click', function(e) {
@@ -1882,13 +2097,26 @@ function ensurePanel() {
         ws.showWinMinimizeBtn = checked;
         UiStateManager.save({ showWinMinimizeBtn: checked, windowState: ws });
         import('./window.js').then(m => m.WindowManager.applyWindowMode());
-        toastr.success(checked ? '已开启显示最小化胶囊按钮' : '已关闭显示最小化胶囊按钮');
+        toastr.success(checked ? '已开启显示最小化悬浮球按钮' : '已关闭显示最小化悬浮球按钮');
+    });
+
+    $('body').off('change', '#zero-setting-ui-ball-autohide').on('change', '#zero-setting-ui-ball-autohide', function() {
+        const checked = $(this).is(':checked');
+        UiStateManager.save({ enableBallAutoHide: checked });
+        import('./floating-ball.js').then(m => m.FloatingBall.updateAutoHideState()).catch(() => {});
+        toastr.success(checked ? '已开启悬浮球贴边半隐' : '已关闭悬浮球贴边半隐');
     });
 
     $('body').off('change', '#zero-setting-ui-show-stream-btn').on('change', '#zero-setting-ui-show-stream-btn', function() {
         const checked = $(this).is(':checked');
         UiStateManager.save({ showStreamBtn: checked });
         toastr.success(checked ? '已开启显示流式切换按钮' : '已关闭显示流式切换按钮');
+    });
+
+    $('body').off('change', '#zero-setting-ui-swipe-gestures').on('change', '#zero-setting-ui-swipe-gestures', function() {
+        const checked = $(this).is(':checked');
+        UiStateManager.save({ enableSwipeGestures: checked });
+        toastr.success(checked ? '已开启手势滑动操作适配' : '已关闭手势滑动操作适配');
     });
 
     $('body').off('change', '#zero-setting-ui-modal-style').on('change', '#zero-setting-ui-modal-style', function() {
@@ -3068,7 +3296,9 @@ export function renderSettingsTab() {
     const windowState = state.windowState || {};
     $('#zero-setting-ui-show-win-mode-btn').prop('checked', windowState.showWinModeBtn !== false && state.showWinModeBtn !== false);
     $('#zero-setting-ui-show-win-min-btn').prop('checked', windowState.showWinMinimizeBtn !== false && state.showWinMinimizeBtn !== false);
+    $('#zero-setting-ui-ball-autohide').prop('checked', state.enableBallAutoHide !== false);
     $('#zero-setting-ui-show-stream-btn').prop('checked', state.showStreamBtn !== false);
+    $('#zero-setting-ui-swipe-gestures').prop('checked', state.enableSwipeGestures !== false);
     const scale = state.snapshotModalScale || 80;
     $('#zero-setting-ui-modal-scale').val(scale);
     $('#zero-setting-ui-modal-scale-val').text(`${scale}%`);

@@ -94,6 +94,11 @@
     pointer-events: auto;
 }
 
+/* ===== Mobile Swipe Handle (Removed visual indicator per user request) ===== */
+.zero-swipe-handle {
+    display: none !important;
+}
+
 /* ===== Skeleton Loading ===== */
 .zero-skeleton {
     padding: 14px;
@@ -1598,4 +1603,189 @@
         padding: 16px !important;
     }
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   Zero Pure Icon Floating Action Ball (纯图标贴边隐藏悬浮球)
+   ══════════════════════════════════════════════════════════════════ */
+.zero-floating-ball {
+    position: fixed;
+    z-index: 10002;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: var(--zero-bg-color, var(--SmartThemeBlurTintColor, rgba(24, 24, 32, 0.88)));
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1.5px solid var(--SmartThemeQuoteColor, #7b8cde);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.42), 0 0 12px rgba(123, 140, 222, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: grab;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+    transition: transform 0.22s cubic-bezier(0.2, 0.9, 0.3, 1), opacity 0.2s ease, box-shadow 0.2s ease;
+}
+
+.zero-floating-ball:hover,
+.zero-floating-ball:active {
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 16px rgba(123, 140, 222, 0.35);
+}
+
+.zero-floating-ball.is-dragging,
+.zero-floating-ball.dragging {
+    cursor: grabbing !important;
+    transform: scale(1.08) translate3d(0, 0, 0) !important;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6), 0 0 20px rgba(123, 140, 222, 0.45) !important;
+    opacity: 0.95 !important;
+    transition: none !important;
+}
+
+/* ── 核心图标 ── */
+.zero-ball-core {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+}
+
+.zero-ball-icon {
+    font-size: 16px;
+    color: var(--SmartThemeQuoteColor, #7b8cde);
+    transition: transform 0.2s ease, color 0.15s;
+}
+
+.zero-floating-ball:hover .zero-ball-icon {
+    transform: scale(1.08);
+}
+
+/* ── 多任务徽标 (当两个面板都最小化时) ── */
+.zero-ball-badge {
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--SmartThemeQuoteColor, #7b8cde);
+    color: #fff;
+    font-size: 10px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1.5px solid var(--zero-bg-color, #1a1a24);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+    pointer-events: none;
+}
+
+/* ── 贴边半隐藏态 (Docked Edge Half-Hide) ── */
+.zero-floating-ball.docked-right,
+.zero-floating-ball.idle.dock-right {
+    transform: translate3d(50%, 0, 0);
+    opacity: 0.68;
+}
+
+.zero-floating-ball.docked-right:hover,
+.zero-floating-ball.docked-right:active,
+.zero-floating-ball.docked-right.menu-open,
+.zero-floating-ball.idle.dock-right:hover,
+.zero-floating-ball.idle.dock-right:active {
+    transform: translate3d(0, 0, 0);
+    opacity: 1;
+}
+
+.zero-floating-ball.docked-left,
+.zero-floating-ball.idle.dock-left {
+    transform: translate3d(-50%, 0, 0);
+    opacity: 0.68;
+}
+
+.zero-floating-ball.docked-left:hover,
+.zero-floating-ball.docked-left:active,
+.zero-floating-ball.docked-left.menu-open,
+.zero-floating-ball.idle.dock-left:hover,
+.zero-floating-ball.idle.dock-left:active {
+    transform: translate3d(0, 0, 0);
+    opacity: 1;
+}
+
+/* ── 用户关闭贴边半隐开关时的样式 ── */
+.zero-floating-ball.no-autohide.docked-right,
+.zero-floating-ball.no-autohide.docked-left,
+.zero-floating-ball.no-autohide.idle.dock-right,
+.zero-floating-ball.no-autohide.idle.dock-left {
+    transform: translate3d(0, 0, 0) !important;
+    opacity: 0.92 !important;
+}
+
+/* ── 多面板展开微菜单 ── */
+.zero-ball-menu {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    background: var(--zero-bg-color, var(--SmartThemeBlurTintColor, rgba(20, 20, 28, 0.95)));
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid var(--SmartThemeBorderColor, #555);
+    border-radius: 12px;
+    padding: 6px;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+    animation: zeroFadeIn 0.16s ease-out;
+    pointer-events: auto;
+    white-space: nowrap;
+    z-index: 10003;
+}
+
+.zero-floating-ball.docked-right .zero-ball-menu,
+.zero-floating-ball.dock-right .zero-ball-menu {
+    right: 48px;
+    top: -8px;
+}
+
+.zero-floating-ball.docked-left .zero-ball-menu,
+.zero-floating-ball.dock-left .zero-ball-menu {
+    left: 48px;
+    top: -8px;
+}
+
+.zero-ball-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--SmartThemeBodyColor, #eee);
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s;
+}
+
+.zero-ball-menu-item i {
+    font-size: 13px;
+    color: var(--SmartThemeQuoteColor, #7b8cde);
+    width: 16px;
+    text-align: center;
+}
+
+.zero-ball-menu-item:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--SmartThemeQuoteColor, #7b8cde);
+}
+
+@media (max-width: 768px) {
+    .zero-floating-ball {
+        width: 38px;
+        height: 38px;
+    }
+    .zero-ball-icon {
+        font-size: 14px;
+    }
+}
+
 

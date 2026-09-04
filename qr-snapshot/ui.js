@@ -340,6 +340,7 @@ function enableClickOutside() {
             target.closest('.zero-modal') ||
             target.closest('.zero-modal-card') ||
             target.closest('#zero-preset-btn') ||
+            target.closest('#zero-floating-ball') ||
             target.closest('#zero-snapshot-minimized-badge') ||
             target.closest('.zero-confirm') ||
             target.closest('.zero-confirm-box') ||
@@ -540,47 +541,17 @@ export function minimizeSnapshotUI() {
     UiStateManager.save({ snapshotIsMinimized: true });
     closeUI();
 
-    let badge = document.getElementById('zero-snapshot-minimized-badge');
-    if (!badge) {
-        badge = document.createElement('div');
-        badge.id = 'zero-snapshot-minimized-badge';
-        badge.className = 'interactable';
-        badge.innerHTML = `
-            <i class="fa-solid fa-camera" style="color: var(--SmartThemeQuoteColor, #4a90e2); font-size: 13px;"></i>
-            <span style="font-size: 11px; font-weight: bold; white-space: nowrap;">快照面板</span>
-        `;
-        badge.style.cssText = `
-            position: fixed;
-            bottom: 24px;
-            right: 140px;
-            z-index: 10001;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            padding: 7px 13px;
-            background: var(--zero-bg-color, var(--SmartThemeBlurTintColor, rgba(20,20,30,0.95)));
-            border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #555));
-            color: var(--zero-text-color, var(--SmartThemeBodyColor, #fff));
-            border-radius: 20px;
-            box-shadow: 0 6px 20px rgba(0,0,0,0.45);
-            cursor: pointer;
-            user-select: none;
-            touch-action: none;
-        `;
-
-        import('../preset-manager/window.js').then(({ WindowManager }) => {
-            WindowManager.initCapsuleDraggable(badge, () => restoreSnapshotUI());
-        }).catch(() => {});
-        document.body.appendChild(badge);
-    }
-    badge.style.display = 'flex';
+    import('../preset-manager/floating-ball.js').then(({ FloatingBall }) => {
+        FloatingBall.show('snapshot', () => restoreSnapshotUI());
+    }).catch(() => {});
 }
 
 export function restoreSnapshotUI() {
     lastSnapshotRestoreTime = Date.now();
     UiStateManager.save({ snapshotIsMinimized: false });
-    const badge = document.getElementById('zero-snapshot-minimized-badge');
-    if (badge) badge.style.display = 'none';
+    import('../preset-manager/floating-ball.js').then(({ FloatingBall }) => {
+        FloatingBall.hide('snapshot');
+    }).catch(() => {});
     openUI();
 }
 
@@ -606,8 +577,9 @@ export async function openUI() {
     import('../preset-manager/utils.js').catch(() => {});
 
     UiStateManager.save({ snapshotIsMinimized: false });
-    const snapBadge = document.getElementById('zero-snapshot-minimized-badge');
-    if (snapBadge) snapBadge.style.display = 'none';
+    import('../preset-manager/floating-ball.js').then(({ FloatingBall }) => {
+        FloatingBall.hide('snapshot');
+    }).catch(() => {});
 
     const { overlay: ov, modal: mo } = initSnapshotUI();
     const state = UiStateManager.get();
@@ -1221,6 +1193,258 @@ function buildModal(modal, preset, listInfo) {
     });
     setupScrollTracking(content, initialTab);
     restoreScrollPos(content, initialTab);
+    setupSwipeGestures(modal, overlay, tabBar, content, panels, preset);
+}
+
+function setupSwipeGestures(modalEl, overlayEl, tabBarEl, contentEl, panels, preset) {
+    if (!modalEl) return;
+    modalEl.querySelector('.zero-swipe-handle')?.remove();
+    const state = UiStateManager.get();
+    if (state.enableSwipeGestures === false) {
+        return;
+    }
+
+    // Touch support check
+    const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0 || window.innerWidth < 800;
+    if (!hasTouch) return;
+
+    let startX = 0;
+    let startY = 0;
+    let startTime = 0;
+    let isTracking = false;
+    let isDraggingDismiss = false;
+    let isSwipingTabs = false;
+    let gestureDirection = null;
+    let canPullDown = false;
+    let initialScrollTop = 0;
+
+    const modalStyle = state?.snapshotModalStyle || 'center';
+
+    const getDismissDirection = () => {
+        if (modalStyle === 'left') return 'left';
+        if (modalStyle === 'right') return 'right';
+        if (modalStyle === 'top') return 'top';
+        return 'bottom'; // center and bottom dismiss downwards
+    };
+
+    const dismissDir = getDismissDirection();
+
+    // Helper: find closest scrollable container
+    const findScrollParent = (startNode, boundary) => {
+        let node = startNode;
+        while (node && node !== boundary && node !== document.body) {
+            if (node.scrollHeight > node.clientHeight + 2) {
+                const style = window.getComputedStyle(node);
+                const overflowY = style.overflowY;
+                if (overflowY === 'auto' || overflowY === 'scroll') {
+                    return node;
+                }
+            }
+            node = node.parentElement;
+        }
+        return null;
+    };
+
+    // Helper: switch to tab dynamically by relative offset (-1 or +1)
+    const switchTabRelative = (offset) => {
+        const tabs = Array.from(tabBarEl?.querySelectorAll('.zero-tab') || []).filter(el => el.offsetParent !== null);
+        const activeTab = tabBarEl?.querySelector('.zero-tab.active');
+        const curIdx = tabs.indexOf(activeTab);
+        if (curIdx === -1) return;
+        const nextIdx = curIdx + offset;
+        if (nextIdx >= 0 && nextIdx < tabs.length) {
+            tabs[nextIdx].click();
+            if (navigator.vibrate) {
+                try { navigator.vibrate(12); } catch (e) {}
+            }
+        } else {
+            if (navigator.vibrate) {
+                try { navigator.vibrate(5); } catch (e) {}
+            }
+        }
+    };
+
+    let activeScrollParent = null;
+
+    const onTouchStart = (e) => {
+        if (e.touches.length !== 1) return;
+        const t = e.touches[0];
+        const target = e.target;
+
+        // Skip gesture if user is touching interactive inputs, sliders, or popups
+        if (target.closest && target.closest('input, textarea, select, .zero-switch, .zero-slider, .zero-input, .zero-icon-btn, .zero-btn, .zero-range, .zero-group-mgr-drag, .dragging, .zero-confirm, .zero-preview-box')) {
+            return;
+        }
+
+        // On desktop floating window mode, header drag is reserved for repositioning
+        if (window.innerWidth >= 800 && state.snapshotWindowMode === 'floating') {
+            return;
+        }
+
+        startX = t.clientX;
+        startY = t.clientY;
+        startTime = Date.now();
+        isTracking = true;
+        isDraggingDismiss = false;
+        isSwipingTabs = false;
+        gestureDirection = null;
+
+        activeScrollParent = findScrollParent(target, contentEl || modalEl);
+        initialScrollTop = activeScrollParent ? activeScrollParent.scrollTop : (contentEl ? contentEl.scrollTop : 0);
+        const isOnHandleOrHeader = !!(target.closest && target.closest('.zero-header, .zero-tabs'));
+        canPullDown = isOnHandleOrHeader || (initialScrollTop <= 2);
+    };
+
+    const onTouchMove = (e) => {
+        if (!isTracking || e.touches.length !== 1) return;
+        const t = e.touches[0];
+        const dx = t.clientX - startX;
+        const dy = t.clientY - startY;
+
+        if (!gestureDirection) {
+            const absX = Math.abs(dx);
+            const absY = Math.abs(dy);
+            if (absX < 8 && absY < 8) return;
+
+            if (dismissDir === 'bottom' || dismissDir === 'top') {
+                if (absY > absX) {
+                    if (activeScrollParent && activeScrollParent.scrollTop > 2) {
+                        canPullDown = false;
+                    }
+                    // Vertical movement
+                    if ((dismissDir === 'bottom' && dy > 0 && canPullDown) || (dismissDir === 'top' && dy < 0 && canPullDown)) {
+                        gestureDirection = 'vertical';
+                        isDraggingDismiss = true;
+                    } else {
+                        // Regular scrolling inside content
+                        isTracking = false;
+                        return;
+                    }
+                } else if (absX > absY * 1.3) {
+                    // Horizontal movement -> tab switch swipe
+                    gestureDirection = 'horizontal';
+                    isSwipingTabs = true;
+                }
+            } else if (dismissDir === 'left' || dismissDir === 'right') {
+                if (absX > absY) {
+                    if ((dismissDir === 'left' && dx < 0) || (dismissDir === 'right' && dx > 0)) {
+                        gestureDirection = 'horizontal-dismiss';
+                        isDraggingDismiss = true;
+                    }
+                }
+            }
+        }
+
+        if (isDraggingDismiss) {
+            if (e.cancelable) e.preventDefault();
+            modalEl.style.transition = 'none';
+
+            const damped = (val) => val <= 80 ? val : 80 + Math.pow(val - 80, 0.85) * 1.5;
+
+            if (dismissDir === 'bottom') {
+                const translateY = Math.max(0, dy);
+                const dampedY = damped(translateY);
+                modalEl.style.transform = `translate3d(0, ${dampedY}px, 0)`;
+                if (overlayEl) overlayEl.style.opacity = Math.max(0.2, 1 - dampedY / 400).toString();
+            } else if (dismissDir === 'top') {
+                const translateY = Math.min(0, dy);
+                const dampedY = -damped(Math.abs(translateY));
+                modalEl.style.transform = `translate3d(0, ${dampedY}px, 0)`;
+                if (overlayEl) overlayEl.style.opacity = Math.max(0.2, 1 - Math.abs(dampedY) / 400).toString();
+            } else if (dismissDir === 'right') {
+                const translateX = Math.max(0, dx);
+                const dampedX = damped(translateX);
+                modalEl.style.transform = `translate3d(${dampedX}px, 0, 0)`;
+                if (overlayEl) overlayEl.style.opacity = Math.max(0.2, 1 - dampedX / 400).toString();
+            } else if (dismissDir === 'left') {
+                const translateX = Math.min(0, dx);
+                const dampedX = -damped(Math.abs(translateX));
+                modalEl.style.transform = `translate3d(${dampedX}px, 0, 0)`;
+                if (overlayEl) overlayEl.style.opacity = Math.max(0.2, 1 - Math.abs(dampedX) / 400).toString();
+            }
+        } else if (isSwipingTabs) {
+            if (e.cancelable) e.preventDefault();
+        }
+    };
+
+    const onTouchEnd = (e) => {
+        if (!isTracking) return;
+        isTracking = false;
+        const elapsed = Math.max(1, Date.now() - startTime);
+
+        if (isDraggingDismiss) {
+            modalEl.style.transition = 'transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease';
+            if (overlayEl) overlayEl.style.transition = 'opacity 0.2s ease';
+
+            const t = e.changedTouches ? e.changedTouches[0] : null;
+            const dx = t ? t.clientX - startX : 0;
+            const dy = t ? t.clientY - startY : 0;
+
+            let shouldDismiss = false;
+            if (dismissDir === 'bottom') {
+                const velocity = dy / elapsed;
+                shouldDismiss = dy > 90 || (dy > 40 && velocity > 0.45);
+            } else if (dismissDir === 'top') {
+                const velocity = -dy / elapsed;
+                shouldDismiss = dy < -90 || (dy < -40 && velocity > 0.45);
+            } else if (dismissDir === 'right') {
+                const velocity = dx / elapsed;
+                shouldDismiss = dx > 80 || (dx > 35 && velocity > 0.45);
+            } else if (dismissDir === 'left') {
+                const velocity = -dx / elapsed;
+                shouldDismiss = dx < -80 || (dx < -35 && velocity > 0.45);
+            }
+
+            if (shouldDismiss) {
+                closeUI();
+                setTimeout(() => {
+                    modalEl.style.transition = '';
+                    if (overlayEl) overlayEl.style.transition = '';
+                }, 240);
+            } else {
+                modalEl.style.transform = 'translate3d(0, 0, 0)';
+                if (overlayEl) overlayEl.style.opacity = '1';
+                setTimeout(() => {
+                    modalEl.style.transition = '';
+                    if (overlayEl) overlayEl.style.transition = '';
+                }, 240);
+            }
+            isDraggingDismiss = false;
+        } else if (isSwipingTabs) {
+            const t = e.changedTouches ? e.changedTouches[0] : null;
+            const dx = t ? t.clientX - startX : 0;
+            const dy = t ? t.clientY - startY : 0;
+            const absX = Math.abs(dx);
+            const absY = Math.abs(dy);
+
+            if (absX > 45 && absX > absY * 1.4 && elapsed < 600) {
+                if (dx < -45) {
+                    // Swiped left -> Next tab
+                    switchTabRelative(1);
+                } else if (dx > 45) {
+                    // Swiped right -> Previous tab
+                    switchTabRelative(-1);
+                }
+            }
+            isSwipingTabs = false;
+        }
+    };
+
+    if (modalEl._zeroSwipeTouchStart) {
+        modalEl.removeEventListener('touchstart', modalEl._zeroSwipeTouchStart);
+        modalEl.removeEventListener('touchmove', modalEl._zeroSwipeTouchMove);
+        modalEl.removeEventListener('touchend', modalEl._zeroSwipeTouchEnd);
+        modalEl.removeEventListener('touchcancel', modalEl._zeroSwipeTouchEnd);
+    }
+
+    modalEl._zeroSwipeTouchStart = onTouchStart;
+    modalEl._zeroSwipeTouchMove = onTouchMove;
+    modalEl._zeroSwipeTouchEnd = onTouchEnd;
+
+    modalEl.addEventListener('touchstart', onTouchStart, { passive: true });
+    modalEl.addEventListener('touchmove', onTouchMove, { passive: false });
+    modalEl.addEventListener('touchend', onTouchEnd, { passive: true });
+    modalEl.addEventListener('touchcancel', onTouchEnd, { passive: true });
 }
 
 function renderTab(id, panel, preset, modal, force = false) {
