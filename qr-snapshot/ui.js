@@ -306,7 +306,25 @@ function enableClickOutside() {
 
         // Check composedPath first (resilient against DOM removal in button click handlers)
         const path = e.composedPath ? e.composedPath() : [];
-        if (path.includes(modal) || path.some(el => el === modal || el?.id === 'zero-modal' || el?.classList?.contains?.('zero-modal') || el?.classList?.contains?.('zero-modal-card'))) {
+        if (path.includes(modal) || path.some(el => 
+            el === modal ||
+            el?.id === 'zero-modal' ||
+            el?.id === 'zero-overlay' ||
+            el?.id === 'zero-entry-context-menu-modal' ||
+            el?.id === 'zero-quick-editor' ||
+            el?.id === 'zero-op-log-modal' ||
+            el?.id === 'zero-inject-var-modal' ||
+            el?.id === 'zero-collect-modal' ||
+            el?.classList?.contains?.('zero-modal') ||
+            el?.classList?.contains?.('zero-modal-card') ||
+            el?.classList?.contains?.('zero-confirm') ||
+            el?.classList?.contains?.('zero-confirm-box') ||
+            el?.classList?.contains?.('zero-preview-box') ||
+            el?.classList?.contains?.('zero-menu-box') ||
+            el?.classList?.contains?.('zero-group-mgr-box') ||
+            el?.classList?.contains?.('zero-migration-box') ||
+            el?.classList?.contains?.('zero-multiselect-bar')
+        )) {
             return;
         }
 
@@ -324,9 +342,16 @@ function enableClickOutside() {
             target.closest('#zero-preset-btn') ||
             target.closest('#zero-snapshot-minimized-badge') ||
             target.closest('.zero-confirm') ||
-            target.closest('.zero-preview-box') ||
             target.closest('.zero-confirm-box') ||
+            target.closest('.zero-preview-box') ||
+            target.closest('.zero-menu-box') ||
+            target.closest('.zero-group-mgr-box') ||
+            target.closest('.zero-migration-box') ||
+            target.closest('.zero-multiselect-bar') ||
             target.closest('#zero-quick-editor') ||
+            target.closest('#zero-op-log-modal') ||
+            target.closest('#zero-inject-var-modal') ||
+            target.closest('#zero-entry-context-menu-modal') ||
             target.closest('#toast-container')
         )) {
             return;
@@ -1456,7 +1481,7 @@ function showEntryContextMenu(panel, entry, prompt) {
     const name = prompt ? (prompt.name || prompt.identifier) : '条目';
     const isPinned = PinnedManager.isPinned(_currentPreset.name, prompt.identifier);
     const menuHtml = `
-        <div id="${modalId}" class="zero-overlay" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: transparent; pointer-events: none; z-index: 20050; display: flex; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box;">
+        <div id="${modalId}" class="zero-overlay" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: transparent; pointer-events: auto; z-index: 20050; display: flex; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box;">
             <div class="zero-modal-card" style="background: var(--zero-bg-color, var(--SmartThemeBlurTintColor-Original, #1e1e28)); color: var(--zero-text-color, inherit); border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #444)); border-radius: 12px; width: 100%; max-width: 300px; padding: 14px; box-shadow: 0 8px 24px rgba(0,0,0,0.65); display: flex; flex-direction: column; gap: 8px; pointer-events: auto;">
                 <div style="font-size: 13px; font-weight: bold; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.08); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--SmartThemeBodyColor); opacity: 0.9;">
                     ${esc(name)}
@@ -1499,13 +1524,19 @@ function showEntryContextMenu(panel, entry, prompt) {
 
     $('body').append(menuHtml);
 
+    $(`#${modalId}`).on('pointerdown', (e) => {
+        e.stopPropagation();
+    });
+
     $(`#${modalId}`).on('click', (e) => {
+        e.stopPropagation();
         if (e.target.id === modalId || e.target.id === 'close-zero-ctx-menu' || $(e.target).closest('#close-zero-ctx-menu').length) {
             $(`#${modalId}`).remove();
         }
     });
 
-    $(`#${modalId} .zero-ctx-item`).on('click', function() {
+    $(`#${modalId} .zero-ctx-item`).on('click', function(e) {
+        e.stopPropagation();
         const act = $(this).data('act');
         $(`#${modalId}`).remove();
 
@@ -1988,9 +2019,16 @@ function showBatchGroupAssign(modal, panel, preset) {
     }
 
     menuContent.appendChild(h('div', { class: 'zero-confirm-btns', style: 'margin-top:12px' },
-        h('button', { class: 'zero-btn', text: '取消', onclick: () => menuBox.remove() })
+        h('button', { class: 'zero-btn', text: '取消', onclick: (e) => { e.stopPropagation(); menuBox.remove(); } })
     ));
     menuBox.appendChild(menuContent);
+    menuBox.addEventListener('pointerdown', (e) => e.stopPropagation());
+    menuBox.addEventListener('click', (e) => {
+        if (e.target === menuBox) {
+            e.stopPropagation();
+            menuBox.remove();
+        }
+    });
     modal.appendChild(menuBox);
 }
 
@@ -2024,13 +2062,20 @@ function showGroupAssignMenu(modal, panel, preset, prompt, currentGroup, isUngro
         menuContent.appendChild(h('button', {
             class: 'zero-menu-item',
             html: `<i class="fa-solid ${item.icon}"></i> ${item.label}`,
-            onclick: () => { menuBox.remove(); item.action(); }
+            onclick: (e) => { e.stopPropagation(); menuBox.remove(); item.action(); }
         }));
     });
     menuContent.appendChild(h('div', { class: 'zero-confirm-btns', style: 'margin-top:12px' },
-        h('button', { class: 'zero-btn', text: '取消', onclick: () => menuBox.remove() })
+        h('button', { class: 'zero-btn', text: '取消', onclick: (e) => { e.stopPropagation(); menuBox.remove(); } })
     ));
     menuBox.appendChild(menuContent);
+    menuBox.addEventListener('pointerdown', (e) => e.stopPropagation());
+    menuBox.addEventListener('click', (e) => {
+        if (e.target === menuBox) {
+            e.stopPropagation();
+            menuBox.remove();
+        }
+    });
     modal.appendChild(menuBox);
 }
 
@@ -2548,7 +2593,8 @@ function showLinkageManager(panel, preset, modal) {
         h('button', {
             class: 'zero-btn',
             text: '关闭',
-            onclick: () => {
+            onclick: (e) => {
+                e.stopPropagation();
                 menuBox.remove();
                 renderEntries(panel, preset, modal);
             }
@@ -2556,6 +2602,14 @@ function showLinkageManager(panel, preset, modal) {
     ));
 
     menuBox.appendChild(contentBox);
+    menuBox.addEventListener('pointerdown', (e) => e.stopPropagation());
+    menuBox.addEventListener('click', (e) => {
+        if (e.target === menuBox) {
+            e.stopPropagation();
+            menuBox.remove();
+            renderEntries(panel, preset, modal);
+        }
+    });
     modal.appendChild(menuBox);
 }
 
@@ -2695,6 +2749,13 @@ function showHiddenManager(panel, preset, modal) {
 
     renderHiddenList();
     menuBox.appendChild(menuContent);
+    menuBox.addEventListener('pointerdown', (e) => e.stopPropagation());
+    menuBox.addEventListener('click', (e) => {
+        if (e.target === menuBox) {
+            e.stopPropagation();
+            menuBox.remove();
+        }
+    });
     modal.appendChild(menuBox);
 }
 
@@ -2850,8 +2911,16 @@ function showGroupManager(panel, preset, modal) {
     renderList();
     contentBox.appendChild(listContainer);
     contentBox.appendChild(h('button', { class: 'zero-btn', style: 'width:100%; justify-content:center; margin: 12px 0;', html: '<i class="fa-solid fa-plus"></i> 新建分组', onclick: () => showPrompt(menuBox, '分组名称', '', name => { GroupManager.create(pName, name); renderList(); }) }));
-    contentBox.appendChild(h('div', { class: 'zero-confirm-btns' }, h('button', { class: 'zero-btn primary', style: 'width:100%;', text: '完成', onclick: () => { menuBox.remove(); renderEntries(panel, preset, modal); } })));
+    contentBox.appendChild(h('div', { class: 'zero-confirm-btns' }, h('button', { class: 'zero-btn primary', style: 'width:100%;', text: '完成', onclick: (e) => { e.stopPropagation(); menuBox.remove(); renderEntries(panel, preset, modal); } })));
     menuBox.appendChild(contentBox);
+    menuBox.addEventListener('pointerdown', (e) => e.stopPropagation());
+    menuBox.addEventListener('click', (e) => {
+        if (e.target === menuBox) {
+            e.stopPropagation();
+            menuBox.remove();
+            renderEntries(panel, preset, modal);
+        }
+    });
     modal.appendChild(menuBox);
 }
 
@@ -3283,8 +3352,16 @@ function showSnapshotGroupManager(panel, preset, modal) {
     renderList();
     contentBox.appendChild(listContainer);
     contentBox.appendChild(h('button', { class: 'zero-btn', style: 'width:100%; justify-content:center; margin: 12px 0;', html: '<i class="fa-solid fa-plus"></i> 新建分组', onclick: () => showPrompt(menuBox, '分组名称', '', name => { SnapshotGroupManager.create(pName, name); renderList(); }) }));
-    contentBox.appendChild(h('div', { class: 'zero-confirm-btns' }, h('button', { class: 'zero-btn primary', style: 'width:100%;', text: '完成', onclick: () => { menuBox.remove(); renderSnapshots(panel, preset, modal, 'local'); } })));
+    contentBox.appendChild(h('div', { class: 'zero-confirm-btns' }, h('button', { class: 'zero-btn primary', style: 'width:100%;', text: '完成', onclick: (e) => { e.stopPropagation(); menuBox.remove(); renderSnapshots(panel, preset, modal, 'local'); } })));
     menuBox.appendChild(contentBox);
+    menuBox.addEventListener('pointerdown', (e) => e.stopPropagation());
+    menuBox.addEventListener('click', (e) => {
+        if (e.target === menuBox) {
+            e.stopPropagation();
+            menuBox.remove();
+            renderSnapshots(panel, preset, modal, 'local');
+        }
+    });
     modal.appendChild(menuBox);
 }
 
@@ -3319,13 +3396,20 @@ function showSnapshotGroupAssignMenu(modal, panel, preset, snap) {
         menuContent.appendChild(h('button', {
             class: 'zero-menu-item',
             html: `<i class="fa-solid ${item.icon}"></i> ${item.label}`,
-            onclick: () => { menuBox.remove(); item.action(); }
+            onclick: (e) => { e.stopPropagation(); menuBox.remove(); item.action(); }
         }));
     });
     menuContent.appendChild(h('div', { class: 'zero-confirm-btns', style: 'margin-top:12px' },
-        h('button', { class: 'zero-btn', text: '取消', onclick: () => menuBox.remove() })
+        h('button', { class: 'zero-btn', text: '取消', onclick: (e) => { e.stopPropagation(); menuBox.remove(); } })
     ));
     menuBox.appendChild(menuContent);
+    menuBox.addEventListener('pointerdown', (e) => e.stopPropagation());
+    menuBox.addEventListener('click', (e) => {
+        if (e.target === menuBox) {
+            e.stopPropagation();
+            menuBox.remove();
+        }
+    });
     modal.appendChild(menuBox);
 }
 
@@ -3589,8 +3673,9 @@ async function showCreateProfileDialog(panel, preset, modal, existingProfile) {
 
     // Confirm buttons
     content.appendChild(h('div', { class: 'zero-confirm-btns', style: 'margin-top:16px' },
-        h('button', { class: 'zero-btn', text: '取消', onclick: () => box.remove() }),
-        h('button', { class: 'zero-btn primary', text: isOverwrite ? '覆盖保存' : '创建', onclick: async () => {
+        h('button', { class: 'zero-btn', text: '取消', onclick: (e) => { e.stopPropagation(); box.remove(); } }),
+        h('button', { class: 'zero-btn primary', text: isOverwrite ? '覆盖保存' : '创建', onclick: async (e) => {
+            e.stopPropagation();
             const selectedGroupIds = jbGroups.filter(g => groupChecks.get(g.id)?.checked).map(g => g.id);
 
             // Capture per-group entry states for selected groups
@@ -3624,6 +3709,13 @@ async function showCreateProfileDialog(panel, preset, modal, existingProfile) {
     ));
 
     box.appendChild(content);
+    box.addEventListener('pointerdown', (e) => e.stopPropagation());
+    box.addEventListener('click', (e) => {
+        if (e.target === box) {
+            e.stopPropagation();
+            box.remove();
+        }
+    });
     modal.appendChild(box);
     if (nameInput) setTimeout(() => nameInput.focus(), 50);
 }
@@ -3917,10 +4009,17 @@ async function showSnapshotMigrationModal(preset, preselectedSourceOrSnap = null
                 )
             ),
             h('div', { class: 'zero-confirm-btns', style: 'display:flex; justify-content:flex-end;' },
-                h('button', { class: 'zero-btn primary', text: '关闭', onclick: () => compareBox.remove() })
+                h('button', { class: 'zero-btn primary', text: '关闭', onclick: (e) => { e.stopPropagation(); compareBox.remove(); } })
             )
         );
         compareBox.appendChild(content);
+        compareBox.addEventListener('pointerdown', (e) => e.stopPropagation());
+        compareBox.addEventListener('click', (e) => {
+            if (e.target === compareBox) {
+                e.stopPropagation();
+                compareBox.remove();
+            }
+        });
         targetModal.appendChild(compareBox);
     }
 
@@ -4150,7 +4249,7 @@ async function showSnapshotMigrationModal(preset, preselectedSourceOrSnap = null
 
     const applyBtn = h('button', { class: 'zero-btn primary', text: '导入并应用', style: 'flex:1; justify-content:center;' });
     const importOnlyBtn = h('button', { class: 'zero-btn', text: '仅导入', style: 'flex:1; justify-content:center;' });
-    const cancelBtn = h('button', { class: 'zero-btn', text: '取消', style: 'flex:1; justify-content:center;', onclick: () => menuBox.remove() });
+    const cancelBtn = h('button', { class: 'zero-btn', text: '取消', style: 'flex:1; justify-content:center;', onclick: (e) => { e.stopPropagation(); menuBox.remove(); } });
 
     // Set initial disabled state based on checkbox
     importOnlyBtn.disabled = !isCopyChecked;
@@ -4168,6 +4267,13 @@ async function showSnapshotMigrationModal(preset, preselectedSourceOrSnap = null
     contentBox.appendChild(btnRow);
 
     menuBox.appendChild(contentBox);
+    menuBox.addEventListener('pointerdown', (e) => e.stopPropagation());
+    menuBox.addEventListener('click', (e) => {
+        if (e.target === menuBox) {
+            e.stopPropagation();
+            menuBox.remove();
+        }
+    });
     targetModal.appendChild(menuBox);
 
     let currentSourcePreset = '';
