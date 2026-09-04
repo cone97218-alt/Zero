@@ -304,6 +304,12 @@ function enableClickOutside() {
         const target = e.target;
         if (!target) return;
 
+        // Check composedPath first (resilient against DOM removal in button click handlers)
+        const path = e.composedPath ? e.composedPath() : [];
+        if (path.includes(modal) || path.some(el => el === modal || el?.id === 'zero-modal' || el?.classList?.contains?.('zero-modal') || el?.classList?.contains?.('zero-modal-card'))) {
+            return;
+        }
+
         // Guard 1: If target is detached from document (e.g. removed by a close/delete handler), ignore
         if (!document.body.contains(target)) return;
 
@@ -312,6 +318,9 @@ function enableClickOutside() {
 
         // Guard 3: If clicking on toastr or alert or menu button or minimized badge or confirm/preview box, ignore
         if (target.closest && (
+            target.closest('#zero-modal') ||
+            target.closest('.zero-modal') ||
+            target.closest('.zero-modal-card') ||
             target.closest('#zero-preset-btn') ||
             target.closest('#zero-snapshot-minimized-badge') ||
             target.closest('.zero-confirm') ||
@@ -480,7 +489,7 @@ export function initSnapshotUI() {
 
         overlay.addEventListener('click', (e) => {
             if (Date.now() - lastSnapshotRestoreTime < 350) return;
-            if (modal && !modal.contains(e.target)) {
+            if (e.target === overlay) {
                 closeUI();
             }
         });
