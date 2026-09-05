@@ -1,4 +1,4 @@
-import { openUI, toggleUI, initSnapshotUI, markSnapshotDirty } from './qr-snapshot/ui.js';
+import { openUI, toggleUI, initSnapshotUI, markSnapshotDirty, flushToggles } from './qr-snapshot/ui.js';
 import { preloadOpenai, PresetManager, UiStateManager, StreamManager } from './qr-snapshot/state.js';
 import { init as initPresetManager } from './preset-manager/main.js';
 import { initPresetPerformanceOptimizer } from './qr-snapshot/performance.js';
@@ -263,6 +263,20 @@ if (event_types.EXTENSION_UPDATED) {
             console.log('[Zero] Extension update detected, triggering auto hot reload...');
             window.Zero.reload();
         }
+    });
+}
+
+// Guarantee that pending snapshot toggles are flushed before AI generation
+if (event_types.GENERATE_BEFORE_COMBINE_PROMPTS) {
+    eventSource.on(event_types.GENERATE_BEFORE_COMBINE_PROMPTS, () => {
+        flushToggles();
+        PresetManager.flushNativeRender();
+    });
+}
+if (event_types.CHAT_COMPLETION_PROMPT_READY) {
+    eventSource.on(event_types.CHAT_COMPLETION_PROMPT_READY, () => {
+        flushToggles();
+        PresetManager.flushNativeRender();
     });
 }
 

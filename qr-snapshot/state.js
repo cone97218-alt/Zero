@@ -465,9 +465,11 @@ export const PresetManager = {
             }
         }
 
-        import('../preset-manager/utils.js').then(m => m.syncBoundRegexOnPromptToggle(toggleMap, targetPresetName)).catch(e => {
-            console.warn('[Zero] Failed to sync bound regex on batchToggleMap:', e);
-        });
+        if (UiStateManager.get().autoToggleBoundRegex !== false) {
+            import('../preset-manager/utils.js').then(m => m.syncBoundRegexOnPromptToggle(toggleMap, targetPresetName)).catch(e => {
+                console.warn('[Zero] Failed to sync bound regex on batchToggleMap:', e);
+            });
+        }
     },
 
     invalidate() { _preset = null; _presetNames = null; },
@@ -501,6 +503,7 @@ export const PresetManager = {
     },
 
     async save() {
+        this.flushNativeRender();
         // Find SillyTavern's native "Update Preset" button
         // Chat Completion (OpenAI/Claude/etc) is usually #update_oai_preset
         let btn = document.getElementById('update_oai_preset');
@@ -2136,6 +2139,16 @@ let redoStack = [];
 let alreadyRecorded = false;
 let isRestoring = false;
 
+function safeClone(obj) {
+    if (obj === null || typeof obj !== 'object') return obj;
+    if (typeof structuredClone === 'function') {
+        try {
+            return structuredClone(obj);
+        } catch (e) {}
+    }
+    return JSON.parse(JSON.stringify(obj));
+}
+
 export const HistoryManager = {
     clear() {
         undoStack = [];
@@ -2152,23 +2165,26 @@ export const HistoryManager = {
             const { presets, preset_names } = pm.getPresetList();
             const activePresetName = pm.getSelectedPresetName();
             
-            // Deep clone presets & names
-            const clonedPresets = JSON.parse(JSON.stringify(presets));
-            const clonedNames = JSON.parse(JSON.stringify(preset_names));
+            // Fast clone presets & names
+            const clonedPresets = safeClone(presets);
+            const clonedNames = safeClone(preset_names);
             
-            // Deep clone Zero extension settings
-            const zeroSettings = JSON.parse(JSON.stringify(getSettings()));
+            // Fast clone Zero extension settings
+            const zeroSettings = safeClone(getSettings());
 
-            // Deep clone manual links from localStorage
-            const manualLinks = JSON.parse(localStorage.getItem('zero_manual_links') || '{}');
+            // Clone manual links from localStorage
+            let manualLinks = {};
+            try {
+                manualLinks = JSON.parse(localStorage.getItem('zero_manual_links') || '{}');
+            } catch (e) {}
 
-            // Deep clone live runtime BaiBai group states from oai_settings and promptManager.serviceSettings
+            // Fast clone live runtime BaiBai group states from oai_settings and promptManager.serviceSettings
             const oai_settings = GroupManager._getOpenaiSettings();
             const promptManager = PresetManager.getPromptManager();
             const oaiBaibaiGroups = oai_settings?.extensions?.baibaiToolkit?.presetPromptGroups
-                ? JSON.parse(JSON.stringify(oai_settings.extensions.baibaiToolkit.presetPromptGroups)) : null;
+                ? safeClone(oai_settings.extensions.baibaiToolkit.presetPromptGroups) : null;
             const pmBaibaiGroups = promptManager?.serviceSettings?.extensions?.baibaiToolkit?.presetPromptGroups
-                ? JSON.parse(JSON.stringify(promptManager.serviceSettings.extensions.baibaiToolkit.presetPromptGroups)) : null;
+                ? safeClone(promptManager.serviceSettings.extensions.baibaiToolkit.presetPromptGroups) : null;
 
             return {
                 presets: clonedPresets,

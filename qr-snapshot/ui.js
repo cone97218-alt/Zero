@@ -61,21 +61,37 @@ function formatDate(ts) {
 }
 
 function scheduleToggle(identifier, enabled) {
-    pendingToggles.set(identifier, enabled);
-    // Instant local memory mutation on _currentPreset so UI state is immediately consistent
-    if (_currentPreset && Array.isArray(_currentPreset.prompts)) {
-        const p = _currentPreset.prompts.find(x => x.identifier === identifier || x.name === identifier);
-        if (p) p.enabled = enabled;
-    }
-    clearTimeout(toggleTimer);
-    toggleTimer = setTimeout(flushToggles, 120);
+    scheduleBatchToggle(new Map([[identifier, enabled]]));
 }
 
-async function flushToggles() {
+function scheduleBatchToggle(toggleMap) {
+    if (!toggleMap) return;
+    const entries = toggleMap instanceof Map ? toggleMap.entries() : Object.entries(toggleMap);
+    for (const [id, en] of entries) {
+        if (id === undefined || id === null) continue;
+        const idStr = String(id);
+        const boolEn = Boolean(en);
+        pendingToggles.set(idStr, boolEn);
+        // Instant local memory mutation on _currentPreset so UI state is immediately consistent
+        if (_currentPreset && Array.isArray(_currentPreset.prompts)) {
+            const p = _currentPreset.prompts.find(x => String(x.identifier) === idStr || x.name === idStr);
+            if (p) p.enabled = boolEn;
+        }
+        if (_promptMap) {
+            const p = _promptMap.get(idStr) || _promptMap.get(id);
+            if (p) p.enabled = boolEn;
+        }
+    }
+    clearTimeout(toggleTimer);
+    toggleTimer = setTimeout(flushToggles, 150);
+}
+
+export async function flushToggles() {
     if (pendingToggles.size === 0) return;
+    clearTimeout(toggleTimer);
+    toggleTimer = null;
     const batch = new Map(pendingToggles);
     pendingToggles.clear();
-    clearTimeout(toggleTimer);
     try {
         await PresetManager.batchToggleMap(batch, false, _currentPreset?.name);
     } catch (e) {
@@ -83,6 +99,17 @@ async function flushToggles() {
         toastr.error('切换失败');
     }
 }
+
+// Safety gate: ensure pending toggles and native renders are flushed on page unload/refresh
+window.addEventListener('beforeunload', () => {
+    if (pendingToggles.size > 0) {
+        const batch = new Map(pendingToggles);
+        pendingToggles.clear();
+        clearTimeout(toggleTimer);
+        PresetManager.batchToggleMap(batch, false, _currentPreset?.name).catch(() => {});
+    }
+    PresetManager.flushNativeRender();
+});
 
 function showConfirm(modal, msg, onYes, requiresSetting = false) {
     if (requiresSetting && UiStateManager.get().confirmOnSnapshot !== true) {
@@ -775,6 +802,7 @@ function buildModal(modal, preset, listInfo) {
         select.appendChild(opt);
     });
     select.addEventListener('change', async () => {
+        if (pendingToggles.size > 0) await flushToggles();
         const name = select.value;
         select.disabled = true;
         const contentEl = modal.querySelector('.zero-content');
@@ -1091,6 +1119,7 @@ function buildModal(modal, preset, listInfo) {
                 if (btn.classList.contains('processing')) return;
                 
                 btn.classList.add('processing');
+                if (pendingToggles.size > 0) await flushToggles();
                 const ok = await PresetManager.save();
                 
                 if (ok) {
@@ -1154,6 +1183,7 @@ function buildModal(modal, preset, listInfo) {
             html: `<i class="fa-solid ${t.icon}"></i>${t.label}`,
             'data-tab': t.id,
             onclick: () => {
+                if (pendingToggles.size > 0) flushToggles();
                 if (msActive) exitMultiSelect();
                 const currentTabId = UiStateManager.get().activeTab;
                 if (currentTabId === t.id) return;
@@ -1571,6 +1601,7 @@ function setupEntriesDelegation(panel) {
                 const targetEnabled = cb.checked;
                 const resolvedMap = resolvePromptConstraints(_currentPreset?.name, new Map([[id, targetEnabled]]), _promptMap);
 
+                const affectedGroups = new Set();
                 resolvedMap.forEach((en, resId) => {
                     const resP = _promptMap.get(resId);
                     if (resP) resP.enabled = en;
@@ -1580,16 +1611,18 @@ function setupEntriesDelegation(panel) {
                         const switchCb = entryEl.querySelector('.zero-switch input');
                         if (switchCb) switchCb.checked = en;
                         entryEl.querySelector('.zero-entry-name')?.classList.toggle('disabled', !en);
-                        updateGroupCount(entryEl.closest('.zero-group'));
+                        const grp = entryEl.closest('.zero-group');
+                        if (grp) affectedGroups.add(grp);
                     }
                 });
 
-                updateGroupCount(entry.closest('.zero-group'));
+                const entryGroup = entry.closest('.zero-group');
+                if (entryGroup) affectedGroups.add(entryGroup);
+                affectedGroups.forEach(grp => updateGroupCount(grp));
 
-                PresetManager.batchToggleMap(resolvedMap).catch(e => {
-                    console.error('[Zero] batch toggle failed:', e);
-                    toastr.error('切换失败');
-                });
+                if (resolvedMap.size > 0) {
+                    scheduleBatchToggle(resolvedMap);
+                }
             }
         }
     });
@@ -1872,6 +1905,7 @@ function localBatchToggle(groupEl, enabled) {
 
     const resolvedMap = resolvePromptConstraints(_currentPreset?.name, initialMap, _promptMap);
 
+    const affectedGroups = new Set();
     resolvedMap.forEach((en, resId) => {
         const resP = _promptMap.get(resId);
         if (resP) resP.enabled = en;
@@ -1881,17 +1915,16 @@ function localBatchToggle(groupEl, enabled) {
             const switchCb = entryEl.querySelector('.zero-switch input');
             if (switchCb) switchCb.checked = en;
             entryEl.querySelector('.zero-entry-name')?.classList.toggle('disabled', !en);
-            updateGroupCount(entryEl.closest('.zero-group'));
+            const grp = entryEl.closest('.zero-group');
+            if (grp) affectedGroups.add(grp);
         }
     });
 
-    updateGroupCount(groupEl);
+    affectedGroups.add(groupEl);
+    affectedGroups.forEach(grp => updateGroupCount(grp));
 
     if (resolvedMap.size > 0) {
-        PresetManager.batchToggleMap(resolvedMap).catch(e => {
-            console.error('[Zero] batch toggle failed:', e);
-            toastr.error('操作失败');
-        });
+        scheduleBatchToggle(resolvedMap);
     }
 }
 
@@ -1901,18 +1934,16 @@ function updateGroupCount(groupEl) {
     if (!body) return;
     
     const gid = groupEl.dataset.gid;
-    const members = _groupMemberMap.get(gid) || [];
-    
-    // Use DOM state if rendered, otherwise compute from memory
-    const inner = body.querySelector('.zero-group-inner');
+    const members = _groupMemberMap?.get(gid) || [];
     let total = members.length;
     let enabled = 0;
     
-    if (inner && !inner.hasChildNodes()) {
-        enabled = members.filter(p => p.enabled).length;
+    if (members.length > 0) {
+        enabled = members.filter(p => p && p.enabled).length;
     } else {
         const switches = body.querySelectorAll('.zero-switch input[type="checkbox"]');
         enabled = Array.from(switches).filter(cb => cb.checked).length;
+        total = switches.length;
     }
     
     const countEl = groupEl.querySelector('.zero-group-count');
@@ -3189,7 +3220,9 @@ function renderSnapshots(panel, preset, modal, viewMode = 'local') {
             viewMode === 'local' ? h('button', { class: 'zero-btn', title: '快照分组', html: '<i class="fa-solid fa-folder"></i>', onclick: () => showSnapshotGroupManager(panel, preset, modal) }) : null,
             h('button', { class: 'zero-btn', title: '迁移导入', html: '<i class="fa-solid fa-file-import"></i>', onclick: () => showSnapshotMigrationModal(preset, null, modal) }),
             h('button', { class: 'zero-btn primary', title: '新建快照', html: '<i class="fa-solid fa-plus"></i>', onclick: () => {
+                if (pendingToggles.size > 0) flushToggles();
                 showPrompt(modal, '快照名称', `快照 ${formatDate(Date.now())}`, async (name) => {
+                    if (pendingToggles.size > 0) await flushToggles();
                     await SnapshotManager.create(name, preset);
                     renderSnapshots(panel, preset, modal, viewMode);
                 });
