@@ -219,8 +219,8 @@ export const ThemeManager = {
         const fontSize = settings.fontSize || '14px';
 
         // Base Selector for Zero extension elements (targeted without heavy attribute wildcards)
-        const scope = `.zero-overlay, .zero-modal, .zero-modal-card, .zero-confirm, .zero-preview-box, .zero-multiselect-bar, #zero-preset-manager-panel, #zero-quick-editor, #comparison-overlay, #move-modal, #links-manager-modal, #standalone-regex-manager-modal, #zero-contrast-summary-modal, #zero-op-log-modal`;
-        const modalTargets = `.zero-modal, .zero-modal-card, #zero-preset-manager-panel, #comparison-overlay, #zero-quick-editor, #links-manager-modal, #standalone-regex-manager-modal, #zero-contrast-summary-modal, #move-modal, #zero-op-log-modal`;
+        const scope = `.zero-overlay, .zero-modal, .zero-modal-card, .zero-modal-content, .zero-confirm, .zero-preview-box, .zero-multiselect-bar, #zero-preset-manager-panel, #zero-quick-editor, #comparison-overlay, #move-modal, #links-manager-modal, #standalone-regex-manager-modal, #zero-contrast-summary-modal, #zero-op-log-modal, #zero-var-rename-modal, #zero-batch-var-modal, #zero-batch-entry-var-modal, #zero-replace-confirm-modal`;
+        const modalTargets = `.zero-modal, .zero-modal-card, .zero-modal-content, #zero-preset-manager-panel, #comparison-overlay, #zero-quick-editor, #links-manager-modal, #standalone-regex-manager-modal, #zero-contrast-summary-modal, #move-modal, #zero-op-log-modal`;
 
         let css = '';
 
@@ -267,9 +267,11 @@ export const ThemeManager = {
         if (activeId === 'follow') {
             // FOLLOW SILLY TAVERN (Default)
             const followBgRgba = `rgb(from var(--SmartThemeBlurTintColor-Original, var(--SmartThemeBlurTintColor, rgba(20,20,30,0.95))) r g b / ${opacity})`;
+            const followSolidBg = `rgb(from var(--SmartThemeBlurTintColor-Original, var(--SmartThemeBlurTintColor, rgba(20,20,30,0.95))) r g b / 1)`;
             css += `
             ${scope} {
                 --zero-bg-color: ${followBgRgba};
+                --zero-modal-bg: ${followSolidBg};
                 --zero-card-bg: var(--SmartThemeChatTintColor, rgba(255,255,255,0.04));
                 --zero-card-bg-light: color-mix(in srgb, var(--SmartThemeBodyColor, #fff) 6%, transparent);
                 --zero-text-color: var(--SmartThemeBodyColor, #e0e0e0);
@@ -291,10 +293,12 @@ export const ThemeManager = {
             // CUSTOM / MORANDI THEMES
             const colors = themeConfig.colors || settings.customPalette || DEFAULT_THEME_STATE.customPalette;
             const bgRgba = this.hexToRgba(colors.bg, opacity);
+            const bgSolid = this.hexToRgba(colors.bg, 1.0);
 
             css += `
             ${scope} {
                 --zero-bg-color: ${bgRgba};
+                --zero-modal-bg: ${bgSolid};
                 --zero-card-bg: ${colors.cardBg};
                 --zero-card-bg-light: ${colors.cardBgLight || this.hexToRgba(colors.text, 0.08)};
                 --zero-text-color: ${colors.text};

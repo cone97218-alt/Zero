@@ -342,6 +342,10 @@ function enableClickOutside() {
             el?.id === 'zero-op-log-modal' ||
             el?.id === 'zero-inject-var-modal' ||
             el?.id === 'zero-collect-modal' ||
+            el?.id === 'zero-migration-modal' ||
+            el?.id === 'zero-compare-modal' ||
+            el?.classList?.contains?.('zero-migration-overlay') ||
+            el?.classList?.contains?.('zero-compare-overlay') ||
             el?.classList?.contains?.('zero-modal') ||
             el?.classList?.contains?.('zero-modal-card') ||
             el?.classList?.contains?.('zero-confirm') ||
@@ -380,6 +384,10 @@ function enableClickOutside() {
             target.closest('#zero-op-log-modal') ||
             target.closest('#zero-inject-var-modal') ||
             target.closest('#zero-entry-context-menu-modal') ||
+            target.closest('#zero-migration-modal') ||
+            target.closest('#zero-compare-modal') ||
+            target.closest('.zero-migration-overlay') ||
+            target.closest('.zero-compare-overlay') ||
             target.closest('#toast-container')
         )) {
             return;
@@ -832,6 +840,9 @@ function buildModal(modal, preset, listInfo) {
         }
     });
 
+    const panels = {};
+    _currentPanels = panels;
+
     // Search wrap setup
     const enableAnim = UiStateManager.get().searchBarAnimation !== false;
     const searchWrap = h('div', { class: 'zero-search-wrap' + (enableAnim ? '' : ' no-animation') });
@@ -1149,8 +1160,6 @@ function buildModal(modal, preset, listInfo) {
     ];
     const tabBar = h('div', { class: 'zero-tabs' });
     const content = h('div', { class: 'zero-content' });
-    const panels = {};
-    _currentPanels = panels;
     const initialTab = UiStateManager.get().activeTab || 'entries';
 
     // ─── Scroll position tracking ───
@@ -1660,7 +1669,8 @@ function setupEntriesDelegation(panel) {
             } else if (action.dataset.action === 'inject-var') {
                 import('../preset-manager/utils.js').then(m => {
                     m.showInjectVariableModal(prompt, _currentPreset.name, (freshPreset) => {
-                        renderModalContent(_currentModal, freshPreset || _currentPreset);
+                        if (freshPreset) _currentPreset = freshPreset;
+                        renderEntries(panel, _currentPreset, _currentModal);
                     });
                 });
             } else if (action.dataset.action === 'multi-select') {
@@ -1803,7 +1813,8 @@ function showEntryContextMenu(panel, entry, prompt) {
         } else if (act === 'inject-var') {
             import('../preset-manager/utils.js').then(m => {
                 m.showInjectVariableModal(prompt, _currentPreset.name, (freshPreset) => {
-                    renderModalContent(_currentModal, freshPreset || _currentPreset);
+                    if (freshPreset) _currentPreset = freshPreset;
+                    renderEntries(panel, _currentPreset, _currentModal);
                 });
             });
         } else if (act === 'folder') {
@@ -2363,6 +2374,7 @@ function showLinkageManager(panel, preset, modal) {
     const listPanel = h('div', { style: 'display: flex; flex-direction: column; height: 100%; min-height: 0;' });
     const listContainer = h('div', { class: 'zero-group-mgr-list', style: 'overflow-y: auto; flex: 1; border: 1px solid rgba(255,255,255,0.06); border-radius: 6px; background: rgba(0,0,0,0.15); padding: 8px;' });
     listPanel.appendChild(listContainer);
+    let sourceSelect = null;
 
     function renderList() {
         listContainer.innerHTML = '';
@@ -2472,7 +2484,7 @@ function showLinkageManager(panel, preset, modal) {
     // Panel 2: New Linkage Form (Asymmetrical Two-Step Panel)
     const createPanel = h('div', { style: 'display: none; flex-direction: column; gap: 10px; height: 100%; min-height: 0;' });
     
-    const sourceSelect = h('select', { class: 'zero-preset-select', style: 'width: 100%;' });
+    sourceSelect = h('select', { class: 'zero-preset-select', style: 'width: 100%;' });
     const targetContainer = h('div', {
         style: 'flex: 1; overflow-y: auto; border: 1px solid rgba(255,255,255,0.06); padding: 4px; border-radius: 6px; background: rgba(0,0,0,0.15); display: flex; flex-direction: column; gap: 2px;'
     });
@@ -2638,6 +2650,10 @@ function showLinkageManager(panel, preset, modal) {
     searchRow1.appendChild(searchInput);
     searchRow1.appendChild(searchClear);
 
+    let nameBtn = null;
+    let contentBtn = null;
+    let targetSection = null;
+
     const searchRow2 = h('div', { class: 'zero-search-row2' },
         h('span', { class: 'zero-search-opt-label', text: '筛选范围:' }),
         h('button', {
@@ -2648,7 +2664,7 @@ function showLinkageManager(panel, preset, modal) {
                 e.stopPropagation();
                 if (searchScopeName && !searchScopeContent) return;
                 searchScopeName = !searchScopeName;
-                nameBtn.classList.toggle('active', searchScopeName);
+                if (nameBtn) nameBtn.classList.toggle('active', searchScopeName);
                 triggerSearch(searchInput.value);
             }
         }),
@@ -2660,7 +2676,7 @@ function showLinkageManager(panel, preset, modal) {
                 e.stopPropagation();
                 if (searchScopeContent && !searchScopeName) return;
                 searchScopeContent = !searchScopeContent;
-                contentBtn.classList.toggle('active', searchScopeContent);
+                if (contentBtn) contentBtn.classList.toggle('active', searchScopeContent);
                 triggerSearch(searchInput.value);
             }
         })
@@ -2668,8 +2684,8 @@ function showLinkageManager(panel, preset, modal) {
     searchWrap.appendChild(searchRow1);
     searchWrap.appendChild(searchRow2);
 
-    const nameBtn = searchRow2.querySelector('.name-btn');
-    const contentBtn = searchRow2.querySelector('.content-btn');
+    nameBtn = searchRow2.querySelector('.name-btn');
+    contentBtn = searchRow2.querySelector('.content-btn');
 
     function expandSearch() {
         searchWrap.classList.add('expanded');
@@ -2741,7 +2757,7 @@ function showLinkageManager(panel, preset, modal) {
     });
 
     // Step 2 Section (Target Checklist + Search)
-    const targetSection = h('div', {
+    targetSection = h('div', {
         style: 'background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0;'
     },
         h('div', { style: 'display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; min-height: 28px; position: relative; overflow: hidden;' },
@@ -4204,8 +4220,6 @@ function findMostSimilarPresetWithSnapshots(currentPresetName) {
 }
 
 async function showSnapshotMigrationModal(preset, preselectedSourceOrSnap = null, modal = null) {
-    const targetModal = overlay || document.getElementById('zero-overlay') || document.body;
-    
     function buildCollapsibleSection(sectionId, titleText, defaultOpen = false, onExpand = null) {
         const storageKey = `zero_migration_section_${sectionId}`;
         const savedOpen = localStorage.getItem(storageKey);
@@ -4252,50 +4266,177 @@ async function showSnapshotMigrationModal(preset, preselectedSourceOrSnap = null
     }
 
     function showContentCompareModal(sourceP, targetP) {
-        const compareBox = h('div', { class: 'zero-confirm', style: 'z-index: 20500;' });
-        const content = h('div', { class: 'zero-confirm-box', style: 'max-width: 680px; width: 90%; height: 80vh; max-height: 80vh; display: flex; flex-direction: column;' },
-            h('div', { class: 'zero-confirm-msg', text: '对比条目内容' }),
-            h('div', { style: 'display: flex; flex-direction: column; gap: 12px; flex: 1; overflow: hidden; margin-bottom: 12px;' },
-                h('div', { style: 'flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden;' },
-                    h('div', { style: 'font-weight: bold; margin-bottom: 4px; font-size:12px; color: var(--SmartThemeEmColor);', text: `来源 (原预设): ${sourceP.name || sourceP.identifier}` }),
-                    h('textarea', { readonly: true, class: 'zero-input', style: 'flex: 1; resize: none; font-family: monospace; font-size: 10px; padding: 8px; background: rgba(0,0,0,0.15); border: 1px solid rgba(255,255,255,0.06); border-radius: 4px;', text: sourceP.content || '' })
-                ),
-                h('div', { style: 'flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden;' },
-                    h('div', { style: 'font-weight: bold; margin-bottom: 4px; font-size:12px; color: var(--SmartThemeEmColor);', text: `目标 (当前预设): ${targetP.name || targetP.identifier}` }),
-                    h('textarea', { readonly: true, class: 'zero-input', style: 'flex: 1; resize: none; font-family: monospace; font-size: 10px; padding: 8px; background: rgba(0,0,0,0.15); border: 1px solid rgba(255,255,255,0.06); border-radius: 4px;', text: targetP.content || '' })
-                )
-            ),
-            h('div', { class: 'zero-confirm-btns', style: 'display:flex; justify-content:flex-end;' },
-                h('button', { class: 'zero-btn primary', text: '关闭', onclick: (e) => { e.stopPropagation(); compareBox.remove(); } })
-            )
-        );
-        compareBox.appendChild(content);
-        compareBox.addEventListener('pointerdown', (e) => e.stopPropagation());
-        compareBox.addEventListener('click', (e) => {
-            if (e.target === compareBox) {
-                e.stopPropagation();
-                compareBox.remove();
-            }
+        const compareBox = h('div', {
+            id: 'zero-compare-modal',
+            class: 'zero-compare-overlay'
         });
-        targetModal.appendChild(compareBox);
+        compareBox.style.setProperty('position', 'fixed', 'important');
+        compareBox.style.setProperty('inset', '0', 'important');
+        compareBox.style.setProperty('width', '100vw', 'important');
+        compareBox.style.setProperty('height', '100vh', 'important');
+        compareBox.style.setProperty('z-index', '60000', 'important');
+        compareBox.style.setProperty('pointer-events', 'auto', 'important');
+        compareBox.style.setProperty('background', 'rgba(0, 0, 0, 0.7)', 'important');
+        compareBox.style.setProperty('backdrop-filter', 'blur(3px)');
+        compareBox.style.setProperty('display', 'flex', 'important');
+        compareBox.style.setProperty('align-items', 'center', 'important');
+        compareBox.style.setProperty('justify-content', 'center', 'important');
+        compareBox.style.setProperty('padding', '16px', 'important');
+        compareBox.style.setProperty('box-sizing', 'border-box', 'important');
+        compareBox.style.setProperty('overflow-y', 'auto', 'important');
+
+        let handleCompareKeyDown = null;
+        const closeCompareModal = () => {
+            if (handleCompareKeyDown) document.removeEventListener('keydown', handleCompareKeyDown);
+            compareBox.remove();
+        };
+
+        handleCompareKeyDown = (e) => {
+            if (e.key === 'Escape') {
+                e.stopPropagation();
+                closeCompareModal();
+            }
+        };
+        document.addEventListener('keydown', handleCompareKeyDown);
+
+        const header = h('div', {
+            style: 'display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, rgba(255,255,255,0.08))); flex-shrink: 0;'
+        },
+            h('div', { style: 'font-size: 14px; font-weight: bold; color: var(--SmartThemeBodyColor, #ddd); display: flex; align-items: center; gap: 8px;' },
+                h('i', { class: 'fa-solid fa-code-compare', style: 'color: var(--SmartThemeQuoteColor, #7b8cde);' }),
+                h('span', { text: '对比条目内容' })
+            ),
+            h('button', {
+                class: 'zero-close-btn interactable',
+                title: '关闭 (Esc)',
+                style: 'background: transparent; border: none; color: inherit; cursor: pointer; font-size: 18px; opacity: 0.7; padding: 4px 8px; border-radius: 4px; display: flex; align-items: center; justify-content: center;',
+                onclick: (e) => {
+                    e.stopPropagation();
+                    closeCompareModal();
+                }
+            }, h('i', { class: 'fa-solid fa-xmark' }))
+        );
+
+        const content = h('div', {
+            class: 'zero-confirm-box',
+            style: 'width: 94%; max-width: 680px; height: min(80vh, 680px); max-height: calc(100vh - 32px); margin: auto; display: flex; flex-direction: column; overflow: hidden; box-sizing: border-box; box-shadow: 0 16px 48px rgba(0,0,0,0.6); border-radius: 12px; padding: 0;'
+        },
+            header,
+            h('div', { style: 'display: flex; flex-direction: column; gap: 12px; flex: 1; min-height: 0; overflow: hidden; padding: 14px 16px;' },
+                h('div', { style: 'flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden;' },
+                h('div', { style: 'font-weight: bold; margin-bottom: 4px; font-size:12px; color: var(--SmartThemeEmColor);', text: `来源 (原预设): ${sourceP.name || sourceP.identifier}` }),
+                h('textarea', { readonly: true, class: 'zero-input', style: 'flex: 1; resize: none; font-family: monospace; font-size: 10px; padding: 8px; background: rgba(0,0,0,0.15); border: 1px solid rgba(255,255,255,0.06); border-radius: 4px;', text: sourceP.content || '' })
+            ),
+            h('div', { style: 'flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden;' },
+                h('div', { style: 'font-weight: bold; margin-bottom: 4px; font-size:12px; color: var(--SmartThemeEmColor);', text: `目标 (当前预设): ${targetP.name || targetP.identifier}` }),
+                h('textarea', { readonly: true, class: 'zero-input', style: 'flex: 1; resize: none; font-family: monospace; font-size: 10px; padding: 8px; background: rgba(0,0,0,0.15); border: 1px solid rgba(255,255,255,0.06); border-radius: 4px;', text: targetP.content || '' })
+            )
+        ),
+        h('div', { class: 'zero-confirm-btns', style: 'display: flex; justify-content: flex-end; padding: 10px 16px; border-top: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, rgba(255,255,255,0.08))); background: rgba(0,0,0,0.08); flex-shrink: 0;' },
+            h('button', { class: 'zero-btn primary', text: '关闭', onclick: (e) => { e.stopPropagation(); closeCompareModal(); } })
+        )
+    );
+    compareBox.appendChild(content);
+    compareBox.addEventListener('pointerdown', (e) => e.stopPropagation());
+    compareBox.addEventListener('click', (e) => {
+        if (e.target === compareBox) {
+            e.stopPropagation();
+            closeCompareModal();
+        }
+    });
+    const compareContainer = overlay || document.getElementById('zero-overlay') || document.body;
+    compareContainer.appendChild(compareBox);
     }
 
-    const listInfo = await PresetManager.listNames();
-    const allPresets = listInfo.names || [];
+    let allPresets = [];
+    try {
+        const listInfo = await PresetManager.listNames();
+        allPresets = (listInfo && listInfo.names) || PresetManager.listNamesSync()?.names || [];
+    } catch (e) {
+        console.warn('[Zero] PresetManager.listNames error in migration modal:', e);
+        allPresets = PresetManager.listNamesSync()?.names || [];
+    }
     const filteredSourcePresets = allPresets.filter(n => !n.startsWith('★') && n !== preset.name);
 
-    const menuBox = h('div', { class: 'zero-confirm' });
-    const contentBox = h('div', { class: 'zero-confirm-box zero-migration-box' },
-        h('div', { class: 'zero-confirm-msg', text: '快照导入与迁移' }),
-        h('div', { class: 'zero-migration-header-desc', text: '将其他预设的快照（或当前开关配置）智能转换并导入到当前预设' })
+    const existingMigrationModal = document.getElementById('zero-migration-modal');
+    if (existingMigrationModal) existingMigrationModal.remove();
+
+    const menuBox = h('div', {
+        id: 'zero-migration-modal',
+        class: 'zero-migration-overlay'
+    });
+    menuBox.style.setProperty('position', 'fixed', 'important');
+    menuBox.style.setProperty('inset', '0', 'important');
+    menuBox.style.setProperty('width', '100vw', 'important');
+    menuBox.style.setProperty('height', '100vh', 'important');
+    menuBox.style.setProperty('z-index', '50000', 'important');
+    menuBox.style.setProperty('pointer-events', 'auto', 'important');
+    menuBox.style.setProperty('background', 'rgba(0, 0, 0, 0.65)', 'important');
+    menuBox.style.setProperty('backdrop-filter', 'blur(2px)');
+    menuBox.style.setProperty('display', 'flex', 'important');
+    menuBox.style.setProperty('align-items', 'center', 'important');
+    menuBox.style.setProperty('justify-content', 'center', 'important');
+    menuBox.style.setProperty('padding', '16px', 'important');
+    menuBox.style.setProperty('box-sizing', 'border-box', 'important');
+    menuBox.style.setProperty('overflow-y', 'auto', 'important');
+
+    let handleKeyDown = null;
+    const closeMigrationModal = () => {
+        if (handleKeyDown) document.removeEventListener('keydown', handleKeyDown);
+        menuBox.remove();
+    };
+
+    handleKeyDown = (e) => {
+        if (e.key === 'Escape') {
+            e.stopPropagation();
+            closeMigrationModal();
+        }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+
+    const headerRow = h('div', {
+        style: 'display: flex; align-items: center; justify-content: space-between; padding: 12px 16px 6px; border-bottom: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, rgba(255,255,255,0.08))); flex-shrink: 0;'
+    },
+        h('div', { style: 'font-size: 15px; font-weight: bold; color: var(--SmartThemeBodyColor, #ddd); display: flex; align-items: center; gap: 8px;' },
+            h('i', { class: 'fa-solid fa-file-import', style: 'color: var(--SmartThemeQuoteColor, #7b8cde);' }),
+            h('span', { text: '快照导入与迁移' })
+        ),
+        h('button', {
+            class: 'zero-close-btn interactable',
+            title: '关闭 (Esc)',
+            style: 'background: transparent; border: none; color: inherit; cursor: pointer; font-size: 18px; opacity: 0.7; padding: 4px 8px; border-radius: 4px; display: flex; align-items: center; justify-content: center;',
+            onclick: (e) => {
+                e.stopPropagation();
+                closeMigrationModal();
+            }
+        }, h('i', { class: 'fa-solid fa-xmark' }))
     );
 
-    const scrollContainer = h('div', { class: 'zero-migration-scroll' });
+    const descRow = h('div', {
+        class: 'zero-migration-header-desc',
+        style: 'margin: 0; padding: 4px 16px 10px; font-size: 11px; text-align: left; color: var(--SmartThemeEmColor, #aaa); border-bottom: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, rgba(255,255,255,0.05))); flex-shrink: 0; background: rgba(0,0,0,0.05);',
+        text: '将其他预设的快照（或当前开关配置）智能转换并导入到当前预设'
+    });
+
+    const contentBox = h('div', {
+        class: 'zero-confirm-box zero-migration-box',
+        style: 'width: 94%; max-width: 620px; height: min(82vh, 720px); max-height: calc(100vh - 32px); margin: auto; display: flex; flex-direction: column; overflow: hidden; box-sizing: border-box; border-radius: 12px; box-shadow: 0 16px 48px rgba(0,0,0,0.6); padding: 0;'
+    },
+        headerRow,
+        descRow
+    );
+
+    const scrollContainer = h('div', {
+        class: 'zero-migration-scroll',
+        style: 'overflow-y: auto; flex: 1; min-height: 0; padding: 12px 16px; margin: 0;'
+    });
     contentBox.appendChild(scrollContainer);
 
     // Section 1: Basic Settings (Static, collapsed by default unless saved otherwise)
     const settingsSection = buildCollapsibleSection('settings', '基础设置', false);
     scrollContainer.appendChild(settingsSection.container);
+
+    let searchBtn = null;
 
     // Collapsible Search Box
     const searchInput = h('input', {
@@ -4314,11 +4455,11 @@ async function showSnapshotMigrationModal(preset, preselectedSourceOrSnap = null
             searchInput.dispatchEvent(new Event('input'));
             searchInput.style.display = 'none';
             closeSearchBtn.style.display = 'none';
-            searchBtn.style.display = 'inline-flex';
+            if (searchBtn) searchBtn.style.display = 'inline-flex';
         }
     }, h('i', { class: 'fa-solid fa-xmark', style: 'font-size: 10px;' }));
 
-    const searchBtn = h('button', {
+    searchBtn = h('button', {
         class: 'zero-btn sm',
         style: 'padding: 2px 8px; height: 22px; display: inline-flex; align-items: center; justify-content: center; gap: 4px; font-size: 11px; border-radius: 4px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08);',
         onclick: (e) => {
@@ -4506,7 +4647,7 @@ async function showSnapshotMigrationModal(preset, preselectedSourceOrSnap = null
 
     const applyBtn = h('button', { class: 'zero-btn primary', text: '导入并应用', style: 'flex:1; justify-content:center;' });
     const importOnlyBtn = h('button', { class: 'zero-btn', text: '仅导入', style: 'flex:1; justify-content:center;' });
-    const cancelBtn = h('button', { class: 'zero-btn', text: '取消', style: 'flex:1; justify-content:center;', onclick: (e) => { e.stopPropagation(); menuBox.remove(); } });
+    const cancelBtn = h('button', { class: 'zero-btn', text: '取消', style: 'flex:1; justify-content:center;', onclick: (e) => { e.stopPropagation(); closeMigrationModal(); } });
 
     // Set initial disabled state based on checkbox
     importOnlyBtn.disabled = !isCopyChecked;
@@ -4516,7 +4657,10 @@ async function showSnapshotMigrationModal(preset, preselectedSourceOrSnap = null
         localStorage.setItem('zero_migration_save_copy', copyCheckbox.checked.toString());
     });
 
-    const btnRow = h('div', { class: 'zero-confirm-btns', style: 'margin-top:12px; display:flex; gap:8px;' },
+    const btnRow = h('div', {
+        class: 'zero-confirm-btns',
+        style: 'margin: 0; padding: 12px 16px; display: flex; gap: 10px; flex-shrink: 0; border-top: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, rgba(255,255,255,0.08))); background: rgba(0,0,0,0.08);'
+    },
         cancelBtn,
         importOnlyBtn,
         applyBtn
@@ -4528,10 +4672,11 @@ async function showSnapshotMigrationModal(preset, preselectedSourceOrSnap = null
     menuBox.addEventListener('click', (e) => {
         if (e.target === menuBox) {
             e.stopPropagation();
-            menuBox.remove();
+            closeMigrationModal();
         }
     });
-    targetModal.appendChild(menuBox);
+    const targetContainer = overlay || document.getElementById('zero-overlay') || document.body;
+    targetContainer.appendChild(menuBox);
 
     let currentSourcePreset = '';
     let selectedSnapshotObj = null;
@@ -4683,6 +4828,8 @@ async function showSnapshotMigrationModal(preset, preselectedSourceOrSnap = null
                 // Helper to build a searchable select element (No autofocus on input by default)
                 function createSearchableSelect(options, currentValue, onChange) {
                     const container = h('div', { style: 'position: relative; flex: 1; min-width: 0;' });
+                    let dropdown = null;
+                    let listContainer = null;
                     
                     const selectedOpt = options.find(o => o.value === currentValue);
                     const buttonText = selectedOpt ? selectedOpt.text : '-- 请选择 --';
@@ -4692,6 +4839,7 @@ async function showSnapshotMigrationModal(preset, preselectedSourceOrSnap = null
                         style: 'width: 100%; text-align: left; justify-content: space-between; display: flex; align-items: center; padding: 2px 6px; height: 24px; font-size: 11px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); border-radius: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;',
                         onclick: (e) => {
                             e.stopPropagation();
+                            if (!dropdown) return;
                             // Close other searchable select dropdowns
                             menuBox.querySelectorAll('.zero-search-select-dropdown').forEach(d => {
                                 if (d !== dropdown) {
@@ -4706,7 +4854,7 @@ async function showSnapshotMigrationModal(preset, preselectedSourceOrSnap = null
                                 searchInput.value = '';
                                 filterOptions('');
                             } else {
-                                listContainer.innerHTML = '';
+                                if (listContainer) listContainer.innerHTML = '';
                             }
                         }
                     },
@@ -4721,12 +4869,12 @@ async function showSnapshotMigrationModal(preset, preselectedSourceOrSnap = null
                         style: 'width: 100%; height: 20px; font-size: 10px; padding: 2px 6px; margin-bottom: 4px; box-sizing: border-box; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: #fff !important;'
                     });
                     
-                    const listContainer = h('div', {
+                    listContainer = h('div', {
                         class: 'zero-list-container',
                         style: 'max-height: 160px; overflow-y: auto; display: block;'
                     });
                     
-                    const dropdown = h('div', {
+                    dropdown = h('div', {
                         class: 'zero-search-select-dropdown',
                         style: 'display: none; position: absolute; left: 0; right: 0; top: 100%; z-index: 100; margin-top: 2px; padding: 4px; background: rgb(from var(--SmartThemeChatTintColor, rgba(40,40,55,1)) r g b / 1) !important; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.5);'
                     },
@@ -4780,8 +4928,8 @@ async function showSnapshotMigrationModal(preset, preselectedSourceOrSnap = null
                     });
                     
                     document.addEventListener('click', () => {
-                        dropdown.style.display = 'none';
-                        listContainer.innerHTML = '';
+                        if (dropdown) dropdown.style.display = 'none';
+                        if (listContainer) listContainer.innerHTML = '';
                     });
                     
                     container.appendChild(btn);
@@ -4821,9 +4969,10 @@ async function showSnapshotMigrationModal(preset, preselectedSourceOrSnap = null
                         }
                     });
 
+                    let linkRow = null;
                     const updateLinkVisibility = (val) => {
                         const hasVal = !!val;
-                        linkRow.style.display = hasVal ? 'flex' : 'none';
+                        if (linkRow) linkRow.style.display = hasVal ? 'flex' : 'none';
                         compareBtn.style.display = hasVal ? 'inline-flex' : 'none';
                         
                         if (hasVal) {
@@ -4858,7 +5007,7 @@ async function showSnapshotMigrationModal(preset, preselectedSourceOrSnap = null
                         updateLinkVisibility(newVal);
                     });
 
-                    const linkRow = h('div', { style: 'display:none; align-items:center; gap:6px; font-size:10px; color:var(--SmartThemeEmColor); margin-top:4px;' },
+                    linkRow = h('div', { style: 'display:none; align-items:center; gap:6px; font-size:10px; color:var(--SmartThemeEmColor); margin-top:4px;' },
                         linkSw,
                         h('span', { text: '保存为此两预设的永久条目关联' })
                     );
@@ -5250,7 +5399,7 @@ async function showSnapshotMigrationModal(preset, preselectedSourceOrSnap = null
                         }
 
                         // If single snapshot copy created, migrate its group placement
-                        if (newSnap && newSnap.id && syncSnap) {
+                        if (newSnap && newSnap.id) {
                             // Find which group in source preset the source snapshot belongs to
                             const srcGroups = SnapshotGroupManager.get(currentSourcePreset);
                             const srcG = srcGroups.find(g => g.sids.includes(selectedSnapshotObj.id));
@@ -5259,14 +5408,9 @@ async function showSnapshotMigrationModal(preset, preselectedSourceOrSnap = null
                                 SnapshotGroupManager.migrate(currentSourcePreset, preset.name, snapshotIdMap);
                             }
                         }
-
-                        // Migrate Prompt Groups
-                        if (syncPrompt) {
-                            GroupManager.migrate(currentSourcePreset, preset.name, promptIdMap);
-                        }
                     }
 
-                    menuBox.remove();
+                    closeMigrationModal();
                     
                     const p = await PresetManager.load();
                     const panel = overlay.querySelector('.zero-panel.active');
@@ -5276,7 +5420,7 @@ async function showSnapshotMigrationModal(preset, preselectedSourceOrSnap = null
                 } catch (e) {
                     console.error('[Zero] Import failed:', e);
                     toastr.error('导入失败，请检查控制台。');
-                    menuBox.remove();
+                    closeMigrationModal();
                 }
             }, 50);
         });

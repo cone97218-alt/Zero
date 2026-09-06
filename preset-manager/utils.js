@@ -135,45 +135,43 @@ export async function showCollectModal(promptOrPrompts, originPreset = '') {
             : escapeHtml(prompts[0].name || prompts[0].identifier || '未命名');
 
         const $panel = $('#zero-preset-manager-panel');
-        let top = 0, left = 0, width = '100vw', height = '100vh';
-        let isFixedCoords = false;
-        if ($panel.length && $panel.is(':visible') && !$('#comparison-overlay').is(':visible') && !$('#zero-quick-editor').is(':visible')) {
-            const rect = $panel[0].getBoundingClientRect();
-            top = rect.top;
-            left = rect.left;
-            width = rect.width;
-            height = rect.height;
-            isFixedCoords = true;
-        }
+        const hasPanel = $panel.length && $panel.is(':visible') && !$('#comparison-overlay').is(':visible') && !$('#zero-quick-editor').is(':visible');
+        const $container = hasPanel ? $panel : $('body');
 
         const modalHtml = `
             <div id="${modalId}" style="
-                position: fixed;
-                top: ${isFixedCoords ? top + 'px' : '0'};
-                left: ${isFixedCoords ? left + 'px' : '0'};
-                width: ${isFixedCoords ? width + 'px' : '100vw'};
-                height: ${isFixedCoords ? height + 'px' : '100vh'};
-                background: rgba(0,0,0,0.7);
-                backdrop-filter: blur(4px);
+                position: ${hasPanel ? 'absolute' : 'fixed'};
+                inset: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0,0,0,0.65);
+                backdrop-filter: blur(2px);
                 z-index: 30005;
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                padding: 20px;
+                padding: 16px;
+                box-sizing: border-box;
                 font-family: var(--mainFontFamily, sans-serif);
                 color: var(--SmartThemeBodyColor, #dcdcd2);
+                border-radius: inherit;
+                overflow: hidden;
             ">
                 <div class="zero-modal-card" style="
                     background: var(--zero-bg-color, var(--SmartThemeBlurTintColor-Original, #1e1e28));
                     color: var(--zero-text-color, var(--SmartThemeBodyColor, #e0e0e0));
                     border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #444));
-                    border-radius: 16px;
-                    width: 100%;
-                    max-width: 380px;
+                    border-radius: 14px;
+                    width: 94%;
+                    max-width: 400px;
+                    height: auto;
+                    max-height: calc(100% - 24px);
                     display: flex;
                     flex-direction: column;
                     box-shadow: 0 8px 30px rgba(0,0,0,0.6);
                     overflow: hidden;
+                    box-sizing: border-box;
+                    margin: auto;
                 ">
                     <!-- Header -->
                     <div style="
@@ -261,13 +259,23 @@ export async function showCollectModal(promptOrPrompts, originPreset = '') {
             </div>
         `;
 
-        $('body').append(modalHtml);
+        $container.append(modalHtml);
 
+        const getNote = () => $(`#${modalId} #zero-fav-note-input`).val().trim();
+
+        let handleEsc = null;
         const closeModal = () => {
+            if (handleEsc) $(document).off('keydown', handleEsc);
             $(`#${modalId}`).remove();
         };
 
-        const getNote = () => $(`#${modalId} #zero-fav-note-input`).val().trim();
+        handleEsc = (e) => {
+            if (e.key === 'Escape') {
+                e.stopPropagation();
+                closeModal();
+            }
+        };
+        $(document).on('keydown', handleEsc);
 
         $(`#${modalId}`).on('click', (e) => {
             if (e.target.id === modalId) {
@@ -559,16 +567,8 @@ export async function showBindRegexModal(promptOrPrompts, presetName, onSavedCal
             : escapeHtml(firstPrompt.name || firstPrompt.identifier || '未命名条目');
 
         const $panel = $('#zero-preset-manager-panel');
-        let top = 0, left = 0, width = '100vw', height = '100vh';
-        let isFixedCoords = false;
-        if ($panel.length && $panel.is(':visible') && !$('#comparison-overlay').is(':visible') && !$('#zero-quick-editor').is(':visible')) {
-            const rect = $panel[0].getBoundingClientRect();
-            top = rect.top;
-            left = rect.left;
-            width = rect.width;
-            height = rect.height;
-            isFixedCoords = true;
-        }
+        const hasPanel = $panel.length && $panel.is(':visible') && !$('#comparison-overlay').is(':visible') && !$('#zero-quick-editor').is(':visible');
+        const $container = hasPanel ? $panel : $('body');
 
         const regexRowsHtml = regexScripts.length > 0 ? regexScripts.map(script => {
             const scriptId = script.id || script.scriptName;
@@ -613,53 +613,59 @@ export async function showBindRegexModal(promptOrPrompts, presetName, onSavedCal
 
         const modalHtml = `
             <div id="${modalId}" style="
-                position: fixed;
-                top: ${isFixedCoords ? top + 'px' : '0'};
-                left: ${isFixedCoords ? left + 'px' : '0'};
-                width: ${isFixedCoords ? width + 'px' : '100vw'};
-                height: ${isFixedCoords ? height + 'px' : '100vh'};
-                background: rgba(0,0,0,0.6);
+                position: ${hasPanel ? 'absolute' : 'fixed'};
+                inset: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0,0,0,0.65);
                 backdrop-filter: blur(2px);
                 z-index: 30005;
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                padding: 20px;
+                padding: 16px;
+                box-sizing: border-box;
                 font-family: var(--mainFontFamily, sans-serif);
                 color: var(--SmartThemeBodyColor, #dcdcd2);
+                border-radius: inherit;
+                overflow: hidden;
             ">
                 <div class="zero-modal-card" style="
                     background: var(--zero-bg-color, var(--SmartThemeBlurTintColor-Original, #1e1e28));
                     color: var(--zero-text-color, var(--SmartThemeBodyColor, #e0e0e0));
                     border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #444));
-                    border-radius: 16px;
-                    width: 100%;
+                    border-radius: 14px;
+                    width: 94%;
                     max-width: 440px;
+                    height: min(80vh, 620px);
+                    max-height: calc(100% - 24px);
                     display: flex;
                     flex-direction: column;
                     box-shadow: 0 8px 30px rgba(0,0,0,0.6);
                     overflow: hidden;
-                    max-height: 85vh;
+                    box-sizing: border-box;
+                    margin: auto;
                 ">
                     <!-- Header -->
                     <div style="
                         display: flex;
                         justify-content: space-between;
                         align-items: center;
-                        padding: 16px 20px;
+                        padding: 14px 18px;
                         border-bottom: 1px solid var(--SmartThemeBorderColor, #444);
+                        flex-shrink: 0;
                     ">
                         <div style="font-weight: bold; font-size: 15px; display: flex; align-items: center; gap: 8px;">
                             <i class="fa-solid fa-link" style="color: var(--SmartThemeQuoteColor);"></i>
                             <span>正则绑定设置</span>
                         </div>
-                        <div class="close-bind-modal interactable" style="cursor: pointer; opacity: 0.8; font-size: 16px;">
+                        <div class="close-bind-modal interactable" title="关闭 (Esc)" style="cursor: pointer; opacity: 0.8; font-size: 16px; padding: 2px 6px;">
                             <i class="fa-solid fa-xmark"></i>
                         </div>
                     </div>
 
                     <!-- Target prompt badge -->
-                    <div style="padding: 12px 20px 0 20px;">
+                    <div style="padding: 12px 18px 0 18px; flex-shrink: 0;">
                         <div style="font-size: 12px; opacity: 0.7; margin-bottom: 4px;">目标条目：</div>
                         <div style="
                             font-size: 13px; font-weight: bold; padding: 8px 12px;
@@ -671,8 +677,8 @@ export async function showBindRegexModal(promptOrPrompts, presetName, onSavedCal
                     </div>
 
                     <!-- Body -->
-                    <div style="padding: 16px 20px; flex: 1; overflow-y: auto; display: flex; flex-direction: column;">
-                        <div style="font-size: 12px; opacity: 0.7; margin-bottom: 8px;">勾选要绑定的预设正则：</div>
+                    <div style="padding: 14px 18px; flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column;">
+                        <div style="font-size: 12px; opacity: 0.7; margin-bottom: 8px; flex-shrink: 0;">勾选要绑定的预设正则：</div>
                         <div style="display: flex; flex-direction: column;">
                             ${regexRowsHtml}
                         </div>
@@ -680,12 +686,13 @@ export async function showBindRegexModal(promptOrPrompts, presetName, onSavedCal
 
                     <!-- Footer -->
                     <div style="
-                        padding: 14px 20px;
+                        padding: 12px 18px;
                         border-top: 1px solid var(--SmartThemeBorderColor, #444);
                         display: flex;
                         justify-content: flex-end;
                         gap: 10px;
                         background: rgba(0,0,0,0.15);
+                        flex-shrink: 0;
                     ">
                         <button class="close-bind-modal interactable" style="
                             padding: 8px 16px; border: none; border-radius: 6px;
@@ -700,17 +707,27 @@ export async function showBindRegexModal(promptOrPrompts, presetName, onSavedCal
             </div>
         `;
 
-        $('body').append(modalHtml);
+        $container.append(modalHtml);
+
+        let handleEsc = null;
+        const closeModal = () => {
+            if (handleEsc) $(document).off('keydown', handleEsc);
+            $(`#${modalId}`).remove();
+        };
+
+        handleEsc = (e) => {
+            if (e.key === 'Escape') {
+                e.stopPropagation();
+                closeModal();
+            }
+        };
+        $(document).on('keydown', handleEsc);
 
         $(`#${modalId}`).on('click', (e) => {
-            if (e.target.id === modalId) {
-                $(`#${modalId}`).remove();
-            }
+            if (e.target.id === modalId) closeModal();
         });
 
-        $(`#${modalId}`).find('.close-bind-modal').on('click', () => {
-            $(`#${modalId}`).remove();
-        });
+        $(`#${modalId}`).find('.close-bind-modal').on('click', closeModal);
 
         $(`#${modalId}`).find('#save-regex-binding-btn').on('click', async () => {
             const checkedIds = [];
@@ -730,7 +747,7 @@ export async function showBindRegexModal(promptOrPrompts, presetName, onSavedCal
             await savePresetWithoutRegexToast(pm, presetName, presetObj, { skipUpdate: !isActive });
             await syncBoundRegexOnPromptToggle(null, presetName);
             toastr.success(`已更新正则绑定 (${checkedIds.length} 个正则)`);
-            $(`#${modalId}`).remove();
+            closeModal();
             if (typeof onSavedCallback === 'function') onSavedCallback(checkedIds);
         });
 
@@ -757,6 +774,10 @@ export async function showBindPromptToRegexModal(regexScript, presetName, onSave
         const modalId = 'zero-bind-prompt-to-regex-modal';
         $(`#${modalId}`).remove();
 
+        const $panel = $('#zero-preset-manager-panel');
+        const hasPanel = $panel.length && $panel.is(':visible') && !$('#comparison-overlay').is(':visible') && !$('#zero-quick-editor').is(':visible');
+        const $container = hasPanel ? $panel : $('body');
+
         const promptRowsHtml = prompts.map((p, idx) => {
             const pId = p.identifier;
             const pName = escapeHtml(p.name || p.identifier || `条目 ${idx + 1}`);
@@ -768,13 +789,15 @@ export async function showBindPromptToRegexModal(regexScript, presetName, onSave
                     display: flex;
                     align-items: center;
                     gap: 8px;
-                    padding: 5px 8px;
+                    padding: 6px 10px;
                     background: rgba(255,255,255,0.03);
                     border: 1px solid rgba(255,255,255,0.06);
                     border-radius: 6px;
                     font-size: 12px;
                     cursor: pointer;
-                    margin-bottom: 3px;
+                    margin-bottom: 4px;
+                    box-sizing: border-box;
+                    flex-shrink: 0;
                 ">
                     <input type="checkbox" class="zero-prompt-bind-cb interactable" data-index="${idx}" value="${escapeHtml(pId)}" ${isChecked ? 'checked' : ''} style="cursor: pointer; flex-shrink: 0;" />
                     <div style="flex: 1; overflow: hidden; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
@@ -787,27 +810,36 @@ export async function showBindPromptToRegexModal(regexScript, presetName, onSave
 
         const modalHtml = `
             <div id="${modalId}" style="
-                position: fixed;
-                top: 0; left: 0; right: 0; bottom: 0;
-                background: rgba(0,0,0,0.6);
+                position: ${hasPanel ? 'absolute' : 'fixed'};
+                inset: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0,0,0,0.65);
                 backdrop-filter: blur(2px);
                 z-index: 30005;
                 display: flex;
                 align-items: center;
                 justify-content: center;
+                padding: 16px;
+                box-sizing: border-box;
+                border-radius: inherit;
+                overflow: hidden;
             ">
                 <div class="zero-modal-card" style="
                     background: var(--zero-bg-color, var(--SmartThemeBlurTintColor-Original, #1e1e28));
                     color: var(--zero-text-color, var(--SmartThemeBodyColor, #e0e0e0));
                     border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #444));
                     border-radius: 12px;
-                    width: 420px;
-                    max-width: 90vw;
-                    max-height: 80vh;
+                    width: 94%;
+                    max-width: 440px;
+                    height: min(80vh, 620px);
+                    max-height: calc(100% - 24px);
                     display: flex;
                     flex-direction: column;
                     box-shadow: 0 8px 32px rgba(0,0,0,0.6);
                     overflow: hidden;
+                    box-sizing: border-box;
+                    margin: auto;
                 ">
                     <!-- Header -->
                     <div style="
@@ -817,17 +849,18 @@ export async function showBindPromptToRegexModal(regexScript, presetName, onSave
                         align-items: center;
                         justify-content: space-between;
                         background: rgba(0,0,0,0.15);
+                        flex-shrink: 0;
                     ">
-                        <div style="font-size: 14px; font-weight: bold; display: flex; align-items: center; gap: 6px;">
-                            <i class="fa-solid fa-link" style="color: var(--SmartThemeQuoteColor);"></i>
-                            <span>预设正则绑定条目 (${escapeHtml(presetName)})</span>
+                        <div style="font-size: 14px; font-weight: bold; display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; padding-right: 8px;">
+                            <i class="fa-solid fa-link" style="color: var(--SmartThemeQuoteColor); flex-shrink: 0;"></i>
+                            <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">预设正则绑定条目 (${escapeHtml(presetName)})</span>
                         </div>
-                        <button class="close-modal interactable" style="background: none; border: none; color: inherit; cursor: pointer; font-size: 16px; opacity: 0.6;"><i class="fa-solid fa-xmark"></i></button>
+                        <button class="close-modal interactable" title="关闭 (Esc)" style="background: none; border: none; color: inherit; cursor: pointer; font-size: 16px; opacity: 0.7; padding: 2px 6px; border-radius: 4px; flex-shrink: 0;"><i class="fa-solid fa-xmark"></i></button>
                     </div>
 
                     <!-- Filter Bar -->
-                    <div style="padding: 10px 18px 4px 18px; display: flex; flex-direction: column; gap: 8px;">
-                        <div style="font-size: 12px; opacity: 0.85;">
+                    <div style="padding: 10px 18px 4px 18px; display: flex; flex-direction: column; gap: 8px; flex-shrink: 0;">
+                        <div style="font-size: 12px; opacity: 0.85; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
                             为正则「<strong style="color: var(--SmartThemeQuoteColor);">${scriptTitle}</strong>」勾选绑定的提示词条目：
                         </div>
                         <input type="text" id="zero-prompt-search-input" class="interactable" placeholder="搜索提示词名称..." style="
@@ -843,7 +876,7 @@ export async function showBindPromptToRegexModal(regexScript, presetName, onSave
                     </div>
 
                     <!-- Body -->
-                    <div style="padding: 8px 18px 14px 18px; flex: 1; overflow-y: auto; display: flex; flex-direction: column;">
+                    <div style="padding: 8px 18px 14px 18px; flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column;">
                         <div id="zero-prompt-list-container" style="display: flex; flex-direction: column;">
                             ${promptRowsHtml}
                         </div>
@@ -857,6 +890,7 @@ export async function showBindPromptToRegexModal(regexScript, presetName, onSave
                         align-items: center;
                         justify-content: space-between;
                         background: rgba(0,0,0,0.15);
+                        flex-shrink: 0;
                     ">
                         <div style="display: flex; gap: 4px;">
                             <button id="zero-prompt-select-all" class="interactable" title="全选" style="width: 28px; height: 28px; padding: 0; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; background: rgba(255,255,255,0.05); color: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 12px;"><i class="fa-solid fa-check-double"></i></button>
@@ -872,13 +906,27 @@ export async function showBindPromptToRegexModal(regexScript, presetName, onSave
             </div>
         `;
 
-        $('body').append(modalHtml);
+        $container.append(modalHtml);
 
         const $modal = $(`#${modalId}`);
+        let handleEsc = null;
+        const closeModal = () => {
+            if (handleEsc) $(document).off('keydown', handleEsc);
+            $modal.remove();
+        };
+
+        handleEsc = (e) => {
+            if (e.key === 'Escape') {
+                e.stopPropagation();
+                closeModal();
+            }
+        };
+        $(document).on('keydown', handleEsc);
+
         $modal.on('click', (e) => {
-            if (e.target.id === modalId) $modal.remove();
+            if (e.target.id === modalId) closeModal();
         });
-        $modal.find('.close-modal').on('click', () => $modal.remove());
+        $modal.find('.close-modal').on('click', closeModal);
 
         $modal.find('#zero-prompt-search-input').on('input', function() {
             const q = $(this).val().trim().toLowerCase();
@@ -934,7 +982,7 @@ export async function showBindPromptToRegexModal(regexScript, presetName, onSave
             await savePresetWithoutRegexToast(pm, presetName, presetObj, { skipUpdate: !isActive });
             await syncBoundRegexOnPromptToggle(null, presetName);
             toastr.success(`已保存关联的 ${checkedPromptIds.size} 个条目`);
-            $modal.remove();
+            closeModal();
             if (typeof onSavedCallback === 'function') onSavedCallback(Array.from(checkedPromptIds));
         });
 
@@ -1576,13 +1624,20 @@ export async function showInjectVariableModal(promptOrName, presetName = '', onS
 export function showVariableRenameModal(oldName, presetName, callback) {
     $('#zero-var-rename-modal').remove();
 
+    const $panel = $('#zero-preset-manager-panel');
+    const hasPanel = $panel.length && $panel.is(':visible') && !$('#comparison-overlay').is(':visible') && !$('#zero-quick-editor').is(':visible');
+    const $container = hasPanel ? $panel : $('body');
+    if (hasPanel && $panel.css('position') === 'static') {
+        $panel.css('position', 'relative');
+    }
+
     const modalHtml = `
-        <div id="zero-var-rename-modal" class="zero-modal-overlay" style="position: absolute; inset: 0; background: var(--SmartThemeChatTintColor, #1e1e2d); opacity: 1; border-radius: inherit; z-index: 20000; display: flex; align-items: center; justify-content: center; padding: 16px;">
-            <div class="zero-modal-content" style="background: var(--SmartThemeChatTintColor, #1e1e2d); border: 1px solid var(--SmartThemeBorderColor, #444); border-radius: 10px; width: 100%; max-width: 440px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); overflow: hidden; display: flex; flex-direction: column; color: var(--SmartThemeBodyColor, #ccc); font-family: inherit;">
+        <div id="zero-var-rename-modal" class="zero-modal-overlay" style="position: ${hasPanel ? 'absolute' : 'fixed'}; inset: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.65); backdrop-filter: blur(2px); border-radius: inherit; z-index: 30005; display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box;">
+            <div class="zero-modal-card zero-modal-content" style="background: var(--zero-modal-bg, rgb(from var(--SmartThemeBlurTintColor-Original, var(--SmartThemeBlurTintColor, #1e1e28)) r g b / 1)) !important; background-color: rgb(from var(--SmartThemeBlurTintColor-Original, var(--SmartThemeBlurTintColor, #1e1e28)) r g b / 1) !important; color: var(--zero-text-color, var(--SmartThemeBodyColor, #ccc)); border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #444)); border-radius: 12px; width: 100%; max-width: 440px; box-shadow: 0 8px 30px rgba(0,0,0,0.6); overflow: hidden; display: flex; flex-direction: column; font-family: inherit; pointer-events: auto;">
                 <!-- Header -->
-                <div style="padding: 14px 16px; border-bottom: 1px solid var(--SmartThemeBorderColor, #444); display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.03);">
+                <div style="padding: 14px 16px; border-bottom: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #444)); display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.03);">
                     <div style="font-weight: bold; font-size: 14px; display: flex; align-items: center; gap: 8px;">
-                        <i class="fa-solid fa-pen-to-square" style="color: var(--SmartThemeQuoteColor);"></i> 变量重命名与类型变更
+                        <i class="fa-solid fa-pen-to-square" style="color: var(--zero-accent-color, var(--SmartThemeQuoteColor));"></i> 变量重命名与类型变更
                     </div>
                     <div id="close-rename-var-modal" class="interactable" style="cursor: pointer; padding: 4px 8px; opacity: 0.7;"><i class="fa-solid fa-xmark"></i></div>
                 </div>
@@ -1590,18 +1645,18 @@ export function showVariableRenameModal(oldName, presetName, callback) {
                 <!-- Body -->
                 <div style="padding: 16px; display: flex; flex-direction: column; gap: 14px; font-size: 12px;">
                     <div>
-                        <label style="font-weight: bold; display: block; margin-bottom: 6px; color: var(--SmartThemeBodyColor);">原变量名称:</label>
-                        <div style="padding: 6px 10px; background: rgba(0,0,0,0.2); border: 1px solid var(--SmartThemeBorderColor); border-radius: 6px; font-weight: bold; opacity: 0.9;">${escapeHtml(oldName)}</div>
+                        <label style="font-weight: bold; display: block; margin-bottom: 6px; color: var(--zero-text-color, var(--SmartThemeBodyColor));">原变量名称:</label>
+                        <div style="padding: 6px 10px; background: rgba(0,0,0,0.2); border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor)); border-radius: 6px; font-weight: bold; opacity: 0.9;">${escapeHtml(oldName)}</div>
                     </div>
 
                     <div>
-                        <label style="font-weight: bold; display: block; margin-bottom: 6px; color: var(--SmartThemeBodyColor);">新变量名称:</label>
-                        <input type="text" id="zero-rename-var-name-input" class="interactable" value="${escapeHtml(oldName)}" placeholder="输入新的变量名..." style="width: 100%; padding: 8px 10px; background: rgba(0,0,0,0.15); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 6px; font-size: 13px; box-sizing: border-box;">
+                        <label style="font-weight: bold; display: block; margin-bottom: 6px; color: var(--zero-text-color, var(--SmartThemeBodyColor));">新变量名称:</label>
+                        <input type="text" id="zero-rename-var-name-input" class="interactable" value="${escapeHtml(oldName)}" placeholder="输入新的变量名..." style="width: 100%; padding: 8px 10px; background: rgba(0,0,0,0.15); border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor)); color: inherit; border-radius: 6px; font-size: 13px; box-sizing: border-box;">
                     </div>
 
                     <div>
-                        <label style="font-weight: bold; display: block; margin-bottom: 6px; color: var(--SmartThemeBodyColor);">批量更改宏语法类型 (可选):</label>
-                        <select id="zero-rename-var-type-select" class="interactable" style="width: 100%; padding: 8px 10px; background: rgba(0,0,0,0.15); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 6px; font-size: 12px; box-sizing: border-box;">
+                        <label style="font-weight: bold; display: block; margin-bottom: 6px; color: var(--zero-text-color, var(--SmartThemeBodyColor));">批量更改宏语法类型 (可选):</label>
+                        <select id="zero-rename-var-type-select" class="interactable" style="width: 100%; padding: 8px 10px; background: rgba(0,0,0,0.15); border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor)); color: inherit; border-radius: 6px; font-size: 12px; box-sizing: border-box;">
                             <option value="keep" selected>保持原类型 (不变动 set / add / get 语法)</option>
                             <option value="set">强制转换为 set (赋值/设置，例: {{setvar::新名::内容}})</option>
                             <option value="add">强制转换为 add (累加/追加，例: {{addvar::新名::内容}})</option>
@@ -1611,23 +1666,34 @@ export function showVariableRenameModal(oldName, presetName, callback) {
                 </div>
 
                 <!-- Footer -->
-                <div style="padding: 12px 16px; border-top: 1px solid var(--SmartThemeBorderColor, #444); display: flex; justify-content: flex-end; gap: 10px; background: rgba(0,0,0,0.1);">
-                    <button id="cancel-rename-var-btn" class="interactable" title="取消" style="padding: 6px 14px; background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor, #444); border-radius: 6px; color: inherit; cursor: pointer; font-size: 12px;"><i class="fa-solid fa-xmark"></i></button>
-                    <button id="confirm-rename-var-btn" class="interactable" title="确认修改" style="padding: 6px 14px; background: var(--SmartThemeQuoteColor, #7b8cde); border: none; border-radius: 6px; color: white; cursor: pointer; font-size: 12px;"><i class="fa-solid fa-check"></i></button>
+                <div style="padding: 12px 16px; border-top: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #444)); display: flex; justify-content: flex-end; gap: 10px; background: rgba(0,0,0,0.1);">
+                    <button id="cancel-rename-var-btn" class="interactable" title="取消" style="padding: 6px 14px; background: rgba(255,255,255,0.06); border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #444)); border-radius: 6px; color: inherit; cursor: pointer; font-size: 12px;"><i class="fa-solid fa-xmark"></i></button>
+                    <button id="confirm-rename-var-btn" class="interactable" title="确认修改" style="padding: 6px 14px; background: var(--zero-accent-color, var(--SmartThemeQuoteColor, #7b8cde)); border: none; border-radius: 6px; color: white; cursor: pointer; font-size: 12px;"><i class="fa-solid fa-check"></i></button>
                 </div>
             </div>
         </div>
     `;
 
-    const $container = $('#zero-preset-manager').length ? $('#zero-preset-manager') : ($('#zero-preset-dialog').length ? $('#zero-preset-dialog') : $('body'));
-    if ($container.css('position') === 'static') {
-        $container.css('position', 'relative');
-    }
     $container.append(modalHtml);
     const $modal = $('#zero-var-rename-modal');
     $modal.find('#zero-rename-var-name-input').focus().select();
 
-    const closeModal = () => $modal.remove();
+    const closeModal = () => {
+        $(document).off('keydown', handleEsc);
+        $modal.remove();
+    };
+    const handleEsc = (e) => {
+        if (e.key === 'Escape') {
+            e.stopPropagation();
+            closeModal();
+        }
+    };
+    $(document).on('keydown', handleEsc);
+    $modal.on('click', (e) => {
+        if (e.target === $modal[0]) {
+            closeModal();
+        }
+    });
     $modal.find('#close-rename-var-modal, #cancel-rename-var-btn').on('click', closeModal);
 
     $modal.find('#confirm-rename-var-btn').on('click', async () => {
@@ -1710,13 +1776,20 @@ export function showBatchVariableEditModal(selectedNames, presetName, callback) 
         </span>
     `).join('');
 
+    const $panel = $('#zero-preset-manager-panel');
+    const hasPanel = $panel.length && $panel.is(':visible') && !$('#comparison-overlay').is(':visible') && !$('#zero-quick-editor').is(':visible');
+    const $container = hasPanel ? $panel : $('body');
+    if (hasPanel && $panel.css('position') === 'static') {
+        $panel.css('position', 'relative');
+    }
+
     const modalHtml = `
-        <div id="zero-batch-var-modal" class="zero-modal-overlay" style="position: absolute; inset: 0; background: var(--SmartThemeChatTintColor, #1e1e2d); opacity: 1; border-radius: inherit; z-index: 20000; display: flex; align-items: center; justify-content: center; padding: 16px;">
-            <div class="zero-modal-content" style="background: var(--SmartThemeChatTintColor, #1e1e2d); border: 1px solid var(--SmartThemeBorderColor, #444); border-radius: 10px; width: 100%; max-width: 480px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); overflow: hidden; display: flex; flex-direction: column; color: var(--SmartThemeBodyColor, #ccc); font-family: inherit;">
+        <div id="zero-batch-var-modal" class="zero-modal-overlay" style="position: ${hasPanel ? 'absolute' : 'fixed'}; inset: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.65); backdrop-filter: blur(2px); border-radius: inherit; z-index: 30005; display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box;">
+            <div class="zero-modal-card zero-modal-content" style="background: var(--zero-modal-bg, rgb(from var(--SmartThemeBlurTintColor-Original, var(--SmartThemeBlurTintColor, #1e1e28)) r g b / 1)) !important; background-color: rgb(from var(--SmartThemeBlurTintColor-Original, var(--SmartThemeBlurTintColor, #1e1e28)) r g b / 1) !important; color: var(--zero-text-color, var(--SmartThemeBodyColor, #ccc)); border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #444)); border-radius: 12px; width: 100%; max-width: 480px; box-shadow: 0 8px 30px rgba(0,0,0,0.6); overflow: hidden; display: flex; flex-direction: column; font-family: inherit; pointer-events: auto;">
                 <!-- Header -->
-                <div style="padding: 14px 16px; border-bottom: 1px solid var(--SmartThemeBorderColor, #444); display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.03);">
+                <div style="padding: 14px 16px; border-bottom: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #444)); display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.03);">
                     <div style="font-weight: bold; font-size: 14px; display: flex; align-items: center; gap: 8px;">
-                        <i class="fa-solid fa-list-check" style="color: var(--SmartThemeQuoteColor);"></i> 批量修改选中变量 (${selectedNames.length} 个)
+                        <i class="fa-solid fa-list-check" style="color: var(--zero-accent-color, var(--SmartThemeQuoteColor));"></i> 批量修改选中变量 (${selectedNames.length} 个)
                     </div>
                     <div id="close-batch-var-modal" class="interactable" style="cursor: pointer; padding: 4px 8px; opacity: 0.7;"><i class="fa-solid fa-xmark"></i></div>
                 </div>
@@ -1724,16 +1797,16 @@ export function showBatchVariableEditModal(selectedNames, presetName, callback) 
                 <!-- Body -->
                 <div style="padding: 16px; display: flex; flex-direction: column; gap: 14px; font-size: 12px; overflow-y: auto; max-height: 70vh;">
                     <div>
-                        <label style="font-weight: bold; display: block; margin-bottom: 6px; color: var(--SmartThemeBodyColor);">已选变量 (${selectedNames.length} 个):</label>
-                        <div style="display: flex; flex-wrap: wrap; gap: 4px; max-height: 90px; overflow-y: auto; padding: 6px; background: rgba(0,0,0,0.2); border: 1px solid var(--SmartThemeBorderColor); border-radius: 6px;">
+                        <label style="font-weight: bold; display: block; margin-bottom: 6px; color: var(--zero-text-color, var(--SmartThemeBodyColor));">已选变量 (${selectedNames.length} 个):</label>
+                        <div style="display: flex; flex-wrap: wrap; gap: 4px; max-height: 90px; overflow-y: auto; padding: 6px; background: rgba(0,0,0,0.2); border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor)); border-radius: 6px;">
                             ${tagsHtml}
                         </div>
                     </div>
 
                     <!-- Macro Type Change -->
                     <div>
-                        <label style="font-weight: bold; display: block; margin-bottom: 6px; color: var(--SmartThemeBodyColor);">1. 批量修改宏语法类型:</label>
-                        <select id="zero-batch-var-type-select" class="interactable" style="width: 100%; padding: 8px 10px; background: rgba(0,0,0,0.15); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 6px; font-size: 12px; box-sizing: border-box;">
+                        <label style="font-weight: bold; display: block; margin-bottom: 6px; color: var(--zero-text-color, var(--SmartThemeBodyColor));">1. 批量修改宏语法类型:</label>
+                        <select id="zero-batch-var-type-select" class="interactable" style="width: 100%; padding: 8px 10px; background: rgba(0,0,0,0.15); border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor)); color: inherit; border-radius: 6px; font-size: 12px; box-sizing: border-box;">
                             <option value="keep" selected>保持原语法类型 (不变动 set / add / get)</option>
                             <option value="set">统一转换为 set (赋值/设置，例: {{setvar::变量名::...}})</option>
                             <option value="add">统一转换为 add (累加/追加，例: {{addvar::变量名::...}})</option>
@@ -1743,8 +1816,8 @@ export function showBatchVariableEditModal(selectedNames, presetName, callback) 
 
                     <!-- Name Batch Rule -->
                     <div>
-                        <label style="font-weight: bold; display: block; margin-bottom: 6px; color: var(--SmartThemeBodyColor);">2. 批量重命名规则:</label>
-                        <select id="zero-batch-var-name-rule-select" class="interactable" style="width: 100%; padding: 8px 10px; background: rgba(0,0,0,0.15); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 6px; font-size: 12px; box-sizing: border-box; margin-bottom: 8px;">
+                        <label style="font-weight: bold; display: block; margin-bottom: 6px; color: var(--zero-text-color, var(--SmartThemeBodyColor));">2. 批量重命名规则:</label>
+                        <select id="zero-batch-var-name-rule-select" class="interactable" style="width: 100%; padding: 8px 10px; background: rgba(0,0,0,0.15); border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor)); color: inherit; border-radius: 6px; font-size: 12px; box-sizing: border-box; margin-bottom: 8px;">
                             <option value="keep" selected>保持原名称 (不更名)</option>
                             <option value="prefix">添加统一前缀 (Prefix)</option>
                             <option value="suffix">添加统一后缀 (Suffix)</option>
@@ -1753,36 +1826,48 @@ export function showBatchVariableEditModal(selectedNames, presetName, callback) 
 
                         <!-- Sub Inputs -->
                         <div id="zero-batch-rule-prefix-box" style="display: none;">
-                            <input type="text" id="zero-batch-var-prefix-input" class="interactable" placeholder="输入添加的前缀，如 my_" style="width: 100%; padding: 7px 10px; background: rgba(0,0,0,0.15); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 6px; font-size: 12px; box-sizing: border-box;">
+                            <input type="text" id="zero-batch-var-prefix-input" class="interactable" placeholder="输入添加的前缀，如 my_" style="width: 100%; padding: 7px 10px; background: rgba(0,0,0,0.15); border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor)); color: inherit; border-radius: 6px; font-size: 12px; box-sizing: border-box;">
                         </div>
 
                         <div id="zero-batch-rule-suffix-box" style="display: none;">
-                            <input type="text" id="zero-batch-var-suffix-input" class="interactable" placeholder="输入添加的后缀，如 _val" style="width: 100%; padding: 7px 10px; background: rgba(0,0,0,0.15); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 6px; font-size: 12px; box-sizing: border-box;">
+                            <input type="text" id="zero-batch-var-suffix-input" class="interactable" placeholder="输入添加的后缀，如 _val" style="width: 100%; padding: 7px 10px; background: rgba(0,0,0,0.15); border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor)); color: inherit; border-radius: 6px; font-size: 12px; box-sizing: border-box;">
                         </div>
 
-                        <div id="zero-batch-rule-replace-box" style="display: none; display: flex; gap: 8px;">
-                            <input type="text" id="zero-batch-var-search-input" class="interactable" placeholder="要查找的字符..." style="flex: 1; padding: 7px 10px; background: rgba(0,0,0,0.15); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 6px; font-size: 12px; box-sizing: border-box;">
-                            <input type="text" id="zero-batch-var-replace-input" class="interactable" placeholder="替换为..." style="flex: 1; padding: 7px 10px; background: rgba(0,0,0,0.15); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 6px; font-size: 12px; box-sizing: border-box;">
+                        <div id="zero-batch-rule-replace-box" style="display: none; gap: 8px;">
+                            <input type="text" id="zero-batch-var-search-input" class="interactable" placeholder="要查找的字符..." style="flex: 1; padding: 7px 10px; background: rgba(0,0,0,0.15); border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor)); color: inherit; border-radius: 6px; font-size: 12px; box-sizing: border-box;">
+                            <input type="text" id="zero-batch-var-replace-input" class="interactable" placeholder="替换为..." style="flex: 1; padding: 7px 10px; background: rgba(0,0,0,0.15); border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor)); color: inherit; border-radius: 6px; font-size: 12px; box-sizing: border-box;">
                         </div>
                     </div>
                 </div>
 
                 <!-- Footer -->
-                <div style="padding: 12px 16px; border-top: 1px solid var(--SmartThemeBorderColor, #444); display: flex; justify-content: flex-end; gap: 10px; background: rgba(0,0,0,0.1);">
-                    <button id="cancel-batch-var-btn" class="interactable" title="取消" style="padding: 6px 14px; background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor, #444); border-radius: 6px; color: inherit; cursor: pointer; font-size: 12px;"><i class="fa-solid fa-xmark"></i></button>
-                    <button id="confirm-batch-var-btn" class="interactable" title="应用批量修改" style="padding: 6px 14px; background: var(--SmartThemeQuoteColor, #7b8cde); border: none; border-radius: 6px; color: white; cursor: pointer; font-size: 12px;"><i class="fa-solid fa-check"></i></button>
+                <div style="padding: 12px 16px; border-top: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #444)); display: flex; justify-content: flex-end; gap: 10px; background: rgba(0,0,0,0.1);">
+                    <button id="cancel-batch-var-btn" class="interactable" title="取消" style="padding: 6px 14px; background: rgba(255,255,255,0.06); border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #444)); border-radius: 6px; color: inherit; cursor: pointer; font-size: 12px;"><i class="fa-solid fa-xmark"></i></button>
+                    <button id="confirm-batch-var-btn" class="interactable" title="应用批量修改" style="padding: 6px 14px; background: var(--zero-accent-color, var(--SmartThemeQuoteColor, #7b8cde)); border: none; border-radius: 6px; color: white; cursor: pointer; font-size: 12px;"><i class="fa-solid fa-check"></i></button>
                 </div>
             </div>
         </div>
     `;
 
-    const $container = $('#zero-preset-manager').length ? $('#zero-preset-manager') : ($('#zero-preset-dialog').length ? $('#zero-preset-dialog') : $('body'));
-    if ($container.css('position') === 'static') {
-        $container.css('position', 'relative');
-    }
     $container.append(modalHtml);
     const $modal = $('#zero-batch-var-modal');
-    const closeModal = () => $modal.remove();
+
+    const closeModal = () => {
+        $(document).off('keydown', handleEsc);
+        $modal.remove();
+    };
+    const handleEsc = (e) => {
+        if (e.key === 'Escape') {
+            e.stopPropagation();
+            closeModal();
+        }
+    };
+    $(document).on('keydown', handleEsc);
+    $modal.on('click', (e) => {
+        if (e.target === $modal[0]) {
+            closeModal();
+        }
+    });
 
     $modal.find('#close-batch-var-modal, #cancel-batch-var-btn').on('click', closeModal);
 
@@ -1790,7 +1875,7 @@ export function showBatchVariableEditModal(selectedNames, presetName, callback) 
         const val = $(this).val();
         $modal.find('#zero-batch-rule-prefix-box').toggle(val === 'prefix');
         $modal.find('#zero-batch-rule-suffix-box').toggle(val === 'suffix');
-        $modal.find('#zero-batch-rule-replace-box').toggle(val === 'replace');
+        $modal.find('#zero-batch-rule-replace-box').css('display', val === 'replace' ? 'flex' : 'none');
     });
 
     $modal.find('#confirm-batch-var-btn').on('click', async () => {
@@ -1901,13 +1986,20 @@ export function showBatchEntryVariableEditModal(selectedItems, presetName, callb
     const defaultVarName = selectedItems[0].varName;
     const sameVarName = selectedItems.every(i => i.varName === defaultVarName);
 
+    const $panel = $('#zero-preset-manager-panel');
+    const hasPanel = $panel.length && $panel.is(':visible') && !$('#comparison-overlay').is(':visible') && !$('#zero-quick-editor').is(':visible');
+    const $container = hasPanel ? $panel : $('body');
+    if (hasPanel && $panel.css('position') === 'static') {
+        $panel.css('position', 'relative');
+    }
+
     const modalHtml = `
-        <div id="zero-batch-entry-var-modal" class="zero-modal-overlay" style="position: absolute; inset: 0; background: var(--SmartThemeChatTintColor, #1e1e2d); opacity: 1; border-radius: inherit; z-index: 20000; display: flex; align-items: center; justify-content: center; padding: 16px;">
-            <div class="zero-modal-content" style="background: var(--SmartThemeChatTintColor, #1e1e2d); border: 1px solid var(--SmartThemeBorderColor, #444); border-radius: 10px; width: 100%; max-width: 480px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); overflow: hidden; display: flex; flex-direction: column; color: var(--SmartThemeBodyColor, #ccc); font-family: inherit;">
+        <div id="zero-batch-entry-var-modal" class="zero-modal-overlay" style="position: ${hasPanel ? 'absolute' : 'fixed'}; inset: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.65); backdrop-filter: blur(2px); border-radius: inherit; z-index: 30005; display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box;">
+            <div class="zero-modal-card zero-modal-content" style="background: var(--zero-modal-bg, rgb(from var(--SmartThemeBlurTintColor-Original, var(--SmartThemeBlurTintColor, #1e1e28)) r g b / 1)) !important; background-color: rgb(from var(--SmartThemeBlurTintColor-Original, var(--SmartThemeBlurTintColor, #1e1e28)) r g b / 1) !important; color: var(--zero-text-color, var(--SmartThemeBodyColor, #ccc)); border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #444)); border-radius: 12px; width: 100%; max-width: 480px; box-shadow: 0 8px 30px rgba(0,0,0,0.6); overflow: hidden; display: flex; flex-direction: column; font-family: inherit; pointer-events: auto;">
                 <!-- Header -->
-                <div style="padding: 14px 16px; border-bottom: 1px solid var(--SmartThemeBorderColor, #444); display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.03);">
+                <div style="padding: 14px 16px; border-bottom: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #444)); display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.03);">
                     <div style="font-weight: bold; font-size: 14px; display: flex; align-items: center; gap: 8px;">
-                        <i class="fa-solid fa-list-check" style="color: var(--SmartThemeQuoteColor);"></i> 批量修改选中条目中的变量 (${selectedItems.length} 个条目)
+                        <i class="fa-solid fa-list-check" style="color: var(--zero-accent-color, var(--SmartThemeQuoteColor));"></i> 批量修改选中条目中的变量 (${selectedItems.length} 个条目)
                     </div>
                     <div id="close-batch-entry-var-modal" class="interactable" style="cursor: pointer; padding: 4px 8px; opacity: 0.7;"><i class="fa-solid fa-xmark"></i></div>
                 </div>
@@ -1915,16 +2007,16 @@ export function showBatchEntryVariableEditModal(selectedItems, presetName, callb
                 <!-- Body -->
                 <div style="padding: 16px; display: flex; flex-direction: column; gap: 14px; font-size: 12px; overflow-y: auto; max-height: 70vh;">
                     <div>
-                        <label style="font-weight: bold; display: block; margin-bottom: 6px; color: var(--SmartThemeBodyColor);">已选条目 (${selectedItems.length} 个):</label>
-                        <div style="display: flex; flex-direction: column; gap: 4px; max-height: 120px; overflow-y: auto; padding: 6px; background: rgba(0,0,0,0.2); border: 1px solid var(--SmartThemeBorderColor); border-radius: 6px;">
+                        <label style="font-weight: bold; display: block; margin-bottom: 6px; color: var(--zero-text-color, var(--SmartThemeBodyColor));">已选条目 (${selectedItems.length} 个):</label>
+                        <div style="display: flex; flex-direction: column; gap: 4px; max-height: 120px; overflow-y: auto; padding: 6px; background: rgba(0,0,0,0.2); border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor)); border-radius: 6px;">
                             ${entriesListHtml}
                         </div>
                     </div>
 
                     <!-- Macro Type Change -->
                     <div>
-                        <label style="font-weight: bold; display: block; margin-bottom: 6px; color: var(--SmartThemeBodyColor);">1. 批量修改选中条目中的宏语法类型:</label>
-                        <select id="zero-batch-entry-type-select" class="interactable" style="width: 100%; padding: 8px 10px; background: rgba(0,0,0,0.15); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 6px; font-size: 12px; box-sizing: border-box;">
+                        <label style="font-weight: bold; display: block; margin-bottom: 6px; color: var(--zero-text-color, var(--SmartThemeBodyColor));">1. 批量修改选中条目中的宏语法类型:</label>
+                        <select id="zero-batch-entry-type-select" class="interactable" style="width: 100%; padding: 8px 10px; background: rgba(0,0,0,0.15); border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor)); color: inherit; border-radius: 6px; font-size: 12px; box-sizing: border-box;">
                             <option value="keep" selected>保持原语法类型 (不变动 set / add / get)</option>
                             <option value="set">统一转换为 set (赋值/设置，例: {{setvar::变量名::...}})</option>
                             <option value="add">统一转换为 add (累加/追加，例: {{addvar::变量名::...}})</option>
@@ -1934,27 +2026,39 @@ export function showBatchEntryVariableEditModal(selectedItems, presetName, callb
 
                     <!-- Variable Rename -->
                     <div>
-                        <label style="font-weight: bold; display: block; margin-bottom: 6px; color: var(--SmartThemeBodyColor);">2. 批量重命名变量 (留空则不更名):</label>
-                        <input type="text" id="zero-batch-entry-var-name-input" class="interactable" value="${sameVarName ? escapeHtml(defaultVarName) : ''}" placeholder="${sameVarName ? '输入新的变量名...' : '多选不同变量时，输入新统一变量名...'}" style="width: 100%; padding: 8px 10px; background: rgba(0,0,0,0.15); border: 1px solid var(--SmartThemeBorderColor); color: inherit; border-radius: 6px; font-size: 12px; box-sizing: border-box;">
+                        <label style="font-weight: bold; display: block; margin-bottom: 6px; color: var(--zero-text-color, var(--SmartThemeBodyColor));">2. 批量重命名变量 (留空则不更名):</label>
+                        <input type="text" id="zero-batch-entry-var-name-input" class="interactable" value="${sameVarName ? escapeHtml(defaultVarName) : ''}" placeholder="${sameVarName ? '输入新的变量名...' : '多选不同变量时，输入新统一变量名...'}" style="width: 100%; padding: 8px 10px; background: rgba(0,0,0,0.15); border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor)); color: inherit; border-radius: 6px; font-size: 12px; box-sizing: border-box;">
                     </div>
                 </div>
 
                 <!-- Footer -->
-                <div style="padding: 12px 16px; border-top: 1px solid var(--SmartThemeBorderColor, #444); display: flex; justify-content: flex-end; gap: 10px; background: rgba(0,0,0,0.1);">
-                    <button id="cancel-batch-entry-var-btn" class="interactable" title="取消" style="padding: 6px 14px; background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor, #444); border-radius: 6px; color: inherit; cursor: pointer; font-size: 12px;"><i class="fa-solid fa-xmark"></i></button>
-                    <button id="confirm-batch-entry-var-btn" class="interactable" title="应用修改" style="padding: 6px 14px; background: var(--SmartThemeQuoteColor, #7b8cde); border: none; border-radius: 6px; color: white; cursor: pointer; font-size: 12px;"><i class="fa-solid fa-check"></i></button>
+                <div style="padding: 12px 16px; border-top: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #444)); display: flex; justify-content: flex-end; gap: 10px; background: rgba(0,0,0,0.1);">
+                    <button id="cancel-batch-entry-var-btn" class="interactable" title="取消" style="padding: 6px 14px; background: rgba(255,255,255,0.06); border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #444)); border-radius: 6px; color: inherit; cursor: pointer; font-size: 12px;"><i class="fa-solid fa-xmark"></i></button>
+                    <button id="confirm-batch-entry-var-btn" class="interactable" title="应用修改" style="padding: 6px 14px; background: var(--zero-accent-color, var(--SmartThemeQuoteColor, #7b8cde)); border: none; border-radius: 6px; color: white; cursor: pointer; font-size: 12px;"><i class="fa-solid fa-check"></i></button>
                 </div>
             </div>
         </div>
     `;
 
-    const $container = $('#zero-preset-manager').length ? $('#zero-preset-manager') : ($('#zero-preset-dialog').length ? $('#zero-preset-dialog') : $('body'));
-    if ($container.css('position') === 'static') {
-        $container.css('position', 'relative');
-    }
     $container.append(modalHtml);
     const $modal = $('#zero-batch-entry-var-modal');
-    const closeModal = () => $modal.remove();
+
+    const closeModal = () => {
+        $(document).off('keydown', handleEsc);
+        $modal.remove();
+    };
+    const handleEsc = (e) => {
+        if (e.key === 'Escape') {
+            e.stopPropagation();
+            closeModal();
+        }
+    };
+    $(document).on('keydown', handleEsc);
+    $modal.on('click', (e) => {
+        if (e.target === $modal[0]) {
+            closeModal();
+        }
+    });
 
     $modal.find('#close-batch-entry-var-modal, #cancel-batch-entry-var-btn').on('click', closeModal);
 
@@ -2042,13 +2146,20 @@ export function showStepByStepReplaceModal({ matches, searchVal, replaceVal, pre
     let replacedCount = 0;
     let skippedCount = 0;
 
+    const $panel = $('#zero-preset-manager-panel');
+    const hasPanel = $panel.length && $panel.is(':visible') && !$('#comparison-overlay').is(':visible') && !$('#zero-quick-editor').is(':visible');
+    const $container = hasPanel ? $panel : $('body');
+    if (hasPanel && $panel.css('position') === 'static') {
+        $panel.css('position', 'relative');
+    }
+
     const modalHtml = `
-        <div id="zero-replace-confirm-modal" class="zero-modal-overlay" style="position: absolute; inset: 0; background: var(--SmartThemeChatTintColor, #1e1e2d); opacity: 1; border-radius: inherit; z-index: 20000; display: flex; align-items: center; justify-content: center; padding: 16px;">
-            <div class="zero-modal-content" style="background: var(--SmartThemeChatTintColor, #1e1e2d); border: 1px solid var(--SmartThemeBorderColor, #444); border-radius: 10px; width: 100%; max-width: 540px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); overflow: hidden; display: flex; flex-direction: column; color: var(--SmartThemeBodyColor, #ccc); font-family: inherit;">
+        <div id="zero-replace-confirm-modal" class="zero-modal-overlay" style="position: ${hasPanel ? 'absolute' : 'fixed'}; inset: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.65); backdrop-filter: blur(2px); border-radius: inherit; z-index: 30005; display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box;">
+            <div class="zero-modal-card zero-modal-content" style="background: var(--zero-modal-bg, rgb(from var(--SmartThemeBlurTintColor-Original, var(--SmartThemeBlurTintColor, #1e1e28)) r g b / 1)) !important; background-color: rgb(from var(--SmartThemeBlurTintColor-Original, var(--SmartThemeBlurTintColor, #1e1e28)) r g b / 1) !important; color: var(--zero-text-color, var(--SmartThemeBodyColor, #ccc)); border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #444)); border-radius: 12px; width: 100%; max-width: 540px; box-shadow: 0 8px 30px rgba(0,0,0,0.6); overflow: hidden; display: flex; flex-direction: column; font-family: inherit; pointer-events: auto;">
                 <!-- Header -->
-                <div style="padding: 14px 16px; border-bottom: 1px solid var(--SmartThemeBorderColor, #444); display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.03);">
+                <div style="padding: 14px 16px; border-bottom: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #444)); display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.03);">
                     <div style="font-weight: bold; font-size: 14px; display: flex; align-items: center; gap: 8px;">
-                        <i class="fa-solid fa-rotate" style="color: var(--SmartThemeQuoteColor);"></i> 逐个确认替换
+                        <i class="fa-solid fa-rotate" style="color: var(--zero-accent-color, var(--SmartThemeQuoteColor));"></i> 逐个确认替换
                     </div>
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <div id="confirm-step-progress" style="font-size: 11px; opacity: 0.85; font-weight: bold; background: rgba(255,255,255,0.08); padding: 3px 10px; border-radius: 10px;">
@@ -2062,11 +2173,11 @@ export function showStepByStepReplaceModal({ matches, searchVal, replaceVal, pre
                 <div style="padding: 16px; display: flex; flex-direction: column; gap: 12px; font-size: 12px; overflow-y: auto; max-height: 60vh;">
                     <div>
                         <span style="opacity: 0.7;">当前条目：</span>
-                        <strong id="step-entry-name" style="font-size: 13px; color: var(--SmartThemeBodyColor);"></strong>
+                        <strong id="step-entry-name" style="font-size: 13px; color: var(--zero-text-color, var(--SmartThemeBodyColor));"></strong>
                     </div>
 
                     <div>
-                        <label style="font-weight: bold; display: block; margin-bottom: 4px; color: var(--SmartThemeEmColor);">替换前文本:</label>
+                        <label style="font-weight: bold; display: block; margin-bottom: 4px; color: var(--zero-muted-color, var(--SmartThemeEmColor));">替换前文本:</label>
                         <div id="step-before-snippet" style="padding: 8px 10px; background: rgba(0,0,0,0.25); border: 1px dashed rgba(255, 100, 100, 0.4); border-radius: 6px; font-family: monospace; font-size: 11px; line-height: 1.4; word-break: break-all; white-space: pre-wrap;"></div>
                     </div>
 
@@ -2077,23 +2188,36 @@ export function showStepByStepReplaceModal({ matches, searchVal, replaceVal, pre
                 </div>
 
                 <!-- Footer Actions -->
-                <div style="padding: 12px 16px; border-top: 1px solid var(--SmartThemeBorderColor, #444); display: flex; align-items: center; justify-content: space-between; gap: 8px; background: rgba(0,0,0,0.1); flex-wrap: wrap;">
-                    <button id="step-btn-all" class="interactable" title="剩余全部替换" style="padding: 6px 12px; background: rgba(255,255,255,0.06); border: 1px solid var(--SmartThemeBorderColor); border-radius: 6px; color: inherit; cursor: pointer; font-size: 11px;"><i class="fa-solid fa-angles-right"></i></button>
+                <div style="padding: 12px 16px; border-top: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor, #444)); display: flex; align-items: center; justify-content: space-between; gap: 8px; background: rgba(0,0,0,0.1); flex-wrap: wrap;">
+                    <button id="step-btn-all" class="interactable" title="剩余全部替换" style="padding: 6px 12px; background: rgba(255,255,255,0.06); border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor)); border-radius: 6px; color: inherit; cursor: pointer; font-size: 11px;"><i class="fa-solid fa-angles-right"></i></button>
                     <div style="display: flex; gap: 8px;">
-                        <button id="step-btn-skip" class="interactable" title="跳过当前匹配项" style="padding: 6px 14px; background: rgba(255,255,255,0.08); border: 1px solid var(--SmartThemeBorderColor); border-radius: 6px; color: inherit; cursor: pointer; font-size: 12px;"><i class="fa-solid fa-forward"></i></button>
-                        <button id="step-btn-replace" class="interactable" title="替换当前匹配项" style="padding: 6px 16px; background: var(--SmartThemeQuoteColor); border: none; border-radius: 6px; color: white; cursor: pointer; font-size: 12px;"><i class="fa-solid fa-check"></i></button>
+                        <button id="step-btn-skip" class="interactable" title="跳过当前匹配项" style="padding: 6px 14px; background: rgba(255,255,255,0.08); border: 1px solid var(--zero-border-color, var(--SmartThemeBorderColor)); border-radius: 6px; color: inherit; cursor: pointer; font-size: 12px;"><i class="fa-solid fa-forward"></i></button>
+                        <button id="step-btn-replace" class="interactable" title="替换当前匹配项" style="padding: 6px 16px; background: var(--zero-accent-color, var(--SmartThemeQuoteColor)); border: none; border-radius: 6px; color: white; cursor: pointer; font-size: 12px;"><i class="fa-solid fa-check"></i></button>
                     </div>
                 </div>
             </div>
         </div>
     `;
 
-    const $container = $('#zero-preset-manager').length ? $('#zero-preset-manager') : ($('#zero-preset-dialog').length ? $('#zero-preset-dialog') : $('body'));
-    if ($container.css('position') === 'static') {
-        $container.css('position', 'relative');
-    }
     $container.append(modalHtml);
     const $modal = $('#zero-replace-confirm-modal');
+
+    const closeModal = () => {
+        $(document).off('keydown', handleEsc);
+        $modal.remove();
+    };
+    const handleEsc = (e) => {
+        if (e.key === 'Escape') {
+            e.stopPropagation();
+            finishProcess();
+        }
+    };
+    $(document).on('keydown', handleEsc);
+    $modal.on('click', (e) => {
+        if (e.target === $modal[0]) {
+            finishProcess();
+        }
+    });
 
     const updateStepView = () => {
         if (currentIndex >= matches.length) {
@@ -2118,7 +2242,7 @@ export function showStepByStepReplaceModal({ matches, searchVal, replaceVal, pre
     };
 
     const finishProcess = async () => {
-        $modal.remove();
+        closeModal();
         if (typeof callback === 'function') {
             await callback({ replacedCount, skippedCount });
         }

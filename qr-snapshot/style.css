@@ -16,6 +16,11 @@
 #links-manager-modal,
 #comparison-overlay,
 .zero-modal-card,
+.zero-modal-content,
+#zero-var-rename-modal,
+#zero-batch-var-modal,
+#zero-batch-entry-var-modal,
+#zero-replace-confirm-modal,
 #standalone-regex-manager-modal,
 #zero-contrast-summary-modal,
 #zero-op-log-modal {
@@ -930,6 +935,7 @@
     align-items: center;
     justify-content: center;
     padding: 20px;
+    pointer-events: auto;
 }
 .zero-confirm-box {
     background: var(--zero-bg-color, var(--SmartThemeBlurTintColor, rgba(30,30,40,0.95)));
@@ -1334,14 +1340,51 @@
     animation: zeroOverwriteSpin 0.8s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* ===== Top-Level Modals: Snapshot Migration & Content Compare ===== */
+#zero-migration-modal,
+.zero-migration-overlay {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    z-index: 50000 !important;
+    pointer-events: auto !important;
+    background: rgba(0, 0, 0, 0.65) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 16px !important;
+    box-sizing: border-box !important;
+    overflow-y: auto !important;
+}
+#zero-compare-modal,
+.zero-compare-overlay {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    z-index: 60000 !important;
+    pointer-events: auto !important;
+    background: rgba(0, 0, 0, 0.7) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 16px !important;
+    box-sizing: border-box !important;
+    overflow-y: auto !important;
+}
+
 /* ===== Snapshot Migration Modal ===== */
 .zero-migration-box {
     max-width: 620px;
-    height: 90vh;
-    max-height: 90vh;
+    width: 94%;
+    height: min(82vh, 720px);
+    max-height: calc(100vh - 32px);
     display: flex;
     flex-direction: column;
-    width: 100%;
+    box-sizing: border-box;
+    margin: auto;
+    padding: 0;
 }
 .zero-migration-header-desc {
     font-size: 12px;
@@ -1513,6 +1556,7 @@
 
 /* Ensure inner modal cards & floating panels accept clicks and interactions */
 .zero-modal-card,
+.zero-modal-content,
 #comparison-overlay,
 #zero-quick-editor,
 #move-modal > div,
