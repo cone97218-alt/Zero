@@ -2,7 +2,7 @@ import { openUI, toggleUI, initSnapshotUI, markSnapshotDirty, flushToggles } fro
 import { preloadOpenai, PresetManager, UiStateManager, StreamManager } from './qr-snapshot/state.js';
 import { init as initPresetManager } from './preset-manager/main.js';
 import { initPresetPerformanceOptimizer } from './qr-snapshot/performance.js';
-import { ThemeManager } from './preset-manager/theme.js';
+import { ThemeManager, applyScrollbarVisibility } from './preset-manager/theme.js';
 
 const MODULE_NAME = 'zero';
 const BTN_ID = 'zero-preset-btn';
@@ -437,6 +437,7 @@ preloadOpenai();
 function onAppReady() {
     preloadOpenai();
     ThemeManager.applyTheme();
+    applyScrollbarVisibility(UiStateManager.get().showScrollbar !== false);
     initSnapshotUI();
     injectWithRetry();
     initPresetManager();

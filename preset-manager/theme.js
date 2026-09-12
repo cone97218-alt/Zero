@@ -344,5 +344,143 @@ export const ThemeManager = {
         if (styleEl.textContent !== css) {
             styleEl.textContent = css;
         }
+
+        // Synchronize scrollbar visibility
+        applyScrollbarVisibility(UiStateManager.get().showScrollbar !== false);
     }
 };
+
+/**
+ * 动态控制 Zero 扩展所有界面滚动条的视觉显示/隐藏
+ * @param {boolean} visible 是否显示滚动条（默认 true 为显示）
+ */
+export function applyScrollbarVisibility(visible = true) {
+    let styleEl = document.getElementById('zero-scrollbar-styles');
+    if (!styleEl) {
+        styleEl = document.createElement('style');
+        styleEl.id = 'zero-scrollbar-styles';
+        document.head.appendChild(styleEl);
+    }
+
+    if (visible) {
+        // 显示滚动条：提供统一且美观的细滚动条，不遮挡内容
+        styleEl.textContent = `
+            #zero-preset-manager-panel *::-webkit-scrollbar,
+            .zero-modal *::-webkit-scrollbar,
+            .zero-modal-card *::-webkit-scrollbar,
+            #zero-quick-editor *::-webkit-scrollbar,
+            #comparison-overlay *::-webkit-scrollbar,
+            .zero-content::-webkit-scrollbar,
+            .zero-preview-content::-webkit-scrollbar,
+            .zero-hidden-box *::-webkit-scrollbar,
+            .zero-group-mgr-box *::-webkit-scrollbar,
+            .zero-profile-dialog *::-webkit-scrollbar,
+            .zero-migration-box *::-webkit-scrollbar {
+                width: 6px !important;
+                height: 6px !important;
+                display: block !important;
+            }
+            #zero-preset-manager-panel *::-webkit-scrollbar-track,
+            .zero-modal *::-webkit-scrollbar-track,
+            .zero-modal-card *::-webkit-scrollbar-track,
+            #zero-quick-editor *::-webkit-scrollbar-track,
+            #comparison-overlay *::-webkit-scrollbar-track,
+            .zero-content::-webkit-scrollbar-track,
+            .zero-preview-content::-webkit-scrollbar-track,
+            .zero-hidden-box *::-webkit-scrollbar-track,
+            .zero-group-mgr-box *::-webkit-scrollbar-track,
+            .zero-profile-dialog *::-webkit-scrollbar-track,
+            .zero-migration-box *::-webkit-scrollbar-track {
+                background: transparent !important;
+            }
+            #zero-preset-manager-panel *::-webkit-scrollbar-thumb,
+            .zero-modal *::-webkit-scrollbar-thumb,
+            .zero-modal-card *::-webkit-scrollbar-thumb,
+            #zero-quick-editor *::-webkit-scrollbar-thumb,
+            #comparison-overlay *::-webkit-scrollbar-thumb,
+            .zero-content::-webkit-scrollbar-thumb,
+            .zero-preview-content::-webkit-scrollbar-thumb,
+            .zero-hidden-box *::-webkit-scrollbar-thumb,
+            .zero-group-mgr-box *::-webkit-scrollbar-thumb,
+            .zero-profile-dialog *::-webkit-scrollbar-thumb,
+            .zero-migration-box *::-webkit-scrollbar-thumb {
+                background: var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.25)) !important;
+                border-radius: 4px !important;
+            }
+            #zero-preset-manager-panel *::-webkit-scrollbar-thumb:hover,
+            .zero-modal *::-webkit-scrollbar-thumb:hover,
+            .zero-modal-card *::-webkit-scrollbar-thumb:hover,
+            #zero-quick-editor *::-webkit-scrollbar-thumb:hover,
+            #comparison-overlay *::-webkit-scrollbar-thumb:hover,
+            .zero-content::-webkit-scrollbar-thumb:hover,
+            .zero-preview-content::-webkit-scrollbar-thumb:hover,
+            .zero-hidden-box *::-webkit-scrollbar-thumb:hover,
+            .zero-group-mgr-box *::-webkit-scrollbar-thumb:hover,
+            .zero-profile-dialog *::-webkit-scrollbar-thumb:hover,
+            .zero-migration-box *::-webkit-scrollbar-thumb:hover {
+                background: var(--SmartThemeQuoteColor, rgba(255, 255, 255, 0.45)) !important;
+            }
+            #zero-preset-manager-panel,
+            #zero-preset-manager-panel *,
+            .zero-modal,
+            .zero-modal *,
+            .zero-modal-card,
+            .zero-modal-card *,
+            #zero-quick-editor,
+            #zero-quick-editor *,
+            #comparison-overlay,
+            #comparison-overlay *,
+            .zero-content,
+            .zero-content * {
+                scrollbar-width: thin !important;
+                scrollbar-color: var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.25)) transparent !important;
+                -ms-overflow-style: auto !important;
+            }
+        `;
+    } else {
+        // 隐藏滚动条：纯视觉隐藏，保留一切滚动手势和 overflow 行为
+        styleEl.textContent = `
+            #zero-preset-manager-panel *::-webkit-scrollbar,
+            #zero-preset-manager-panel::-webkit-scrollbar,
+            .zero-modal *::-webkit-scrollbar,
+            .zero-modal::-webkit-scrollbar,
+            .zero-modal-card *::-webkit-scrollbar,
+            .zero-modal-card::-webkit-scrollbar,
+            #zero-quick-editor *::-webkit-scrollbar,
+            #zero-quick-editor::-webkit-scrollbar,
+            #comparison-overlay *::-webkit-scrollbar,
+            #comparison-overlay::-webkit-scrollbar,
+            .zero-content::-webkit-scrollbar,
+            .zero-content *::-webkit-scrollbar,
+            .zero-preview-content::-webkit-scrollbar,
+            .zero-hidden-box *::-webkit-scrollbar,
+            .zero-group-mgr-box *::-webkit-scrollbar,
+            .zero-profile-dialog *::-webkit-scrollbar,
+            .zero-migration-box *::-webkit-scrollbar {
+                display: none !important;
+                width: 0 !important;
+                height: 0 !important;
+            }
+            #zero-preset-manager-panel,
+            #zero-preset-manager-panel *,
+            .zero-modal,
+            .zero-modal *,
+            .zero-modal-card,
+            .zero-modal-card *,
+            #zero-quick-editor,
+            #zero-quick-editor *,
+            #comparison-overlay,
+            #comparison-overlay *,
+            .zero-content,
+            .zero-content *,
+            .zero-preview-content,
+            .zero-hidden-box *,
+            .zero-group-mgr-box *,
+            .zero-profile-dialog *,
+            .zero-migration-box * {
+                -ms-overflow-style: none !important;
+                scrollbar-width: none !important;
+            }
+        `;
+    }
+}

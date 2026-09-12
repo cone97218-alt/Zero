@@ -7,7 +7,7 @@
 
 import { PresetManager, HistoryManager, UiStateManager } from '../qr-snapshot/state.js';
 import { syncTheme } from './utils.js';
-import { ThemeManager, BUILTIN_THEMES } from './theme.js';
+import { ThemeManager, BUILTIN_THEMES, applyScrollbarVisibility } from './theme.js';
 import { WindowManager } from './window.js';
 
 // ── 懒加载缓存 ──────────────────────────────────────────────────────────────
@@ -985,6 +985,18 @@ function ensurePanel() {
                                 </label>
                             </div>
 
+                            <!-- 滚动条视觉显示设置 -->
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 12px; margin-top: 4px;">
+                                <div style="flex: 1;">
+                                    <strong style="display: block; font-size: 13px; font-weight: 600; color: var(--SmartThemeBodyColor); margin-bottom: 2px;">显示界面滚动条</strong>
+                                    <span style="display: block; font-size: 11px; color: var(--SmartThemeEmColor, #999); line-height: 1.4;">控制所有界面面板、列表与弹窗的滚动条视觉显示。默认开启；关闭后隐藏滚动条（仅修改视觉外观，不影响鼠标滚轮与触控滑动）。</span>
+                                </div>
+                                <label class="zero-switch">
+                                    <input type="checkbox" id="zero-setting-ui-show-scrollbar" class="interactable">
+                                    <span class="zero-slider"></span>
+                                </label>
+                            </div>
+
                             <!-- 导航与状态栏设置 (子折叠) -->
                             <div class="zero-settings-section sub-section" style="
                                 display: flex;
@@ -1725,21 +1737,6 @@ function ensurePanel() {
                         max-height: 80vh !important;
                     }
                 }
-                #stitch-list::-webkit-scrollbar,
-                #contrast-list::-webkit-scrollbar,
-                #check-results-container::-webkit-scrollbar,
-                #manage-preset-list::-webkit-scrollbar,
-                #stitch-peek-body::-webkit-scrollbar {
-                    display: none;
-                }
-                #stitch-list,
-                #contrast-list,
-                #check-results-container,
-                #manage-preset-list,
-                #stitch-peek-body {
-                    -ms-overflow-style: none;
-                    scrollbar-width: none;
-                }
                 .stitch-peek-insert-btn {
                     transition: all 0.15s ease;
                 }
@@ -2219,6 +2216,13 @@ function ensurePanel() {
         UiStateManager.save({ injectExtensionMenu: checked });
         injectExtensionButton();
         toastr.success(checked ? '已开启魔法棒扩展菜单注入' : '已关闭魔法棒扩展菜单注入');
+    });
+
+    $('body').off('change', '#zero-setting-ui-show-scrollbar').on('change', '#zero-setting-ui-show-scrollbar', function() {
+        const checked = $(this).is(':checked');
+        UiStateManager.save({ showScrollbar: checked });
+        applyScrollbarVisibility(checked);
+        toastr.success(checked ? '已开启界面滚动条显示' : '已隐藏界面滚动条');
     });
 
     $('body').off('change', '.zero-snapshot-action-cb').on('change', '.zero-snapshot-action-cb', function() {
@@ -3170,6 +3174,7 @@ export function injectExtensionButton() {
 export function init() {
     injectExtensionButton();
     applyAvoidStatusbar();
+    applyScrollbarVisibility(UiStateManager.get().showScrollbar !== false);
     
     // Stop event bubbling for typing events on all Zero inputs/textareas to prevent SillyTavern's heavy global key/input listeners from lagging mobile devices
     $('body').on('keydown keyup keypress input', '#zero-preset-manager-panel input, #zero-preset-manager-panel textarea, #zero-quick-editor input, #zero-quick-editor textarea', function(e) {
@@ -3275,6 +3280,7 @@ export function renderSettingsTab() {
     $('#zero-setting-migrate-compare').prop('checked', state.migrateContentCompare !== false);
     $('#zero-setting-ui-inject-qr').prop('checked', state.injectQrBarButton !== false);
     $('#zero-setting-ui-inject-extmenu').prop('checked', state.injectExtensionMenu !== false);
+    $('#zero-setting-ui-show-scrollbar').prop('checked', state.showScrollbar !== false);
 
     // Snapshot Entry Action Icons
     const entryActions = state.entryActions || ['inject-var', 'folder', 'preview'];
